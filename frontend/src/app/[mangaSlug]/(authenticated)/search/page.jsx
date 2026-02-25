@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import { searchBubbles, getMetadataSuggestions, getTomes, submitSearchFeedback } from '@/lib/api';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { searchBubbles, getMetadataSuggestions, getTomes, submitSearchFeedback, searchImage } from '@/lib/api';
 import { getProxiedImageUrl, cn } from '@/lib/utils';
+import { ImageSearchZone } from '@/components/ImageSearchZone';
 
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/context/AuthContext';
@@ -25,7 +26,7 @@ import { toast } from "sonner";
 
 
 
-import { Search, X, Loader2, Sparkles, BookOpen, MapPin, Quote, Info, ArrowRight, Settings, Filter, XCircle, Check, Key } from "lucide-react";
+import { Search, X, Loader2, Sparkles, BookOpen, MapPin, Quote, Info, ArrowRight, Settings, Filter, XCircle, Check, Key, Image as ImageIcon } from "lucide-react";
 
 const RESULTS_PER_PAGE = 24;
 
@@ -92,9 +93,14 @@ export default function SearchPage() {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(false);
 
-    const [useSemantic, setUseSemantic] = useState(false);
+    const [searchMode, setSearchMode] = useState('keyword'); // 'keyword', 'semantic', 'image'
     const [modelProvider, setModelProvider] = useState('voyage');
     const [geminiKey, setGeminiKey] = useState(null);
+
+    const [workerStatus, setWorkerStatus] = useState('idle');
+    const [workerProgress, setWorkerProgress] = useState(0);
+    const workerRef = useRef(null);
+    const [selectedImageBlob, setSelectedImageBlob] = useState(null);
 
 
 
@@ -142,10 +148,34 @@ export default function SearchPage() {
         }
     }, []);
 
+    useEffect(() => {
+        if (searchMode === 'image' && !workerRef.current) {
+            setWorkerStatus('loading');
+            setWorkerProgress(0);
+            workerRef.current = new Worker(new URL('../../../../workers/siglip.worker.js', import.meta.url), { type: 'module' });
+
+            workerRef.current.onmessage = (e) => {
+                const { status, progress, text, error, embedding } = e.data;
+                if (status === 'ready') setWorkerStatus('ready');
+                if (status === 'download_progress') setWorkerProgress(progress);
+                if (status === 'error') {
+                    console.error("SigLIP Worker error:", error);
+                    setWorkerStatus('error');
+                    toast.error(error);
+                }
+                if (status === 'complete') {
+                    executeImageSearch(embedding);
+                }
+            };
+
+            workerRef.current.postMessage({ type: 'init' });
+        }
+    }, [searchMode]);
 
 
     useEffect(() => {
-        if (useSemantic) return;
+        if (searchMode === 'image') return;
+        if (searchMode === 'semantic') return;
 
 
         if (debouncedQuery.trim().length >= 2) {
@@ -155,11 +185,12 @@ export default function SearchPage() {
             setResults([]);
             setTotalCount(0);
         }
-    }, [debouncedQuery, useSemantic, selectedCharacters, selectedArc, selectedTome]);
+    }, [debouncedQuery, searchMode, selectedCharacters, selectedArc, selectedTome]);
 
     const handleManualSearch = () => {
+        if (searchMode === 'image') return;
         if (query.trim().length < 2) return;
-        if (useSemantic && modelProvider === 'gemini' && !geminiKey) return;
+        if (searchMode === 'semantic' && modelProvider === 'gemini' && !geminiKey) return;
         setPage(1);
         fetchResults(query, 1, true);
     };
@@ -167,6 +198,58 @@ export default function SearchPage() {
     const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
             handleManualSearch();
+        }
+    };
+
+    const handleImageSelected = useCallback((file) => {
+        if (!file) return;
+        setSelectedImageBlob(file);
+
+        if (workerStatus !== 'ready') {
+            toast.error("Le modèle est encore en cours de chargement.");
+            return;
+        }
+
+        setIsLoading(true);
+        const reader = new FileReader();
+        reader.readAsArrayBuffer(file);
+        reader.onload = async () => {
+            const blob = new Blob([reader.result], { type: file.type });
+            workerRef.current.postMessage({ type: 'run', imageBlob: blob, requestId: Date.now() });
+        };
+    }, [workerStatus]);
+
+    const executeImageSearch = async (embeddingArray) => {
+        setIsLoading(true);
+        setResults([]);
+        setPage(1);
+
+        try {
+            const filters = {
+                characters: selectedCharacters,
+                arc: selectedArc !== 'all' ? selectedArc : '',
+                tome: selectedTome !== 'all' ? selectedTome : ''
+            };
+
+            const response = await searchImage(
+                embeddingArray,
+                RESULTS_PER_PAGE,
+                filters,
+                mangaSlug
+            );
+
+            let newResults = response.data.results || [];
+            const total = response.data.totalCount || 0;
+
+            setResults(newResults);
+            setTotalCount(total);
+            setHasMore(false);
+        } catch (err) {
+            console.error("Erreur recherche image", err);
+            toast.error("Erreur lors de la recherche par image");
+            setResults([]);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -190,9 +273,9 @@ export default function SearchPage() {
                 searchTerm,
                 pageToFetch,
                 RESULTS_PER_PAGE,
-                useSemantic ? 'semantic' : 'keyword',
+                searchMode === 'semantic' ? 'semantic' : 'keyword',
                 filters,
-                useSemantic,
+                searchMode === 'semantic',
                 modelProvider
             );
 
@@ -205,7 +288,7 @@ export default function SearchPage() {
 
             setResults(prev => isNewSearch ? newResults : [...prev, ...newResults]);
 
-            if (useSemantic && pageToFetch === 1) {
+            if (searchMode === 'semantic' && pageToFetch === 1) {
                 setTotalCount(newResults.length);
                 setHasMore(false);
             } else {
@@ -255,81 +338,92 @@ export default function SearchPage() {
         <div className="min-h-screen pb-20">
 
 
-            {pageTitle && <title>{pageTitle}</title>}
-            <div className="bg-white border-b border-slate-200 pt-10 pb-8 px-4 shadow-sm -mx-4 sm:-mx-8 mb-8">
+            <div className="bg-white border-b border-slate-200 pt-6 sm:pt-12 pb-6 sm:pb-10 px-4 shadow-sm relative overflow-hidden -mx-4 sm:-mx-8 px-4 sm:px-8 mb-4 sm:mb-8">
                 <div className="container max-w-4xl mx-auto text-center space-y-4 sm:space-y-8 relative z-10">
                     <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900">
                         Moteur de Recherche
                     </h1>
 
 
-                    <div className="relative max-w-2xl mx-auto">
-                        <div className="relative flex items-center shadow-lg rounded-full group focus-within:ring-2 focus-within:ring-indigo-500/50 transition-all bg-white border border-slate-200">
-                            <Input
-                                ref={inputRef}
-                                type="text"
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                placeholder={useSemantic ? "Décrivez une scène..." : "Mots exacts..."}
-                                className={cn(
-                                    "pl-5 sm:pl-6 pr-20 sm:pr-28 h-12 sm:h-16 text-base sm:text-lg rounded-full border-none ring-0 focus-visible:ring-0 shadow-none",
-                                    useSemantic && "bg-indigo-50/20"
-                                )}
-                            />
 
-                            <div className="absolute right-1.5 sm:right-2 flex items-center gap-0.5 sm:gap-2">
-                                {query && (
-                                    <button
-                                        onClick={() => { setQuery(''); setResults([]); inputRef.current?.focus(); }}
-                                        className="p-1.5 sm:p-2.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                                    >
-                                        <X className="h-4 w-4 sm:h-5 sm:w-5" />
-                                    </button>
-                                )}
-
-                                <Button
-                                    size="icon"
+                    <div className="relative max-w-2xl mx-auto w-full">
+                        {searchMode !== 'image' ? (
+                            <div className="relative flex items-center shadow-lg rounded-full group focus-within:ring-2 focus-within:ring-indigo-500/50 transition-all bg-white border border-slate-200">
+                                <Input
+                                    ref={inputRef}
+                                    type="text"
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder={searchMode === 'semantic' ? "Décrivez une scène..." : "Mots exacts..."}
                                     className={cn(
-                                        "rounded-full h-9 w-9 sm:h-12 sm:w-12 shadow-sm transition-all",
-                                        useSemantic ? "bg-indigo-600 hover:bg-indigo-700" : "bg-slate-900 hover:bg-slate-800",
-                                        (useSemantic && modelProvider === 'gemini' && !geminiKey) && "opacity-50 cursor-not-allowed bg-slate-300 hover:bg-slate-300 text-slate-500"
+                                        "pl-5 sm:pl-6 pr-20 sm:pr-28 h-12 sm:h-16 text-base sm:text-lg rounded-full border-none ring-0 focus-visible:ring-0 shadow-none",
+                                        searchMode === 'semantic' && "bg-indigo-50/20"
                                     )}
-                                    onClick={handleManualSearch}
-                                    disabled={isLoading || query.length < 2 || (useSemantic && modelProvider === 'gemini' && !geminiKey)}
-                                >
-                                    {isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Search className="h-4 w-4 sm:h-5 sm:w-5" />}
-                                </Button>
+                                />
+
+                                <div className="absolute right-1.5 sm:right-2 flex items-center gap-0.5 sm:gap-2">
+                                    {query && (
+                                        <button
+                                            onClick={() => { setQuery(''); setResults([]); inputRef.current?.focus(); }}
+                                            className="p-1.5 sm:p-2.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                                        >
+                                            <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                                        </button>
+                                    )}
+
+                                    <Button
+                                        size="icon"
+                                        className={cn(
+                                            "rounded-full h-9 w-9 sm:h-12 sm:w-12 shadow-sm transition-all",
+                                            searchMode === 'semantic' ? "bg-indigo-600 hover:bg-indigo-700" : "bg-slate-900 hover:bg-slate-800",
+                                            (searchMode === 'semantic' && modelProvider === 'gemini' && !geminiKey) && "opacity-50 cursor-not-allowed bg-slate-300 hover:bg-slate-300 text-slate-500"
+                                        )}
+                                        onClick={handleManualSearch}
+                                        disabled={isLoading || query.length < 2 || (searchMode === 'semantic' && modelProvider === 'gemini' && !geminiKey)}
+                                    >
+                                        {isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Search className="h-4 w-4 sm:h-5 sm:w-5" />}
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <ImageSearchZone
+                                onImageSelected={handleImageSelected}
+                                isLoading={isLoading}
+                                workerStatus={workerStatus}
+                                uploadProgress={workerProgress}
+                                fileBlob={selectedImageBlob}
+                            />
+                        )}
                     </div>
 
 
                     <div className="flex flex-col items-center gap-4 sm:gap-6">
                         <div className="flex flex-col gap-4 w-full sm:w-auto items-center">
 
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4 bg-slate-100/80 p-1 sm:p-1.5 rounded-2xl sm:rounded-full border border-slate-200 shadow-inner w-full sm:w-auto">
-                                <div className="flex items-center justify-between sm:justify-start space-x-3 px-3 py-2 sm:py-0">
-                                    <Label
-                                        htmlFor="semantic-mode"
-                                        className="font-bold cursor-pointer select-none flex items-center gap-2 text-xs sm:text-sm text-slate-700"
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4 bg-slate-100/80 p-1 sm:p-1.5 rounded-2xl sm:rounded-full border border-slate-200 shadow-inner w-full sm:w-auto overflow-hidden">
+                                <div className="flex items-center space-x-1 w-full bg-slate-200/50 p-1 rounded-full">
+                                    <button
+                                        onClick={() => setSearchMode('keyword')}
+                                        className={cn("flex-1 px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold transition-all rounded-full flex items-center justify-center gap-1.5", searchMode === 'keyword' ? "bg-white text-slate-900 shadow-sm border border-slate-100/50" : "text-slate-500 hover:text-slate-700")}
                                     >
-                                        <div className={cn("p-1.5 rounded-lg transition-colors", useSemantic ? "bg-indigo-100 text-indigo-600" : "bg-slate-200 text-slate-400")}>
-                                            <Sparkles className="h-3.5 w-3.5" />
-                                        </div>
-                                        Recherche Sémantique
-                                    </Label>
-                                    <Switch
-                                        id="semantic-mode"
-                                        checked={useSemantic}
-                                        onCheckedChange={(checked) => {
-                                            setUseSemantic(checked);
-                                        }}
-                                        className="data-[state=checked]:bg-indigo-600"
-                                    />
+                                        <Quote className="h-3.5 w-3.5" /> Mot-clé
+                                    </button>
+                                    <button
+                                        onClick={() => setSearchMode('semantic')}
+                                        className={cn("flex-1 px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold transition-all rounded-full flex items-center justify-center gap-1.5", searchMode === 'semantic' ? "bg-white text-indigo-600 shadow-sm border border-slate-100/50" : "text-slate-500 hover:text-slate-700")}
+                                    >
+                                        <Sparkles className="h-3.5 w-3.5" /> Sémantique
+                                    </button>
+                                    <button
+                                        onClick={() => setSearchMode('image')}
+                                        className={cn("flex-1 px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold transition-all rounded-full flex items-center justify-center gap-1.5", searchMode === 'image' ? "bg-white text-rose-600 shadow-sm border border-slate-100/50" : "text-slate-500 hover:text-slate-700")}
+                                    >
+                                        <ImageIcon className="h-3.5 w-3.5" /> Image
+                                    </button>
                                 </div>
 
-                                {useSemantic && (
+                                {searchMode === 'semantic' && (
                                     <>
                                         <div className="hidden sm:block w-px h-6 bg-slate-200"></div>
                                         <div className="flex items-center justify-between sm:justify-start space-x-3 px-3 py-2 sm:py-0">
@@ -366,7 +460,7 @@ export default function SearchPage() {
 
 
                         <div className="flex flex-col gap-2 max-w-lg mx-auto w-full px-2">
-                            {useSemantic ? (
+                            {searchMode === 'semantic' ? (
                                 modelProvider === 'gemini' && !geminiKey ? (
                                     <div className="animate-in fade-in slide-in-from-top-1 duration-300 flex flex-col sm:flex-row items-start sm:items-center gap-4 text-amber-800 bg-amber-50 px-5 py-4 rounded-xl border border-amber-200 shadow-sm text-left">
                                         <div className="bg-amber-100 p-2 rounded-full shrink-0">
@@ -393,6 +487,13 @@ export default function SearchPage() {
                                         </p>
                                     </div>
                                 )
+                            ) : searchMode === 'image' ? (
+                                <div className="animate-in fade-in slide-in-from-top-1 duration-300 flex items-center gap-3 text-xs text-rose-600 bg-rose-50 px-4 py-2.5 rounded-xl border border-rose-200 text-left">
+                                    <ImageIcon className="h-4 w-4 flex-shrink-0 text-rose-400" />
+                                    <p>
+                                        <strong>Mode Image :</strong> Recherche mathématique locale via SigLIP (comparaison d'images similaires).
+                                    </p>
+                                </div>
                             ) : (
                                 <div className="animate-in fade-in slide-in-from-top-1 duration-300 flex items-center gap-3 text-xs text-slate-600 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 text-left">
                                     <Quote className="h-4 w-4 flex-shrink-0 text-slate-400" />
@@ -571,7 +672,8 @@ export default function SearchPage() {
                     <div className="mb-6 flex items-baseline gap-2 text-slate-500 border-b border-slate-200 pb-2">
                         <span className="text-xl font-bold text-slate-900">{totalCount}</span>
                         <span>résultats trouvés</span>
-                        {useSemantic && <Badge variant="secondary" className="ml-2 text-[10px] bg-indigo-100 text-indigo-700 hover:bg-indigo-200">Sémantique (Rerank)</Badge>}
+                        {searchMode === 'semantic' && <Badge variant="secondary" className="ml-2 text-[10px] bg-indigo-100 text-indigo-700 hover:bg-indigo-200">Sémantique (Rerank)</Badge>}
+                        {searchMode === 'image' && <Badge variant="secondary" className="ml-2 text-[10px] bg-rose-100 text-rose-700 hover:bg-rose-200">Image (SigLIP)</Badge>}
                     </div>
                 )}
 
@@ -645,7 +747,7 @@ export default function SearchPage() {
                                             )}
                                         </div>
 
-                                        {useSemantic && (
+                                        {searchMode === 'semantic' && (
                                             <div className="w-full flex items-center justify-end gap-3 pt-2 border-t border-slate-200/60 mt-2" onClick={(e) => e.preventDefault()}>
                                                 {feedbackGiven[item.id] ? (
                                                     <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
@@ -686,25 +788,28 @@ export default function SearchPage() {
                         <div className="flex flex-col items-center justify-center py-20 gap-3">
                             <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
                             <p className="text-slate-500 text-sm font-medium animate-pulse">
-                                {useSemantic ? "L'IA analyse les concepts..." : "Recherche dans les archives..."}
+                                {searchMode === 'semantic' ? "L'IA analyse les concepts..." : searchMode === 'image' ? "Recherche de correspondances visuelles..." : "Recherche dans les archives..."}
                             </p>
                         </div>
                     )
                 }
 
                 {
-                    !isLoading && results.length === 0 && query.length >= 2 && (
+                    !isLoading && results.length === 0 && ((query.length >= 2 && searchMode !== 'image') || (searchMode === 'image' && selectedImageBlob)) && (
                         <div className="flex flex-col items-center justify-center py-20 text-center max-w-md mx-auto">
                             <div className="bg-slate-100 p-4 rounded-full mb-4">
-                                <BookOpen className="h-8 w-8 text-slate-400" />
+                                {searchMode === 'image' ? <ImageIcon className="h-8 w-8 text-slate-400" /> : <BookOpen className="h-8 w-8 text-slate-400" />}
                             </div>
                             <h3 className="text-lg font-semibold text-slate-900 mb-2">Aucun résultat trouvé</h3>
                             <p className="text-slate-500 text-sm mb-6">
-                                Nous n'avons rien trouvé pour "{query}".
-                                {!useSemantic && " Essayez d'activer la recherche sémantique pour une recherche plus conceptuelle."}
+                                {searchMode === 'image'
+                                    ? "Nous n'avons trouvé aucune image similaire dans la base de données (vérifiez que l'image provient bien d'un scan ou essayez de réduire les filtres)."
+                                    : `Nous n'avons rien trouvé pour "${query}".`
+                                }
+                                {searchMode === 'keyword' && " Essayez d'activer la recherche sémantique pour une recherche plus conceptuelle."}
                             </p>
-                            {!useSemantic && (
-                                <Button onClick={() => setUseSemantic(true)} variant="outline" className="border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+                            {searchMode === 'keyword' && (
+                                <Button onClick={() => setSearchMode('semantic')} variant="outline" className="border-indigo-200 text-indigo-600 hover:bg-indigo-50">
                                     <Sparkles className="h-4 w-4 mr-2" />
                                     Activer la recherche sémantique
                                 </Button>

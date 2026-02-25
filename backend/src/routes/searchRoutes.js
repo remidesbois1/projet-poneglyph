@@ -406,6 +406,134 @@ router.get('/', async (req, res) => {
     }
 });
 
+router.post('/image', async (req, res) => {
+    const { embedding, limit = 10, characters, arc, tome, manga } = req.body;
+
+    if (!embedding || !Array.isArray(embedding)) {
+        return res.status(400).json({ error: "Vecteur d'image invalide ou manquant" });
+    }
+
+    let finalResults = [];
+    let totalCount = 0;
+
+    const parseCharacters = (chars) => {
+        if (!chars) return null;
+        if (Array.isArray(chars)) return chars;
+        try {
+            return JSON.parse(chars);
+        } catch {
+            return [chars];
+        }
+    };
+
+    const filterCharacters = parseCharacters(characters);
+    const filterArc = arc && arc !== '' ? arc : null;
+    const filterTome = tome && tome !== '' ? parseInt(tome) : null;
+    const filterManga = manga;
+
+    const searchLog = {
+        raw_query: '[IMAGE SEARCH]',
+        model_provider: 'siglip',
+        search_mode: 'image',
+        manga_slug: filterManga || null,
+        filter_characters: filterCharacters,
+        filter_arc: filterArc,
+        filter_tome: filterTome,
+        rerank_enabled: false,
+        ...getUserFromReq(req),
+    };
+
+    const totalStart = Date.now();
+
+    try {
+        const embeddingString = `[${embedding.join(',')}]`;
+
+        const rpcStart = Date.now();
+        const { data, error } = await supabase.rpc('match_pages_image', {
+            query_embedding: embeddingString,
+            match_threshold: 0.10,
+            match_count: 50,
+        });
+        searchLog.duration_voyage_rpc_ms = Date.now() - rpcStart;
+
+        if (error) {
+            console.error("Supabase RPC match_pages_image error:", error);
+            throw error;
+        }
+
+        let matchedPages = data || [];
+        searchLog.voyage_candidates_count = matchedPages.length;
+
+        let filteredPages = matchedPages;
+
+        if (filterManga) {
+            filteredPages = filteredPages.filter(p => p.manga_slug === filterManga);
+        }
+        if (filterTome) {
+            filteredPages = filteredPages.filter(p => p.tome_numero === filterTome);
+        }
+        if (filterCharacters || filterArc) {
+            filteredPages = filteredPages.filter(page => {
+                let desc = page.description;
+                try {
+                    if (typeof desc === 'string') desc = JSON.parse(desc);
+                } catch (e) { return false; }
+                if (!desc?.metadata) return false;
+
+                if (filterCharacters && filterCharacters.length > 0) {
+                    const pageChars = desc.metadata.characters || [];
+                    if (!filterCharacters.some(char =>
+                        pageChars.some(pc => pc.toLowerCase().includes(char.toLowerCase()))
+                    )) return false;
+                }
+                if (filterArc) {
+                    const pageArc = desc.metadata.arc || "";
+                    if (!pageArc.toLowerCase().includes(filterArc.toLowerCase())) return false;
+                }
+                return true;
+            });
+        }
+
+        finalResults = filteredPages.slice(0, parseInt(limit)).map(c => {
+            let snippet = c.description;
+            try {
+                if (typeof snippet === 'string') snippet = JSON.parse(snippet).content;
+                else if (typeof snippet === 'object') snippet = snippet.content;
+            } catch (e) { }
+
+            return {
+                type: 'semantic',
+                id: `page-${c.id}`,
+                page_id: c.id,
+                url_image: c.url_image,
+                content: snippet || "",
+                context: `Tome ${c.tome_numero} - Chap. ${c.chapitre_numero} - Page ${c.numero_page}`,
+                scores: { ai: 0, vector: Math.round(c.similarity * 100) },
+                similarity: c.similarity
+            };
+        });
+
+        totalCount = finalResults.length;
+
+        searchLog.final_results_count = finalResults.length;
+        if (finalResults.length > 0) {
+            searchLog.top_result_id = finalResults[0].page_id;
+            searchLog.top_result_score = finalResults[0].scores.vector;
+        }
+        searchLog.duration_total_ms = Date.now() - totalStart;
+        insertSearchLog(searchLog);
+
+        res.json({ results: finalResults, totalCount });
+
+    } catch (error) {
+        console.error("Erreur recherche par image:", error);
+        searchLog.error = error.message;
+        searchLog.duration_total_ms = Date.now() - totalStart;
+        insertSearchLog(searchLog);
+        res.status(500).json({ error: "Erreur moteur de recherche par image" });
+    }
+});
+
 router.post('/feedback', async (req, res) => {
     const { query, doc_id, doc_text, is_relevant, model_provider } = req.body;
 

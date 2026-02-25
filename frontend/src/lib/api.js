@@ -71,6 +71,15 @@ export const searchBubbles = (query, page = 1, limit = 10, mode = 'keyword', fil
 };
 export const searchSemantic = (query, limit = 6) => apiClient.get(`/search/semantic?q=${query}&limit=${limit}`);
 
+export const searchImage = (embedding, limit = 10, filters = {}, manga = null) => {
+    return apiClient.post('/search/image', {
+        embedding,
+        limit,
+        ...filters,
+        manga
+    });
+};
+
 export const getPendingBubbles = (page = 1, limit = 5) => apiClient.get(`/bulles/pending?page=${page}&limit=${limit}`);
 export const validateBubble = (id) => apiClient.put(`/bulles/${id}/validate`, {});
 export const validateAllBubbles = () => apiClient.put('/bulles/validate-all', {});
