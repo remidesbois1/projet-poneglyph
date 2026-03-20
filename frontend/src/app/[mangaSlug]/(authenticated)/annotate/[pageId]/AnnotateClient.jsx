@@ -91,7 +91,7 @@ export default function AnnotatePage() {
     const {
         preferLocalOCR, toggleOcrPreference, geminiKey, activeModelKey,
         modelStatus, loadModel, switchModel, downloadProgress, runLocalOcr,
-        handleRetryWithCloud
+        runBackgroundOcr, ocrResults, handleRetryWithCloud
     } = useAnnotationOCR({
         imageRef, pageId, rectangle, pendingAnnotation, setPendingAnnotation,
         setIsSubmitting, setLoadingText, setIsModalOpen, setOcrSource,
@@ -104,7 +104,7 @@ export default function AnnotatePage() {
         processNextBubble
     } = useAnnotationDetection({
         imageRef, pageId, setRectangle, setPendingAnnotation, setDebugImageUrl,
-        runLocalOcr, setIsSubmitting, setLoadingText
+        runLocalOcr, runBackgroundOcr, setIsSubmitting, setLoadingText
     });
 
     const {
@@ -219,21 +219,35 @@ export default function AnnotatePage() {
         }
     };
 
-    const handleSuccess = (newData) => {
-        setPendingAnnotation(null);
-        setDebugImageUrl(null);
-        setIsModalOpen(false);
+    const handleSuccess = (newData, tempId = null) => {
+        const isOptimistic = !!newData?.isOptimistic;
+        const isBackgroundResult = !!tempId;
+
+        if (isOptimistic) {
+            setPendingAnnotation(null);
+            setDebugImageUrl(null);
+            setIsModalOpen(false);
+            if (isAutoDetecting) {
+                setTimeout(() => processNextBubble(), 100);
+            } else {
+                setRectangle(null);
+            }
+        }
+
         if (newData) {
             setExistingBubbles(prev => {
-                const exists = prev.find(b => b.id === newData.id);
-                if (exists) return prev.map(b => b.id === newData.id ? { ...b, ...newData } : b);
-                return [...prev, newData].sort((a, b) => a.order - b.order);
+                const results = [...prev];
+                const idx = results.findIndex(b => b.id === newData.id || (tempId && b.id === tempId));
+
+                if (idx !== -1) {
+                    results[idx] = { ...results[idx], ...newData };
+                    if (isBackgroundResult) results[idx].isOptimistic = false;
+                } else if (!isBackgroundResult) {
+                    results.push(newData);
+                }
+
+                return results.sort((a, b) => a.order - b.order);
             });
-        }
-        if (isAutoDetecting) {
-            setTimeout(() => processNextBubble(), 300);
-        } else {
-            setRectangle(null);
         }
     };
 
@@ -270,8 +284,8 @@ export default function AnnotatePage() {
 
     return (
         <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] bg-slate-50 overflow-hidden -mx-4 sm:-mx-8 -my-6 relative">
-            
-            <AnnotateLeftSidebar 
+
+            <AnnotateLeftSidebar
                 fromSearch={fromSearch}
                 mangaSlug={mangaSlug}
                 page={page}
@@ -347,7 +361,7 @@ export default function AnnotatePage() {
                 )}
 
                 <div className="flex flex-col lg:flex-row flex-1 overflow-hidden min-h-0">
-                    <AnnotateCanvas 
+                    <AnnotateCanvas
                         canEdit={canEdit}
                         imageDimensions={imageDimensions}
                         setImageDimensions={setImageDimensions}
@@ -375,7 +389,7 @@ export default function AnnotatePage() {
                         handleEditBubble={handleEditBubble}
                     />
 
-                    <AnnotateAnnotationSidebar 
+                    <AnnotateAnnotationSidebar
                         existingBubbles={existingBubbles}
                         handleDragEnd={handleDragEnd}
                         user={user}
@@ -386,7 +400,7 @@ export default function AnnotatePage() {
                 </div>
             </div>
 
-            <AnnotateEditorDialog 
+            <AnnotateEditorDialog
                 isOpen={isModalOpen}
                 setIsModalOpen={setIsModalOpen}
                 setIsSubmitting={setIsSubmitting}
@@ -416,7 +430,7 @@ export default function AnnotatePage() {
             </Dialog>
 
             {!isGuest && (
-                <AnnotateMetadataModal 
+                <AnnotateMetadataModal
                     isOpen={showDescModal}
                     onOpenChange={setShowDescModal}
                     tabMode={tabMode}
