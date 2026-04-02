@@ -1,0 +1,11 @@
+# Dépendances minimales pour export_and_upload_onnx.py (local, CPU)
+# Usage : pip install -r requirements_export.txt
+torch
+transformers>=5.0.0
+accelerate
+optimum[exporters]
+onnx
+onnxruntime
+huggingface_hub
+python-dotenv
+pillow

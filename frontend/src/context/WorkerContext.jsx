@@ -22,6 +22,13 @@ export const OCR_MODELS = {
         size: '~2.3 Go',
         type: 'local'
     },
+    lighton_local: {
+        key: 'lighton_local',
+        label: 'LightOn Poneglyph (WebGPU)',
+        type: 'local',
+        cer: '< 0.5%',
+        size: '1.5 GB'
+    },
     poneglyph: {
         key: 'poneglyph',
         label: 'Poneglyph',

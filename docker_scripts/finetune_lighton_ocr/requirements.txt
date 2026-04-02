@@ -16,3 +16,7 @@ scikit-learn
 sentencepiece
 tiktoken
 pillow-avif-plugin
+# ── ONNX export ───────────────────────────────────────────────
+optimum[exporters]
+onnx
+onnxruntime

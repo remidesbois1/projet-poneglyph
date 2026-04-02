@@ -39,6 +39,15 @@ const MODELS = {
             eos_token_id: 2,
             pad_token_id: 1,
         }
+    },
+    lighton_local: {
+        id: 'Remidesbois/LightonOCR-2-1b-poneglyph-ONNX',
+        splitLines: false,
+        genConfig: {
+            max_new_tokens: 512,
+            temperature: 0.1,
+            do_sample: false
+        }
     }
 };
 

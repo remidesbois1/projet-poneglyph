@@ -50,7 +50,7 @@ class LightonOCR:
             print("--- Download complete ---")
 
         print("--- Loading LightonOCR model into GPU (bfloat16)... ---")
-        actual_model_path = os.path.join(self.model_path, "weights-merged")
+        actual_model_path = self.model_path
         try:
             self.processor = AutoProcessor.from_pretrained(
                 "lightonai/LightOnOCR-2-1B",
