@@ -380,6 +380,82 @@ router.get('/', async (req, res) => {
     }
 });
 
+router.get('/rag', async (req, res) => {
+    const { q, limit = 6 } = req.query;
+    if (!q || q.length < 2) return res.status(400).json({ error: "Recherche trop courte" });
+
+    try {
+        const [voyageResults, geminiResults] = await Promise.all([
+            (async () => {
+                try {
+                    const embedding = await generateVoyageEmbedding(q, "query");
+                    const { data, error } = await supabase.rpc('match_pages', {
+                        query_embedding: embedding, match_threshold: 0.30, match_count: 30,
+                    });
+                    if (error) throw error;
+                    return data || [];
+                } catch { return []; }
+            })(),
+            (async () => {
+                try {
+                    const embedding = await generateGeminiEmbedding(q, "RETRIEVAL_QUERY");
+                    const { data, error } = await supabase.rpc('match_pages_gemini', {
+                        query_embedding: embedding, match_threshold: 0.30, match_count: 30,
+                    });
+                    if (error) throw error;
+                    return data || [];
+                } catch { return []; }
+            })()
+        ]);
+
+        const pageMap = new Map();
+        for (const p of voyageResults) {
+            pageMap.set(p.id, { ...p, sources: ['voyage'], bestSimilarity: p.similarity });
+        }
+        for (const p of geminiResults) {
+            if (pageMap.has(p.id)) {
+                const existing = pageMap.get(p.id);
+                existing.sources.push('gemini');
+                existing.bestSimilarity = Math.max(existing.bestSimilarity, p.similarity);
+            } else {
+                pageMap.set(p.id, { ...p, sources: ['gemini'], bestSimilarity: p.similarity });
+            }
+        }
+
+        for (const [, entry] of pageMap) {
+            entry.similarity = entry.sources.length > 1
+                ? Math.min(entry.bestSimilarity * DUAL_OVERLAP_BONUS, 1.0)
+                : entry.bestSimilarity;
+        }
+
+        const sorted = Array.from(pageMap.values())
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, parseInt(limit));
+
+        const results = sorted.map((c, i) => {
+            let snippet = c.description;
+            try {
+                if (typeof snippet === 'string') snippet = JSON.parse(snippet).content;
+                else if (typeof snippet === 'object') snippet = snippet.content;
+            } catch {}
+
+            return {
+                doc_id: i + 1,
+                page_id: c.id,
+                url_image: c.url_image,
+                context: `Tome ${c.tome_numero} - Chap. ${c.chapitre_numero} - Page ${c.numero_page}`,
+                content: snippet || "",
+                similarity: Math.round(c.similarity * 100),
+            };
+        });
+
+        res.json({ results });
+    } catch (error) {
+        console.error("RAG search error:", error);
+        res.status(500).json({ error: "Erreur recherche RAG" });
+    }
+});
+
 router.post('/feedback', async (req, res) => {
     const { query, doc_id, doc_text, is_relevant, model_provider } = req.body;
 

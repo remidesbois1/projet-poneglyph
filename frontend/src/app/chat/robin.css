@@ -1,0 +1,311 @@
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Satisfy&display=swap');
+
+:root {
+    --robin-primary: #4338ca;
+    --robin-accent: #b45309;
+    --robin-bg: #e5e7eb;
+    --robin-parchment: #fdf6e3;
+    --robin-ink: #2d2d2d;
+    --robin-ink-user: #1e3a8a;
+    --robin-border: #d4c4a8;
+    --poneglyph-glow: #0ea5e9;
+}
+
+.robin-page {
+    min-height: 100vh;
+    background: #d1d5db;
+    background-image: url("https://www.transparenttextures.com/patterns/cardboard-flat.png");
+    color: var(--robin-ink);
+    font-family: "EB Garamond", serif;
+    overflow: hidden;
+    position: relative;
+}
+
+.robin-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* ═══ THE MANUSCRIPT ═══ */
+.robin-main {
+    display: grid;
+    grid-template-columns: 1fr;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    background: var(--robin-parchment);
+    position: relative;
+}
+
+.robin-main.evidence-open {
+    grid-template-columns: 1fr 400px;
+}
+
+.synthesis-scroll {
+    overflow-y: auto;
+    padding: 60px 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+}
+
+/* Page lines decoration */
+.synthesis-scroll::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image: linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px);
+    background-size: 100% 1.8em;
+    pointer-events: none;
+}
+
+/* ═══ COLLABORATIVE MANUSCRIPT ═══ */
+.terminal-zone {
+    width: 100% !important;
+    display: block !important;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.terminal-header {
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.terminal-title {
+    font-size: 14px;
+    opacity: 0.5;
+}
+
+.terminal-input-row {
+    width: 100% !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+}
+
+.terminal-input {
+    width: 100%;
+    max-width: 95%;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: var(--robin-ink);
+    font-size: 26px;
+    font-family: "EB Garamond", serif;
+    font-style: italic;
+    font-weight: 400;
+    resize: none;
+    outline: none;
+    text-align: right;
+    border-right: 4px solid var(--robin-accent);
+    padding-right: 20px;
+    line-height: 1.2;
+    overflow: hidden;
+}
+
+/* ═══ MESSAGE LAYOUT (Alternating Sides) ═══ */
+.message-bubble {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 4em;
+    position: relative;
+    width: 100%;
+}
+
+.message-user {
+    width: 100%;
+    text-align: right;
+}
+
+.message-assistant {
+    width: 100%;
+    text-align: left;
+}
+
+.message-user-inner {
+    text-align: right;
+    max-width: 95%;
+    font-style: italic;
+    font-size: 26px;
+    color: var(--robin-ink);
+    font-weight: 400;
+    border-right: 4px solid var(--robin-accent);
+    padding-right: 20px;
+}
+
+.message-assistant {
+    text-align: left;
+    max-width: 95%;
+    font-size: 21px;
+    line-height: 1.8;
+}
+
+.thinking-ink {
+    color: var(--robin-accent);
+    font-style: italic;
+    opacity: 0.7;
+    font-size: 18px;
+}
+
+/* ═══ EVIDENCE SIDEBAR (Investigation Board) ═══ */
+.evidence-wall {
+    background: rgba(0, 0, 0, 0.02);
+    border-left: 1px dashed var(--robin-border);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.evidence-wall-header {
+    padding: 40px 30px 20px;
+    flex-shrink: 0;
+}
+
+.evidence-wall-title {
+    font-family: "Satisfy", cursive;
+    font-size: 24px;
+    color: var(--robin-accent);
+}
+
+.evidence-wall-inner {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 30px 40px;
+    scrollbar-width: thin;
+}
+
+.evidence-card {
+    background: white;
+    padding: 10px;
+    margin-bottom: 30px;
+    box-shadow: 5px 5px 15px rgba(0,0,0,0.1);
+    border: 1px solid #eee;
+    transition: all 0.3s;
+}
+
+.evidence-card:nth-child(even) { transform: rotate(1deg); }
+.evidence-card:nth-child(odd) { transform: rotate(-1.5deg); }
+
+.evidence-card:hover, .evidence-card.highlighted {
+    transform: scale(1.05) rotate(0deg) !important;
+    z-index: 10;
+    box-shadow: 10px 10px 25px rgba(0,0,0,0.2);
+}
+
+.evidence-card-image {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    filter: sepia(0.3) contrast(1.1);
+}
+
+.evidence-card-content {
+    font-family: "EB Garamond", serif;
+    font-style: italic;
+    font-size: 15px;
+    color: #444;
+}
+
+/* ═══ CITATION ═══ */
+.citation-badge {
+    color: var(--robin-accent);
+    font-weight: 800;
+    text-decoration: underline wavy;
+    text-underline-offset: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    padding: 0 2px;
+    position: relative;
+}
+
+.citation-badge:hover {
+    background: var(--robin-accent);
+    color: white;
+    text-decoration: none;
+}
+
+/* ═══ CITATION HOVERCARD ═══ */
+.citation-hovercard {
+    position: absolute;
+    bottom: calc(100% + 15px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 280px;
+    background: white;
+    border-radius: 4px;
+    padding: 6px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    z-index: 9999;
+    pointer-events: none;
+    border: 4px solid white;
+    animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.citation-hovercard::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 10px;
+    border-style: solid;
+    border-color: white transparent transparent transparent;
+}
+
+.citation-hovercard img {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    border-radius: 2px;
+    margin-bottom: 6px;
+}
+
+.citation-hovercard-footer {
+    font-size: 12px;
+    color: #666;
+    font-weight: 700;
+    text-transform: uppercase;
+    text-align: center;
+    font-family: sans-serif;
+}
+
+@keyframes popIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.9); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+/* ═══ STATUS ═══ */
+.model-bar {
+    padding: 10px 40px;
+    background: var(--robin-parchment);
+    border-top: 1px solid var(--robin-border);
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    font-style: italic;
+    color: var(--robin-text-dim);
+}
+
+.streaming-cursor {
+    display: inline-block;
+    width: 10px;
+    height: 1.2em;
+    background: var(--robin-accent);
+    margin-left: 2px;
+    vertical-align: middle;
+    animation: blink 0.8s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+

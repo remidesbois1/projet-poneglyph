@@ -160,7 +160,7 @@ router.put('/:id/reject', authMiddleware, roleCheck(['Admin', 'Modo']), async (r
   }
 });
 
-router.get('/:id/crop', authMiddleware, async (req, res) => {
+router.get('/:id/crop', async (req, res) => {
   const { id } = req.params;
   try {
     const { data: bubble, error } = await supabaseAdmin.from('bulles').select(`x, y, w, h, pages ( url_image )`).eq('id', id).single();
