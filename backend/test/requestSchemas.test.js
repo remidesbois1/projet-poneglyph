@@ -74,6 +74,7 @@ test('reorder schema rejects duplicates, invalid positions and massive lists', (
 test('pagination and chapter upload parsing is strict and bounded', () => {
   assert.deepEqual(pendingBubblesQuerySchema.parse({}), { page: 1, limit: 5 });
   assert.deepEqual(pendingBubblesQuerySchema.parse({ page: '2', limit: '100' }), { page: 2, limit: 100 });
+  assert.deepEqual(pendingBubblesQuerySchema.parse({ manga: 'one-piece' }), { page: 1, limit: 5, manga: 'one-piece' });
   assert.equal(pendingBubblesQuerySchema.safeParse({ page: '1abc', limit: 5 }).success, false);
   assert.equal(pendingBubblesQuerySchema.safeParse({ page: '1e2', limit: 5 }).success, false);
   assert.equal(pendingBubblesQuerySchema.safeParse({ page: 1, limit: 101 }).success, false);

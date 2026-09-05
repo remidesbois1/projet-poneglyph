@@ -29,7 +29,7 @@ export default function MangaLayout({ children }) {
                 <div className="poneglyph-app">
                     <section className="poneglyph-shell mx-auto flex h-screen max-w-[1600px] flex-col overflow-hidden border-x">
                         <Header onOpenApiKeyModal={() => setShowApiKeyModal(true)} />
-                        <main className="page-transition flex-1 overflow-hidden px-4 py-7 sm:px-8 lg:px-10">
+                        <main className="page-transition min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-7 sm:px-8 lg:px-10">
                             {children}
                         </main>
                     </section>

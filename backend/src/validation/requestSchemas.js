@@ -113,6 +113,9 @@ const chapterIdParamsSchema = z.object({ chapterId: positiveIdSchema }).strict()
 const pendingBubblesQuerySchema = z.object({
   page: pageSchema,
   limit: limitSchema(100, 5),
+  // The frontend adds the current manga slug to every API request.
+  // Pending bubbles are global, so accept the context parameter without
+  // using it as a filter.
   manga: mangaSlugSchema.optional(),
 }).strict();
 
