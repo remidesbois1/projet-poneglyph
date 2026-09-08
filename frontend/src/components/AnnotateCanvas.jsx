@@ -1,4 +1,5 @@
 import React from 'react';
+import BubbleOutline from '@/components/BubbleOutline';
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -237,18 +238,15 @@ export default function AnnotateCanvas({
                         height: `${bubble.h * scale}px`,
                     };
 
-                    const colorClass = bubble.statut === 'Validé'
-                        ? "border-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
-                        : "border-amber-500 bg-amber-500/10 hover:bg-amber-500/20";
                     const bubbleCanBeEdited = canEdit && canEditBubble(bubble);
 
                     return (
-                        <div
+                        <BubbleOutline
+                            bubble={bubble}
+                            index={index}
                             key={bubble.id}
                             style={style}
                             className={cn(
-                                "absolute border-2 z-10 transition-colors cursor-pointer group",
-                                colorClass,
                                 bubbleCanBeEdited && isShiftPressed && "cursor-move"
                             )}
                             onMouseEnter={() => setHoveredBubble(bubble)}
@@ -269,13 +267,6 @@ export default function AnnotateCanvas({
                                 }
                             }}
                         >
-                            <div className={cn(
-                                "absolute -top-6 -left-[2px] text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm",
-                                bubble.statut === 'Validé' ? "bg-emerald-500" : "bg-amber-500"
-                            )}>
-                                #{index + 1}
-                            </div>
-
                             {bubbleCanBeEdited && isShiftPressed && (
                                 <>
                                     {[
@@ -299,7 +290,7 @@ export default function AnnotateCanvas({
                                     ))}
                                 </>
                             )}
-                        </div>
+                        </BubbleOutline>
                     );
 
                 })}

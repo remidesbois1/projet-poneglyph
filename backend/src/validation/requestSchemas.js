@@ -113,6 +113,7 @@ const chapterIdParamsSchema = z.object({ chapterId: positiveIdSchema }).strict()
 const pendingBubblesQuerySchema = z.object({
   page: pageSchema,
   limit: limitSchema(100, 5),
+  manga: mangaSlugSchema.optional(),
 }).strict();
 
 const moderationCommentSchema = z.object({

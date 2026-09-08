@@ -143,3 +143,10 @@ test('database constraints mirror the bounded bubble contract for new writes', (
   assert.match(migration, /"order" between 1 and 2000/);
   assert.match(migration, /not valid/gi);
 });
+
+
+test('pending moderation accepts the manga context added by the API client', () => {
+  assert.deepEqual(pendingBubblesQuerySchema.parse({ page: '1', limit: '5', manga: 'one-piece' }), { page: 1, limit: 5, manga: 'one-piece' });
+  assert.equal(pendingBubblesQuerySchema.safeParse({ manga: ['one-piece'] }).success, false);
+  assert.equal(pendingBubblesQuerySchema.safeParse({ unexpected: 'value' }).success, false);
+});

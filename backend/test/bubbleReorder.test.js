@@ -57,3 +57,16 @@ test('bubble route calls only the authorized page-scoped RPC', () => {
   assert.match(source, /p_actor_id: req\.user\.id/);
   assert.doesNotMatch(source, /rpc\('reorder_bubbles'/);
 });
+
+
+test('review reorder migration only exempts authorized order-only updates', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'sql', '2026-09-06_review_bubble_order.sql'), 'utf8');
+  assert.match(sql, /v_page_status = 'pending_review'::public.page_status/);
+  assert.match(sql, /v_actor_role in \('Admin'::public.role_type, 'Modo'::public.role_type\)/);
+  assert.match(sql, /auth.role\(\) = 'service_role'/);
+  assert.match(sql, /\(to_jsonb\(old\) - 'order'\) = \(to_jsonb\(new\) - 'order'\)/);
+  assert.match(sql, /v_page_count <> v_input_count/);
+  assert.match(sql, /Une bulle modérée est immuable/);
+  assert.match(sql, /Le contenu d’une page terminée est immuable/);
+  assert.match(sql, /coalesce\(v_previous_actor, ''\)/);
+});
