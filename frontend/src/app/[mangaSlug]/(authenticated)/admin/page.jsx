@@ -6,7 +6,6 @@ import AddChapterForm from '@/components/AddChapterForm';
 import IpBanManager from '@/components/IpBanManager';
 import CoverManager from '@/components/CoverManager';
 import AiModelManager from '@/components/AiModelManager';
-import TrainingJobManager from '@/components/TrainingJobManager';
 import PromptManager from '@/components/PromptManager';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
@@ -20,7 +19,6 @@ import {
     Eye,
     EyeOff,
     Zap,
-    CloudLightning,
     ScrollText,
     ArrowRight,
 } from "lucide-react";
@@ -36,7 +34,6 @@ const TABS = [
     { value: 'covers', label: 'Apparence', icon: ImageIcon, tint: 'text-slate-200' },
     { value: 'ai', label: 'IA', icon: Cpu, tint: 'text-slate-200' },
     { value: 'prompts', label: 'Prompts', icon: ScrollText, tint: 'text-[#8dbbff]' },
-    { value: 'training', label: 'Fine-tuning', icon: CloudLightning, tint: 'text-[#8dbbff]' },
     { value: 'security', label: 'Sécurité', icon: ShieldAlert, tint: 'text-rose-300' },
     { value: 'batch', label: 'Batch OCR', icon: Zap, tint: 'text-[#8dbbff]' },
 ];
@@ -44,7 +41,8 @@ const TABS = [
 export default function AdminDashboard() {
     const searchParams = useSearchParams();
     const params = useParams();
-    const currentTab = searchParams.get('tab') || 'content';
+    const requestedTab = searchParams.get('tab');
+    const currentTab = TABS.some(tab => tab.value === requestedTab) ? requestedTab : 'content';
 
     const [mangas, setMangas] = useState([]);
     const [mangasLoading, setMangasLoading] = useState(false);
@@ -97,7 +95,7 @@ export default function AdminDashboard() {
             <Tabs value={currentTab} onValueChange={onTabChange} className="mt-6 flex min-h-0 flex-1 flex-col gap-5">
                 {/* Tab bar */}
                 <div className="sticky top-0 z-20 shrink-0">
-                    <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-2xl border border-white/10 bg-[#071625]/70 p-1.5 backdrop-blur-xl sm:grid-cols-4 lg:grid-cols-8">
+                    <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-2xl border border-white/10 bg-[#071625]/70 p-1.5 backdrop-blur-xl sm:grid-cols-4 lg:grid-cols-7">
                         {TABS.map(t => {
                             const Icon = t.icon;
                             return (
@@ -150,10 +148,6 @@ export default function AdminDashboard() {
 
                     <TabsContent value="prompts" className="mt-0 outline-none">
                         <PromptManager />
-                    </TabsContent>
-
-                    <TabsContent value="training" className="mt-0 outline-none">
-                        <TrainingJobManager />
                     </TabsContent>
 
                     <TabsContent value="security" className="mt-0 outline-none">

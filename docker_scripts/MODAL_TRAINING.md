@@ -4,7 +4,7 @@ This is the lightweight MLOps launcher for Poneglyph fine-tuning jobs.
 
 ## Database schema
 
-Apply this migration to Supabase before using the admin page:
+Apply this migration to Supabase before using the standalone Modal training orchestration:
 
 ```text
 backend/sql/2026-07-01_add_training_jobs.sql
@@ -25,7 +25,7 @@ $env:SUPABASE_ACCESS_TOKEN="..."
 npm run training:schema
 ```
 
-The backend returns `503 Schema fine-tuning non installe` until `training_jobs` and `model_versions` are visible through PostgREST.
+The standalone training helpers use `training_jobs` and `model_versions` to persist job state and generated model-version metadata.
 
 ## Modal resources
 
@@ -141,7 +141,7 @@ python docker_scripts/modal_training_launcher.py submit-train-model --job-id <tr
 
 `dry_run=true` reloads the Modal Volume, verifies the dataset path, runs the package dry-run, and does not create a `model_versions` candidate.
 
-The backend admin API uses the same launcher. A submitted job writes the dataset to:
+A submitted standalone Modal job writes the dataset to:
 
 ```text
 /mnt/poneglyph_datasets/<job_id>/<dataset_kind>/
