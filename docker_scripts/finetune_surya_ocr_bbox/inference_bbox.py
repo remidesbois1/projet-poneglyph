@@ -22,7 +22,7 @@ load_dotenv(DOCKER_SCRIPTS_DIR / ".env")
 load_dotenv(PROJECT_ROOT / ".env")
 
 DEFAULT_MODEL_ID = os.getenv("HF_REPO", "Remidesbois/surya-ocr-2-poneglyph-bbox")
-PROMPT = get_prompt("ocr_page_bbox", "SURYA_BBOX_USER_PROMPT")
+PROMPT = get_prompt("ocr_page_bbox_training_lines", "SURYA_BBOX_USER_PROMPT")
 BBOX_NORM_SCALE = int(os.getenv("SURYA_BBOX_NORM_SCALE", "1000"))
 BBOX_PATTERN = re.compile(r"(.+?)\s*\[(\d+),(\d+),(\d+),(\d+)\]")
 

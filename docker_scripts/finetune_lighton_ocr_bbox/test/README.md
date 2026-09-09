@@ -3,6 +3,8 @@ license: apache-2.0
 language:
 - fr
 library_name: transformers
+pipeline_tag: image-text-to-text
+base_model: lightonai/LightOnOCR-2-1B-bbox-base
 tags:
 - lighton_ocr
 - vision-language-model
@@ -11,414 +13,208 @@ tags:
 - one-piece
 - bbox-detection
 - fine-tuned
-base_model: lightonai/LightOnOCR-2-1B-bbox-base
-pipeline_tag: image-text-to-text
 ---
 
-<div align="center">
+# LightOnOCR-2-1B Poneglyph BBox
 
-# LightOnOCR-2-1b-poneglyph-bbox
+Fine-tuned version of [`lightonai/LightOnOCR-2-1B-bbox-base`](https://huggingface.co/lightonai/LightOnOCR-2-1B-bbox-base) for **full-page French manga OCR with text-zone bounding boxes**.
 
-**Fine-tuned Manga Bubble OCR with Bounding Box Detection**
+The model receives **only an image** and generates one text zone per line:
 
-*A 1B parameter Vision-Language Model specialized in extracting dialogue text
-and precise bounding boxes from One Piece manga pages.*
-
-[![Model Size](https://img.shields.io/badge/Parameters-1B-blue)]()
-[![License](https://img.shields.io/badge/License-Apache%202.0-green)]()
-[![Base Model](https://img.shields.io/badge/Base-LightOnOCR--2--1B-orange)]()
-[![Language](https://img.shields.io/badge/Language-French-red)]()
-
-</div>
-
----
-
-## Benchmark: LightOn (fine-tuned) vs Gemma 4 31B (one-shot API)
-
-| Metric | LightOn (1B fine-tuned) | Gemma 4 31B (one-shot) | Winner |
-|:---|:---:|:---:|:---:|
-| **CER** | **0.34%** | 8.26% | LightOn |
-| **WER** | **1.37%** | 12.65% | LightOn |
-| **Mean IoU** | **75.98%** | 66.65% | LightOn |
-| **Median IoU** | **77.10%** | 65.36% | LightOn |
-| **F1 @ IoU=0.5** | **84.07%** | 41.13% | LightOn |
-| **Precision @ 0.5** | **84.24%** | 41.84% | LightOn |
-| **Recall @ 0.5** | **83.93%** | 40.62% | LightOn |
-| **Detection Rate** | **99.32%** | 96.83% | LightOn |
-| **Combined Score** | **0.902** | 0.720 | LightOn |
-| **Avg Inference** | **6.99s** (local GPU) | **67.41s** (API) | LightOn |
-
-> The 1B fine-tuned LightOnOCR model outperforms Gemma 4 31B on every metric, with 24x lower CER and 2x higher F1@0.5, while running 10x faster on local GPU.
-
----
-
-## Performance Snapshot (LightOn fine-tuned)
-
-| Metric | Score |
-|:---|:---:|
-| **Character Error Rate (CER)** | **0.34%** |
-| **Word Error Rate (WER)** | **1.37%** |
-| **Mean IoU** | **75.98%** |
-| **Median IoU** | **77.10%** |
-| **F1 @ IoU=0.3** | **93.92%** |
-| **F1 @ IoU=0.5** | **84.07%** |
-| **F1 @ IoU=0.75** | **47.19%** |
-| **Detection Rate** | **99.32%** |
-| **Combined Score** | **0.902** |
-| **Avg Inference Time** | **6.99s** |
-
----
-
-## What This Model Does
-
-Given a manga page image, this model extracts:
-- **Dialogue text** from each speech bubble
-- **Bounding box coordinates** `[x1, y1, x2, y2]` normalized to `[0, 10000]`
-
-**Input:** A manga page image (resized to 1540px longest side)
-
-**Output:** One line per bubble in the format:
-```
-Text content [x1,y1,x2,y2]
+```text
+Texte exact [x1,y1,x2,y2]
 ```
 
----
+Coordinates are integers normalized to **`[0,1000]`** in the image reference frame. The model is trained to preserve Japanese manga reading order and to return no JSON, Markdown, prefix or commentary.
 
-## Detailed Metrics
+## Final held-out benchmark
 
-### Text Recognition
+Evaluation was run on the complete held-out **test split: 221 pages, 1,920 annotated text zones**. The model generated 1,903 zones (99.11% of the GT count).
 
-| Metric | LightOn | Gemma 31B |
-|:---|:---:|:---:|
-| Character Error Rate (CER) | 0.34% | 8.26% |
-| CER Median | 0.00% | 0.00% |
-| Word Error Rate (WER) | 1.37% | 12.65% |
+The table below reports the corrected global metrics. These are recomputed from every raw page prediction in `benchmark_lighton_bbox.json`; the full values and definitions are stored in [`benchmark_lighton_bbox_corrected.json`](benchmark_lighton_bbox_corrected.json).
 
-### Bounding Box Localization
+| Metric | Final score |
+|---|---:|
+| **Corrected combined score** | **0.8257** |
+| Page CER, macro | **5.61%** |
+| Page CER, character-weighted | **4.48%** |
+| Global mean IoU | **65.00%** |
+| F1 @ IoU 0.3, micro | **91.29%** |
+| **F1 @ IoU 0.5, micro** | **79.62%** |
+| Precision @ IoU 0.5, micro | **79.98%** |
+| Recall @ IoU 0.5, micro | **79.27%** |
+| F1 @ IoU 0.75, micro | **41.75%** |
+| F1 @ IoU 0.9, micro | **4.71%** |
+| Exact bubble text | **90.63%** |
+| Bubble-text CER, character-weighted | **1.15%** |
+| Average generation time | **6.18 s/page** |
 
-| Metric | LightOn | Gemma 31B |
-|:---|:---:|:---:|
-| Mean IoU | 75.98% | 66.65% |
-| Median IoU | 77.10% | 65.36% |
-| IoU P25 | 68.49% | 57.82% |
-| IoU P75 | 84.43% | 74.80% |
-| IoU P90 | 89.26% | 81.32% |
-| IoU P95 | 91.67% | 85.25% |
-| Mean GIoU | 75.18% | 66.11% |
-| BBox Area Error | 9.36% | 39.78% |
+### Metric definitions
 
-### Detection Performance
+- **Page CER (macro)**: CER computed on the complete serialized page output, then averaged over pages. Reading-order mistakes therefore count as OCR sequence errors.
+- **Page CER (character-weighted)**: the same full-page comparison, aggregated by reference character count.
+- **Global mean IoU**: one-to-one maximum-IoU assignment over all predictions and GT zones; unmatched GT zones contribute IoU `0`. This avoids inflating IoU by averaging only detections that already pass a threshold.
+- **Precision / recall / F1**: micro-aggregated across the complete test split at the stated IoU threshold.
+- **Exact bubble text**: exact text-content matches after one-to-one text assignment, independent of bbox quality and serialized page order.
+- **Bubble-text CER**: OCR error after bubble-text assignment, weighted by reference character count.
 
-| Metric | LightOn | Gemma 31B |
-|:---|:---:|:---:|
-| Total GT Bubbles | 1,078 | 1,078 |
-| Total Predicted Bubbles | 1,073 | 1,049 |
-| Detection Rate | 99.32% | 96.83% |
+The corrected combined score keeps the training benchmark weighting but uses the corrected global metrics:
 
-### Precision / Recall / F1 at IoU Thresholds (LightOn)
-
-| Threshold | Precision | Recall | F1 |
-|:---:|:---:|:---:|:---:|
-| IoU >= 0.3 | **94.14%** | 93.76% | **93.92%** |
-| IoU >= 0.5 | **84.24%** | 83.93% | **84.07%** |
-| IoU >= 0.75 | **47.29%** | 47.10% | **47.19%** |
-| IoU >= 0.9 | **7.15%** | 7.13% | **7.14%** |
-
-### Combined Score
-
-```
-Combined = 0.4 x (1 - CER) + 0.3 x F1@0.5 + 0.2 x Mean_IoU + 0.1 x Detection_Rate
+```text
+0.4 * (1 - Page_CER_macro)
++ 0.3 * F1@0.5_micro
++ 0.2 * Global_Mean_IoU
++ 0.1 * Recall@0.5_micro
+= 0.8257147803
 ```
 
-**LightOn: 0.902** / 1.0 | **Gemma 31B: 0.720** / 1.0
-
----
-
-## Benchmark Visualizations
-
-### Performance Overview
-
-![Metrics Overview](test/output/graphs/metrics_overview.png)
-
-### IoU Distribution
-
-![IoU Distribution](test/output/graphs/iou_distribution.png)
-
-### Cumulative IoU
-
-![Cumulative IoU](test/output/graphs/iou_cumulative.png)
-
-### IoU Box Plot
-
-![IoU Boxplot](test/output/graphs/iou_boxplot.png)
-
-### Precision / Recall / F1 at Thresholds
-
-![F1 at Thresholds](test/output/graphs/f1_at_thresholds.png)
-
-### CER Distribution
-
-![CER Distribution](test/output/graphs/cer_distribution.png)
-
-### Per-Sample IoU (Sorted)
-
-![Per-Sample IoU](test/output/graphs/per_sample_iou_sorted.png)
-
-### Bubble Count Accuracy
-
-![Bubble Count](test/output/graphs/bubble_count_scatter.png)
-
-### BBox Area Error
-
-![BBox Area Error](test/output/graphs/bbox_area_error.png)
-
-### Summary Card
-
-![Summary Card](test/output/graphs/summary_card.png)
-
-### Sample Predictions
-
-| LightOn (fine-tuned) | Gemma 4 31B (one-shot) |
-|:---:|:---:|
-| ![LightOn Sample 0](test/output/samples/sample_0_lighton.png) | ![Gemma Sample 0](test/output/samples/sample_0_gemma.png) |
-| ![LightOn Sample 1](test/output/samples/sample_1_lighton.png) | ![Gemma Sample 1](test/output/samples/sample_1_gemma.png) |
-
----
+The original `metrics_version=2` fields remain available in `benchmark_lighton_bbox.json` for reproducibility. In particular, its legacy `mean_iou` averages only IoU>=0.5 matches and should not be interpreted as a global mean IoU.
 
 ## Dataset
 
-### Source
-Training data sourced from a curated Supabase database of **One Piece manga pages** with human-validated bubble annotations.
+Human-validated Poneglyph full manga pages were split by page:
 
-### Composition
+| Split | Pages | Annotated zones |
+|---|---:|---:|
+| Train | 775 | 6,962 |
+| Validation | 111 | 1,008 |
+| Test | 221 | 1,920 |
+| **Total** | **1,107** | **9,890** |
 
-| Split | Pages | Bubbles |
-|:---:|:---:|:---:|
-| Train | 430 | ~4,027 |
-| Test | 112 | 1,078 |
-| **Total** | **542** | **~5,105** |
+Images are processed with a **1,500 px longest edge** while keeping their aspect ratio. Bboxes are normalized to `[0,1000]`.
 
-### Preprocessing
-- **Image resize:** Longest side -> 1540px (LANCZOS)
-- **Format:** JPEG, quality 95
-- **BBox normalization:** Coordinates normalized to `[0, 10000]` range
-- **Bubble ordering:** Sorted by manga reading order
-- **Split:** 80/20 train/test, seed 42
+## Training
 
-### Prompt Format
-```
-User:     "Extrais le texte et les coordonnées des bulles de cette page de manga."
-Assistant: "Text bubble 1 [x1,y1,x2,y2]\nText bubble 2 [x1,y1,x2,y2]\n..."
-```
+The final run was trained locally on an **NVIDIA GeForce RTX 5090 32 GB**.
 
----
+| Setting | Value |
+|---|---|
+| Base model | `lightonai/LightOnOCR-2-1B-bbox-base` |
+| Epochs | 3 |
+| Optimizer steps | 291 |
+| Learning rate | `1e-5` |
+| Scheduler | cosine |
+| Warmup | 15 steps |
+| Optimizer | fused AdamW |
+| Weight decay | `0.01` |
+| Precision | BF16 + TF32 |
+| Physical batch | 1 |
+| Gradient accumulation | 8 |
+| Effective batch | 8 |
+| Gradient checkpointing | disabled |
+| Adapter | rsLoRA, `r=128`, `alpha=256`, dropout `0` |
+| LoRA targets | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` in vision + language |
+| Fully trained bridge | `vision_projection` |
+| Trainable parameters | 159,384,576 (~13.68%) |
+| Peak VRAM during calibration | 26.68 GiB |
 
-## Training Details
+The LoRA adapters were merged into the final weights published in this repository.
 
-### Base Model
-[**lightonai/LightOnOCR-2-1B-bbox-base**](https://huggingface.co/lightonai/LightOnOCR-2-1B-bbox-base) - A 1B parameter end-to-end multilingual VLM for OCR with bounding box support.
-
-### LoRA Configuration
-
-| Parameter | Value |
-|:---|:---|
-| LoRA Rank (r) | 32 |
-| LoRA Alpha | 64 |
-| LoRA Dropout | 0.03 |
-| Target Modules | q_proj, v_proj, k_proj, o_proj, gate_proj, up_proj, down_proj |
-| Bias | none |
-| Task Type | CAUSAL_LM |
-
-### Hyperparameters
-
-| Parameter | Value |
-|:---|:---|
-| Learning Rate | 5e-5 |
-| Scheduler | Cosine |
-| Warmup Ratio | 0.10 |
-| Weight Decay | 0.01 |
-| Optimizer | paged_adamw_8bit |
-| Epochs | 25 |
-| Batch Size | 1 (grad accum: 8) |
-| Precision | BF16 |
-| Gradient Checkpointing | Yes |
-| Eval Strategy | Steps (every 50) |
-| Save Strategy | Steps (every 50, best 3) |
-| Best Model Metric | eval_loss |
-
-### Hardware
-Trained on a cloud GPU via RunPod, automated with Docker.
-
----
-
-## How to Use
-
-### Installation
-
-```bash
-pip install transformers torch pillow
-```
-
-### Inference
+## Inference
 
 ```python
 import torch
-import re
 from PIL import Image
-from transformers import LightOnOcrProcessor, LightOnOcrForConditionalGeneration
+from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor
 
 MODEL_ID = "Remidesbois/LightonOCR-2-1b-poneglyph-bbox"
+IMAGE_PATH = "page.jpg"
 
 processor = LightOnOcrProcessor.from_pretrained(MODEL_ID)
 processor.image_processor.default_to_square = False
 
 model = LightOnOcrForConditionalGeneration.from_pretrained(
-    MODEL_ID, torch_dtype=torch.bfloat16, device_map="auto"
+    MODEL_ID,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
 )
+model.eval()
 
-image = Image.open("your_manga_page.jpg").convert("RGB")
-image.thumbnail((1540, 1540), Image.Resampling.LANCZOS)
+image = Image.open(IMAGE_PATH).convert("RGB")
 
+# Image-only conditioning: do not add a textual user prompt.
 messages = [
     {
         "role": "user",
-        "content": [
-            {"type": "image", "url": "your_manga_page.jpg"},
-            {"type": "text", "text": "Extrais le texte et les coordonnées des bulles de cette page de manga."}
-        ]
+        "content": [{"type": "image"}],
     }
 ]
 
-inputs = processor.apply_chat_template(
-    messages, add_generation_prompt=True,
-    tokenize=True, return_dict=True, return_tensors="pt",
+prompt = processor.apply_chat_template(
+    messages,
+    add_generation_prompt=True,
+    tokenize=False,
 )
+
+inputs = processor(
+    text=[prompt],
+    images=[image],
+    size={"longest_edge": 1500},
+    return_tensors="pt",
+)
+
+device = next(model.parameters()).device
 inputs = {
-    k: v.to(model.device) for k, v in inputs.items()
+    key: value.to(device=device, dtype=torch.bfloat16)
+    if value.is_floating_point()
+    else value.to(device)
+    for key, value in inputs.items()
 }
 
-with torch.no_grad():
-    output_ids = model.generate(**inputs, max_new_tokens=2048, do_sample=False)
+with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+    output_ids = model.generate(
+        **inputs,
+        max_new_tokens=1280,
+        do_sample=False,
+        use_cache=True,
+    )
 
-gen_ids = output_ids[0, inputs["input_ids"].shape[1]:]
-output = processor.decode(gen_ids, skip_special_tokens=True).strip()
-
-print(output)
-# Salut ! [1234,4567,8901,3456]
-# Je suis Luffy ! [2345,5678,9012,4321]
+generated = output_ids[:, inputs["input_ids"].shape[1]:]
+text = processor.batch_decode(generated, skip_special_tokens=True)[0].strip()
+print(text)
 ```
 
-### Drawing Bounding Boxes
+Example output:
+
+```text
+Je serai le roi des pirates !! [684,102,919,191]
+Allons-y. [112,713,251,769]
+```
+
+To map a normalized bbox back to pixels for an image of width `W` and height `H`:
 
 ```python
-from PIL import ImageDraw
-
-w, h = image.size
-draw = ImageDraw.Draw(image)
-
-for line in output.split("\n"):
-    match = re.match(r'(.+?)\s*\[(\d+),(\d+),(\d+),(\d+)\]', line.strip())
-    if match:
-        text = match.group(1)
-        x1 = int(match.group(2)) * w // 10000
-        y1 = int(match.group(3)) * h // 10000
-        x2 = int(match.group(4)) * w // 10000
-        y2 = int(match.group(5)) * h // 10000
-        draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
-
-image.save("result.jpg")
+x1_px = x1 * W / 1000
+y1_px = y1 * H / 1000
+x2_px = x2 * W / 1000
+y2_px = y2 * H / 1000
 ```
 
----
+## Benchmark artifacts
 
-## Architecture
-
-```
-+-------------------------------------+
-|         Input: Manga Page           |
-|         (<= 1540px, RGB)            |
-+------------------+------------------+
-                   |
-          +--------v--------+
-          |  LightOnOCR      |
-          |  Vision Encoder  |
-          +--------+--------+
-                   |
-          +--------v--------+
-          |  Language Model  |
-          |  (Mistral 1B)    |
-          |  + LoRA Adapters |
-          +--------+--------+
-                   |
-          +--------v------------------+
-          |  Output (per line):       |
-          |  "Text [x1,y1,x2,y2]"    |
-          +---------------------------+
-```
-
----
+- `benchmark_lighton_bbox.json`: raw final benchmark with all 221 page predictions and the legacy metrics emitted by the training pipeline.
+- `benchmark_lighton_bbox_corrected.json`: corrected global/micro metrics derived from those same predictions, including metric definitions and the combined-score formula.
 
 ## Limitations
 
-- **Domain-specific:** Trained exclusively on One Piece manga. Performance on other manga styles may vary.
-- **Language:** Fine-tuned on French translations.
-- **BBox precision:** F1@0.3 is excellent (94%), but very strict IoU thresholds (>=0.9) remain challenging.
-- **Single-page input:** One manga page at a time.
+- Fine-tuned primarily on French **One Piece** manga pages; generalization to other manga, languages or layouts is not guaranteed.
+- Very strict bbox localization remains the main limitation: F1 is 79.62% at IoU 0.5 but 41.75% at IoU 0.75.
+- Full-page CER is sensitive to reading-order mistakes even when individual bubble transcription is correct.
+- The model may occasionally miss, duplicate or reorder small text zones.
 
----
+## Base model
 
-## Benchmark Reproducibility
-
-All results are fully reproducible. The benchmark suite is in `test/`:
-
-```
-test/
-+-- download_dataset.py     # Download test dataset
-+-- benchmark.py            # Run evaluation (LightOn + Gemma in parallel)
-+-- generate_graphs.py      # Generate charts
-+-- run_all.py              # Full pipeline
-+-- upload_to_hf.py         # Upload results to HuggingFace
-+-- output/
-    +-- metrics.json        # LightOn metrics
-    +-- metrics_gemma.json  # Gemma metrics
-    +-- metrics_comparison.json  # Side-by-side comparison
-    +-- graphs/             # PNG charts
-    +-- samples/            # Visual predictions (both models)
-```
-
-To reproduce:
-```bash
-cd test
-python run_all.py
-```
-
-**Requirements:** CUDA GPU (~4GB VRAM), `GEMMA_API_KEY` in `.env` for Gemma comparison, dependencies in `requirements.txt`.
-
----
-
-## Base Model & Citation
-
-Fine-tuned from **LightOnOCR-2-1B-bbox** by LightOn (Apache 2.0).
+Fine-tuned from **LightOnOCR-2-1B-bbox** by LightOn.
 
 ```bibtex
 @misc{lightonocr2_2026,
   title        = {LightOnOCR: A 1B End-to-End Multilingual Vision-Language Model for State-of-the-Art OCR},
-  author       = {Said Taghadouini and Adrien Cavaill\`{e}s and Baptiste Aubertin},
+  author       = {Said Taghadouini and Adrien Cavailles and Baptiste Aubertin},
   year         = {2026},
-  howpublished = {\url{https://arxiv.org/abs/2601.14251}}
+  howpublished = {https://arxiv.org/abs/2601.14251}
 }
 ```
 
----
-
 ## License
 
-Apache 2.0. The fine-tuned weights inherit the license of the base model [lightonai/LightOnOCR-2-1B-bbox-base](https://huggingface.co/lightonai/LightOnOCR-2-1B-bbox-base).
-
----
-
-<div align="center">
-
-*Fine-tuned by [Remidesbois](https://huggingface.co/Remidesbois)*
-
-</div>
+Apache 2.0, following the base model license.

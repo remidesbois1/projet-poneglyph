@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-08-27",
+  "updated_at": "2026-09-09",
   "provenance_policy": "Published values must come from a pinned artifact and carry the dataset, split, date, hardware, model revision and evaluation protocol.",
   "models": {
     "ppocrv6-line": {
@@ -126,6 +126,169 @@
             "label": "Token limit",
             "value": 0,
             "unit": "ratio",
+            "lower_is_better": true,
+            "display_precision": 2
+          }
+        }
+      }
+    },
+    "surya-bbox": {
+      "display_name": "Surya OCR 2 Poneglyph BBox",
+      "task": "page-ocr-bbox",
+      "artifact": {
+        "repository": "Remidesbois/surya-ocr-2-poneglyph-bbox",
+        "revision": "671cfe63672286ccfe629079a8d57f7ed967f3d5",
+        "url": "https://huggingface.co/Remidesbois/surya-ocr-2-poneglyph-bbox"
+      },
+      "benchmark": {
+        "status": "published",
+        "dataset": "Poneglyph validated full pages with text-zone bounding boxes",
+        "split": "test held-out by page",
+        "date": "2026-09-09",
+        "sample_count": 166,
+        "hardware": "NVIDIA GeForce RTX 5090 32 GB",
+        "protocol": "Full-page multimodal generation of one exact text zone per line as Texte exact [x1,y1,x2,y2], with normalized integer coordinates in [0,1000]; OCR text and bbox localization scored jointly on the held-out page split.",
+        "source_url": "https://huggingface.co/Remidesbois/surya-ocr-2-poneglyph-bbox/blob/671cfe63672286ccfe629079a8d57f7ed967f3d5/benchmark_surya_bbox.json",
+        "primary_metric": "f1_iou_0_5",
+        "metrics": {
+          "cer": {
+            "label": "CER",
+            "value": 0.014913336067362025,
+            "unit": "ratio",
+            "lower_is_better": true,
+            "display_precision": 2
+          },
+          "wer": {
+            "label": "WER",
+            "value": 0.034437368696966904,
+            "unit": "ratio",
+            "lower_is_better": true,
+            "display_precision": 2
+          },
+          "mean_iou": {
+            "label": "Mean IoU",
+            "value": 0.9235958050705657,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "detection_rate": {
+            "label": "Detection rate",
+            "value": 0.983766885724717,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "f1_iou_0_5": {
+            "label": "F1@IoU 0.5",
+            "value": 0.9835554521815923,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "f1_iou_0_75": {
+            "label": "F1@IoU 0.75",
+            "value": 0.9666642702779894,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "combined_score": {
+            "label": "Combined score",
+            "value": 0.9721971508141177,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 3
+          },
+          "avg_inference_time": {
+            "label": "Avg inference",
+            "value": 2.750354363030105,
+            "unit": "seconds",
+            "lower_is_better": true,
+            "display_precision": 2
+          }
+        }
+      }
+    },
+    "lighton-bbox": {
+      "display_name": "LightOnOCR 2 Poneglyph BBox",
+      "task": "page-ocr-bbox",
+      "artifact": {
+        "repository": "Remidesbois/LightonOCR-2-1b-poneglyph-bbox",
+        "revision": "fb35b7f4f99b282d5c2867d5cf23e66df0d03925",
+        "url": "https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph-bbox"
+      },
+      "benchmark": {
+        "status": "published",
+        "dataset": "Poneglyph validated full pages with text-zone bounding boxes",
+        "split": "test held-out by page",
+        "date": "2026-09-09",
+        "sample_count": 221,
+        "hardware": "NVIDIA GeForce RTX 5090 32 GB",
+        "protocol": "Full-page image-only LightOnOCR generation of one exact text zone per line as Texte exact [x1,y1,x2,y2], with normalized integer coordinates in [0,1000]. Publication metrics use full-page CER, one-to-one global IoU assignment including unmatched GT zones at IoU 0, and micro-aggregated detection metrics over the complete held-out test split.",
+        "source_url": "https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph-bbox/blob/fb35b7f4f99b282d5c2867d5cf23e66df0d03925/benchmark_lighton_bbox_corrected.json",
+        "primary_metric": "f1_iou_0_5",
+        "metrics": {
+          "page_cer": {
+            "label": "Page CER",
+            "value": 0.05607105651205911,
+            "unit": "ratio",
+            "lower_is_better": true,
+            "display_precision": 2
+          },
+          "mean_iou": {
+            "label": "Global mean IoU",
+            "value": 0.6500118610743683,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "f1_iou_0_3": {
+            "label": "F1@IoU 0.3",
+            "value": 0.912895631702851,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "f1_iou_0_5": {
+            "label": "F1@IoU 0.5",
+            "value": 0.7962333246141773,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "f1_iou_0_75": {
+            "label": "F1@IoU 0.75",
+            "value": 0.41747318859534405,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "exact_bubble_text": {
+            "label": "Exact bubble text",
+            "value": 0.90625,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "bubble_text_cer": {
+            "label": "Bubble-text CER",
+            "value": 0.011547344110854504,
+            "unit": "ratio",
+            "lower_is_better": true,
+            "display_precision": 2
+          },
+          "combined_score": {
+            "label": "Corrected combined score",
+            "value": 0.8257147803276366,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 3
+          },
+          "avg_inference_time": {
+            "label": "Avg inference",
+            "value": 6.180832616904977,
+            "unit": "seconds",
             "lower_is_better": true,
             "display_precision": 2
           }

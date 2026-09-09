@@ -6,7 +6,7 @@ set IMAGE_NAME=surya-ocr-bbox-finetune
 set TAG=latest
 
 echo ==========================================================
-echo    Building and Pushing %DOCKER_USER%/%IMAGE_NAME%:%TAG%
+echo    Building %DOCKER_USER%/%IMAGE_NAME%:%TAG% (no push)
 echo ==========================================================
 echo.
 
@@ -20,17 +20,6 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo    Pushing to Docker Hub...
-docker push %DOCKER_USER%/%IMAGE_NAME%:%TAG%
-
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo    Push failed!
-    pause
-    exit /b %ERRORLEVEL%
-)
-
-echo.
-echo    Image pushed successfully!
+echo    Image built successfully. Nothing was pushed.
 echo.
 pause

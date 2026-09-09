@@ -3,16 +3,16 @@
   "models": {
     "bbox": {
       "repo_id": "Remidesbois/LightonOCR-2-1b-poneglyph-bbox",
-      "revision": "8bdf97f30cb8006d17624407a847b6766fa2374b",
+      "revision": "fb35b7f4f99b282d5c2867d5cf23e66df0d03925",
       "dir_name": "lighton-ocr-poneglyph-bbox",
       "trust_remote_code": false,
       "files": [
         { "path": "chat_template.jinja", "size": 720, "sha256": "0942a43ee0ba48a608814e0b40ac9cb70bcc29ea72f19c84b1bf2597f05aa2bd" },
-        { "path": "config.json", "size": 2401, "sha256": "a0476f8c6b4a44a3bc328fdc2545de2d1163b42714d194d57ce5bb7a2d473046" },
-        { "path": "generation_config.json", "size": 191, "sha256": "32af74762ec53e57eddc986849dc20db0dd2b065c17bfe2dc3feaf90abe4a5dd" },
-        { "path": "model.safetensors", "size": 2011367496, "sha256": "a981e7e51584cd86b1f4e7bec2e786f4e28661003c3a5f9f6bfe6c6a00bd05c0" },
-        { "path": "processor_config.json", "size": 634, "sha256": "64158527ef62bcfeeb6d74cf27a2c6d436bb178a377292fa8c61e231fbcb4550" },
-        { "path": "tokenizer.json", "size": 11422822, "sha256": "f54b55fa0c3aba0c91ce09ea79ae4e62da24e2a1a630f96c4bae34aba25e234a" },
+        { "path": "config.json", "size": 2446, "sha256": "9f62383721c2b15e17d7a818c6d4051a997f84ceeef89623d28633cc84907771" },
+        { "path": "generation_config.json", "size": 139, "sha256": "ab595fdde5d947200b5ec32485d24791cc13194d8c8a54adeb9df7eb59e076ea" },
+        { "path": "model.safetensors", "size": 2011367496, "sha256": "4fbe0b8304b36442edb00045ae378e5585b64936840744a81976c6465d6b7470" },
+        { "path": "processor_config.json", "size": 634, "sha256": "2c12c72887458e9ad3ed51d233f258a8f63a71cbd58a9bfcbca46a1c924361b6" },
+        { "path": "tokenizer.json", "size": 11422819, "sha256": "13ded0cbe2cc5c7a74579f140ffb667b86a9a2579fc8d93e2b749a49ba292fb6" },
         { "path": "tokenizer_config.json", "size": 804, "sha256": "3a1dc56aa8c503d70db223dc97dce8d6b855493b36c7942afa8035517932db46" }
       ]
     },
@@ -48,17 +48,17 @@
     },
     "surya_bbox": {
       "repo_id": "Remidesbois/surya-ocr-2-poneglyph-bbox",
-      "revision": "95e841b7dfcfa3cd7ea18f4d87a1c112490c909c",
+      "revision": "671cfe63672286ccfe629079a8d57f7ed967f3d5",
       "dir_name": "surya-ocr-2-poneglyph-bbox",
       "trust_remote_code": false,
       "files": [
         { "path": "chat_template.jinja", "size": 2872, "sha256": "86f17a85672e7f367b5e6c6de6f67f53ede0fba4abb3d67c583a6ef647c1aa85" },
-        { "path": "config.json", "size": 2664, "sha256": "9d6f8f0288236ed7caee28a0c6194256ace0897934bdb7ec110ecbb7f23eaa0e" },
-        { "path": "generation_config.json", "size": 185, "sha256": "1bc71a4ce5922f1fb2347757de5ec373022cf0b8b6df26d54de214eb45bfc223" },
-        { "path": "model.safetensors", "size": 1331461328, "sha256": "20bd380b1029b9b706fb32d0ef72e6c989de87669a21a1cfd6c31bc242a17b00" },
+        { "path": "config.json", "size": 2693, "sha256": "d96abac8429de3b9aa27276090a3b843966fac4d5d903988fe8cb8bc35caffce" },
+        { "path": "generation_config.json", "size": 180, "sha256": "ff1b303324264e4572dcf1083cf0ad02b0d999b5cef60adfafdf10a1e6365c49" },
+        { "path": "model.safetensors", "size": 1331461328, "sha256": "67167ac7ce6fd3e87744ee554a7af0c214dc6ec1d059e4d79442803b6a8db065" },
         { "path": "processor_config.json", "size": 1329, "sha256": "d3ad0f73641ab7f77382725cad6828ea86917a7d0a2a81925d3ba6fa22b15e0c" },
-        { "path": "tokenizer.json", "size": 1656690, "sha256": "7ecfe936390e39869c683e451974eb11d8c2d9057c42e68cd715098884809c05" },
-        { "path": "tokenizer_config.json", "size": 600, "sha256": "04d915a4f5fdc4abdd448e41729e7fcd06a4975335f6469e92277e29afa07b91" }
+        { "path": "tokenizer.json", "size": 1656850, "sha256": "3d7807f0cbdb7175b0e210111a241b3979799a17e920f924b078449401aa4911" },
+        { "path": "tokenizer_config.json", "size": 701, "sha256": "1bd0403e61e582c0cb686424fe1373d2c59964981ddfb9bf88c850b8d827cf0a" }
       ]
     }
   }

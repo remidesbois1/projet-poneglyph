@@ -50,3 +50,9 @@ docker_scripts/**/*.zip
 *.pth
 *.onnx
 *.safetensors
+
+# Local ML caches / generated training artifacts
+docker_scripts/finetune_lighton_ocr_bbox/hf-cache/
+docker_scripts/finetune_surya_ocr_bbox/hf-cache/
+docker_scripts/finetune_surya_ocr_bbox/outputs_surya_bbox/
+docker_scripts/finetune_surya_ocr_bbox/surya_bbox_dataset/

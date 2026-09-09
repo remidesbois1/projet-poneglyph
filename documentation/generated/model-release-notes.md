@@ -1,6 +1,6 @@
 # Model benchmark release notes
 
-Generated from model registry v1 on 2026-08-01.
+Generated from model registry v1 on 2026-09-09.
 
 ## PP-OCRv6 Bubble Line
 
@@ -29,20 +29,38 @@ Generated from model registry v1 on 2026-08-01.
 - Hardware: NVIDIA RTX 3090 24 GB
 - Protocol and evidence: Exhaustive generative evaluation with a 256-token budget, collapsed whitespace and explicit blank, hallucination and token-limit accounting. https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/blob/7d7b358c545cfe757329f780da6ed4100bb5909f/benchmark_test.json
 
-## YoloPiece Panel Detector
+## Surya OCR 2 Poneglyph BBox
 
-- Registry ID: `one-shot-panel-detector`
-- Published version: `Remidesbois/YoloPiece_OneShot_Models@c4d5393095fadacfedc49d81acb2a8ac29d23aad`
-- Result: mAP50 99,40 % · mAP50-95 98,61 %
-- Evaluation: Poneglyph panel annotation dataset, test held-out by page, 31 samples, 2026-07-02
-- Hardware: CUDA device 0; exact GPU model not recorded in the artifact
-- Protocol and evidence: Ultralytics YOLO test-split evaluation at 800 px; confidence-ranked detections scored with standard mAP50 and mAP50-95. https://huggingface.co/Remidesbois/YoloPiece_OneShot_Models/blob/c4d5393095fadacfedc49d81acb2a8ac29d23aad/metrics/panel_detector_metrics.json
+- Registry ID: `surya-bbox`
+- Published version: `Remidesbois/surya-ocr-2-poneglyph-bbox@671cfe63672286ccfe629079a8d57f7ed967f3d5`
+- Result: CER 1,49 % · WER 3,44 % · Mean IoU 92,36 % · Detection rate 98,38 % · F1@IoU 0.5 98,36 % · F1@IoU 0.75 96,67 % · Combined score 97,220 % · Avg inference 2,75
+- Evaluation: Poneglyph validated full pages with text-zone bounding boxes, test held-out by page, 166 samples, 2026-09-09
+- Hardware: NVIDIA GeForce RTX 5090 32 GB
+- Protocol and evidence: Full-page multimodal generation of one exact text zone per line as Texte exact [x1,y1,x2,y2], with normalized integer coordinates in [0,1000]; OCR text and bbox localization scored jointly on the held-out page split. https://huggingface.co/Remidesbois/surya-ocr-2-poneglyph-bbox/blob/671cfe63672286ccfe629079a8d57f7ed967f3d5/benchmark_surya_bbox.json
 
-## YoloPiece One-Shot Reading Order
+## LightOnOCR 2 Poneglyph BBox
 
-- Registry ID: `one-shot-reading-order`
-- Published version: `Remidesbois/YoloPiece_OneShot_Models@c4d5393095fadacfedc49d81acb2a8ac29d23aad`
-- Result: Exact page 96,77 % · Bubble position accuracy 99,32 % · Global pairwise accuracy 99,93 %
-- Evaluation: Poneglyph panel and bubble reading-order annotations, test held-out by page, 31 samples, 2026-07-02
-- Hardware: CPU offline scoring; exact processor not recorded in the artifact
-- Protocol and evidence: Global pairwise logistic reranker selected on validation only, reconstructed with Borda plus vertical repair, then evaluated once on the test pages. https://huggingface.co/Remidesbois/YoloPiece_OneShot_Models/blob/c4d5393095fadacfedc49d81acb2a8ac29d23aad/metrics/reading_order_benchmark.json
+- Registry ID: `lighton-bbox`
+- Published version: `Remidesbois/LightonOCR-2-1b-poneglyph-bbox@fb35b7f4f99b282d5c2867d5cf23e66df0d03925`
+- Result: Page CER 5,61 % · Global mean IoU 65,00 % · F1@IoU 0.3 91,29 % · F1@IoU 0.5 79,62 % · F1@IoU 0.75 41,75 % · Exact bubble text 90,63 % · Bubble-text CER 1,15 % · Corrected combined score 82,571 % · Avg inference 6,18
+- Evaluation: Poneglyph validated full pages with text-zone bounding boxes, test held-out by page, 221 samples, 2026-09-09
+- Hardware: NVIDIA GeForce RTX 5090 32 GB
+- Protocol and evidence: Full-page image-only LightOnOCR generation of one exact text zone per line as Texte exact [x1,y1,x2,y2], with normalized integer coordinates in [0,1000]. Publication metrics use full-page CER, one-to-one global IoU assignment including unmatched GT zones at IoU 0, and micro-aggregated detection metrics over the complete held-out test split. https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph-bbox/blob/fb35b7f4f99b282d5c2867d5cf23e66df0d03925/benchmark_lighton_bbox_corrected.json
+
+## ReaderNet Panel Detector
+
+- Registry ID: `readernet-panel-detector`
+- Published version: `Remidesbois/Poneglyph-ReaderNet@d97d4cd2903a7ebe49276a5269c4f3b7df608be7`
+- Result: mAP50 99,44 % · mAP50-95 98,39 %
+- Evaluation: Poneglyph weighted polygon panel dataset, validation held out by page, 257 samples, 2026-08-21
+- Hardware: NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb
+- Protocol and evidence: Ultralytics YOLO11n-seg validation at 1504 px with box and mask metrics over polygon panel annotations. https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/d97d4cd2903a7ebe49276a5269c4f3b7df608be7/metrics/panel_detector_metrics.json
+
+## Poneglyph ReaderNet
+
+- Registry ID: `readernet-reading-order`
+- Published version: `Remidesbois/Poneglyph-ReaderNet@d97d4cd2903a7ebe49276a5269c4f3b7df608be7`
+- Result: Exact panel 95,65 % · Bubble position accuracy 96,62 % · Bubble assignment accuracy 100,00 %
+- Evaluation: Poneglyph polygon panels with bubbles from the shared YOLO26n detector, validation held out by page, 138 samples, 2026-08-27
+- Hardware: CPU offline ONNX scoring
+- Protocol and evidence: Shared bubble detections and annotated panels; pairwise Borda ranking independently inside each panel, with no global bubble sorter. https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/d97d4cd2903a7ebe49276a5269c4f3b7df608be7/metrics/shared_detector_comparison.json

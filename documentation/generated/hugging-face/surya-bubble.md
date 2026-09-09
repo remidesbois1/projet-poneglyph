@@ -1,4 +1,4 @@
-## Projet Poneglyph benchmark (2026-08-01)
+## Projet Poneglyph benchmark (2026-09-09)
 
 Registry ID: `surya-bubble`
 Pinned revision: `7d7b358c545cfe757329f780da6ed4100bb5909f`

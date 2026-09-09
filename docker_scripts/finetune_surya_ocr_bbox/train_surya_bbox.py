@@ -1,7 +1,11 @@
 import argparse
 import gc
 import glob
+import importlib.metadata
+import inspect
 import json
+import math
+import multiprocessing
 import os
 import random
 import re
@@ -9,9 +13,13 @@ import sys
 import time
 from pathlib import Path
 
+# Avoid tokenizer thread pools being inherited by DataLoader workers.
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import jiwer
 import numpy as np
 import torch
+import torch.nn.functional as F
 from datasets import load_dataset
 from dotenv import load_dotenv
 from Levenshtein import distance as levenshtein_distance
@@ -22,8 +30,11 @@ from transformers import (
     EarlyStoppingCallback,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
-    TrainerCallback,
 )
+from transformers.trainer_callback import PrinterCallback
+from transformers.trainer_utils import get_last_checkpoint
+
+from training_monitor import TrainingMonitorCallback, atomic_json
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -53,10 +64,11 @@ VAL_FILE = DATASET_DIR / "val" / "metadata.jsonl"
 TEST_FILE = DATASET_DIR / "test" / "metadata.jsonl"
 SPLITS = ("train", "val", "test")
 
-USER_PROMPT = get_prompt("ocr_page_bbox", "SURYA_BBOX_USER_PROMPT")
+USER_PROMPT = get_prompt("ocr_page_bbox_training_lines", "SURYA_BBOX_USER_PROMPT")
 BBOX_NORM_SCALE = int(os.getenv("SURYA_BBOX_NORM_SCALE", "1000"))
-MAX_NEW_TOKENS = int(os.getenv("SURYA_BBOX_MAX_NEW_TOKENS", "2048"))
-GEN_EVAL_MAX_SAMPLES = int(os.getenv("SURYA_BBOX_GEN_EVAL_MAX_SAMPLES", "48"))
+MAX_NEW_TOKENS = int(os.getenv("SURYA_BBOX_MAX_NEW_TOKENS", "1280"))
+GEN_EVAL_MAX_SAMPLES = int(os.getenv("SURYA_BBOX_GEN_EVAL_MAX_SAMPLES", "16"))
+LOSS_EVAL_MAX_SAMPLES = int(os.getenv("SURYA_BBOX_LOSS_EVAL_MAX_SAMPLES", "64"))
 FINAL_TEST_MAX_SAMPLES = int(os.getenv("SURYA_BBOX_FINAL_TEST_MAX_SAMPLES", "0"))
 RANDOM_SEED = int(os.getenv("SURYA_BBOX_RANDOM_SEED", "42"))
 IOU_THRESHOLDS = (0.3, 0.5, 0.75, 0.9)
@@ -78,10 +90,31 @@ def parse_args():
     parser.add_argument("--benchmark-only", action="store_true", help="Benchmark an existing merged model.")
     parser.add_argument("--model-path", default=None, help="Model path for merge-only or benchmark-only.")
     parser.add_argument("--skip-lighton-comparison", action="store_true", help="Skip the LightOn bbox baseline benchmark.")
+    parser.add_argument("--profile", choices=("auto", "rtx5090", "safe"),
+                        default=os.getenv("SURYA_BBOX_PROFILE", "auto"))
+    parser.add_argument("--diagnose", action="store_true", help="Check the runtime without loading model weights or data.")
+    parser.add_argument("--resume", nargs="?", const="auto",
+                        default=os.getenv("SURYA_BBOX_RESUME_FROM_CHECKPOINT", "auto"),
+                        help="Resume the latest checkpoint (auto), a path, or start fresh (none).")
+    parser.add_argument("--smoke-steps", type=int, default=0,
+                        help="Run N optimizer steps in a separate smoke directory; no merge, benchmark or upload.")
     return parser.parse_args()
 
 
-def configure_torch_runtime() -> None:
+def configure_torch_runtime(profile="auto"):
+    if profile == "auto":
+        profile = "rtx5090" if torch.cuda.is_available() and "5090" in torch.cuda.get_device_name(0) else "safe"
+    defaults = {
+        "TRAIN_BATCH": "8" if profile == "rtx5090" else "1",
+        "EVAL_BATCH": "8" if profile == "rtx5090" else "1",
+        "GRAD_ACCUM": "1" if profile == "rtx5090" else "8",
+        "GEN_BATCH": "8" if profile == "rtx5090" else "1",
+        "DATALOADER_WORKERS": "1" if profile == "rtx5090" else "0",
+        "PREFETCH_FACTOR": "1" if profile == "rtx5090" else "2",
+        "PERSISTENT_WORKERS": "0",
+    }
+    for key, value in defaults.items():
+        os.environ.setdefault(f"SURYA_BBOX_{key}", value)
     torch.set_num_threads(int(os.getenv("SURYA_BBOX_TORCH_THREADS", "8")))
     if torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -91,8 +124,58 @@ def configure_torch_runtime() -> None:
             torch.set_float32_matmul_precision("high")
         except Exception:
             pass
-    if hasattr(torch, "_dynamo"):
-        torch._dynamo.config.suppress_errors = True
+    # Compilation is opt-in; never silently hide compiler failures.
+    if int(os.getenv("SURYA_BBOX_DATALOADER_WORKERS", "0")) > 0:
+        multiprocessing.set_start_method("spawn", force=True)
+    return profile
+
+
+def runtime_diagnostics(profile, require_cuda=False):
+    packages = ("torch", "transformers", "peft", "accelerate", "flash-linear-attention", "causal-conv1d")
+    report = {"profile": profile, "cuda_runtime": torch.version.cuda, "packages": {}}
+    for name in packages:
+        try:
+            report["packages"][name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            report["packages"][name] = None
+    report["cuda_available"] = torch.cuda.is_available()
+    if torch.cuda.is_available():
+        capability = torch.cuda.get_device_capability(0)
+        capability_string = f"{capability[0]}.{capability[1]}"
+        report.update(gpu=torch.cuda.get_device_name(0), compute_capability=capability_string,
+                      vram_gib=round(torch.cuda.get_device_properties(0).total_memory / 2**30, 2),
+                      bf16_supported=torch.cuda.is_bf16_supported())
+        if capability[0] >= 12 and tuple(map(int, (torch.version.cuda or "0.0").split(".")[:2])) < (12, 8):
+            raise RuntimeError("Blackwell requires a compatible PyTorch CUDA build (CUDA 12.8 or newer).")
+    elif require_cuda and not env_bool("SURYA_BBOX_ALLOW_CPU_TRAINING", False):
+        raise RuntimeError("CUDA is unavailable. Refusing accidental CPU training; use --diagnose to inspect the runtime.")
+    try:
+        from transformers.models.qwen3_5 import modeling_qwen3_5
+
+        report["fast_linear_attention"] = bool(getattr(modeling_qwen3_5, "is_fast_path_available", False))
+    except (ImportError, OSError, AttributeError) as exc:
+        report["fast_linear_attention"] = False
+        report["kernel_probe_error"] = str(exc)
+    print(json.dumps(report, indent=2), flush=True)
+    if not report["fast_linear_attention"]:
+        message = "Fast DeltaNet kernels unavailable. Install compatible flash-linear-attention + causal-conv1d (see README)."
+        if require_cuda and env_bool("SURYA_BBOX_REQUIRE_FAST_LINEAR_ATTENTION", False):
+            raise RuntimeError(message)
+        print(f"WARNING: {message}", flush=True)
+    expected_capability = os.getenv("SURYA_BBOX_EXPECTED_COMPUTE_CAPABILITY", "").strip()
+    if expected_capability:
+        report["expected_compute_capability"] = expected_capability
+    if (
+        require_cuda
+        and expected_capability
+        and report.get("compute_capability") != expected_capability
+    ):
+        raise RuntimeError(
+            f"This training image targets compute capability {expected_capability}, "
+            f"but the selected GPU reports {report.get('compute_capability')}. "
+            "Rebuild causal-conv1d/TORCH_CUDA_ARCH_LIST for that GPU or run this image on the RTX 5090."
+        )
+    return report
 
 
 def set_seed(seed: int) -> None:
@@ -103,13 +186,39 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def prepare_dataset(file_path: Path, split_name: str):
+def prepare_dataset(file_path: Path, split_name: str, processor=None):
     if not file_path.exists():
         raise FileNotFoundError(f"Missing dataset file: {file_path}")
+    if file_path.stat().st_size <= 0:
+        raise ValueError(
+            f"The {split_name} dataset metadata file is empty: {file_path}. "
+            "Re-run the dataset export before training."
+        )
     print(f"Loading {split_name} dataset from {file_path}", flush=True)
-    dataset = load_dataset("json", data_files=str(file_path), split="train")
+    try:
+        dataset = load_dataset("json", data_files=str(file_path), split="train")
+    except StopIteration as exc:
+        raise ValueError(
+            f"The {split_name} dataset contains no readable JSON samples: {file_path}. "
+            "Re-run the dataset export before training."
+        ) from exc
     if "split" not in dataset.column_names:
         dataset = dataset.map(lambda _: {"split": split_name})
+    if len(dataset) == 0:
+        raise ValueError(f"The {split_name} dataset is empty: {file_path}")
+    if processor is not None and env_bool("SURYA_BBOX_GROUP_BY_LENGTH", True):
+        def add_length(entry):
+            path = resolve_image_path(entry, split_name)
+            if path is None:
+                raise FileNotFoundError(f"Missing image for page {entry.get('page_id')}")
+            with Image.open(path) as image:
+                width, height = image.size
+            image_processor = processor.image_processor
+            grid = int(getattr(image_processor, "patch_size", 14)) * int(getattr(image_processor, "merge_size", 2))
+            text_length = len(processor.tokenizer(extract_reference_text(entry), add_special_tokens=False)["input_ids"])
+            # An estimate for bucketing only: never truncate image or answer tokens.
+            return {"length": text_length + ((width + grid - 1) // grid) * ((height + grid - 1) // grid)}
+        dataset = dataset.map(add_length, desc="Indexing page lengths")
     print(f"  {split_name}: {len(dataset)} samples", flush=True)
     return dataset
 
@@ -183,7 +292,6 @@ def process_batch(examples, processor):
     batch_texts = []
     batch_images = []
     prompt_texts = []
-    per_example_images = []
 
     image_files = examples["image_file"]
     split_names = examples.get("split", [None] * len(image_files))
@@ -206,39 +314,46 @@ def process_batch(examples, processor):
         batch_texts.append(apply_template(processor, full_messages, add_generation_prompt=False))
         prompt_texts.append(apply_template(processor, prompt_messages, add_generation_prompt=True))
         batch_images.append(image)
-        per_example_images.append(image)
 
     model_inputs = processor(
         text=batch_texts,
         images=batch_images,
         padding=True,
+        pad_to_multiple_of=int(os.getenv("SURYA_BBOX_PAD_TO_MULTIPLE_OF", "16")),
         return_tensors="pt",
     )
 
     labels = model_inputs["input_ids"].clone()
     tokenizer = getattr(processor, "tokenizer", None)
-    pad_token_id = getattr(tokenizer, "pad_token_id", None)
+    if tokenizer is None:
+        raise RuntimeError("The processor must expose a tokenizer for assistant-only labels.")
     padding_side = getattr(tokenizer, "padding_side", "right")
-
-    for idx, (full_text, prompt_text, image) in enumerate(
-        zip(batch_texts, prompt_texts, per_example_images)
-    ):
-        prompt_inputs = processor(text=[prompt_text], images=[image], return_tensors="pt")
-        full_inputs = processor(text=[full_text], images=[image], return_tensors="pt")
-        prompt_len = prompt_inputs["input_ids"].shape[1]
-        full_len = full_inputs["input_ids"].shape[1]
-        assistant_len = max(full_len - prompt_len, 0)
-
-        if padding_side == "left":
-            mask_until = labels.shape[1] - assistant_len
-            labels[idx, :mask_until] = -100
-        else:
-            labels[idx, :prompt_len] = -100
-
-        if pad_token_id is not None:
-            labels[idx, model_inputs["input_ids"][idx] == pad_token_id] = -100
+    # Image expansion only affects the prompt. Tokenize the rendered text once,
+    # without repeating the expensive image resize/normalization 2*batch_size times.
+    rendered = tokenizer(batch_texts + prompt_texts, add_special_tokens=False,
+                         padding=False, truncation=False)["input_ids"]
+    assistant_lengths = []
+    for idx, (full_ids, prompt_ids) in enumerate(zip(rendered[:len(batch_texts)], rendered[len(batch_texts):])):
+        if full_ids[:len(prompt_ids)] != prompt_ids:
+            raise ValueError(f"Chat template prompt is not a token prefix for page {page_ids[idx]}; refusing incorrect labels.")
+        answer_ids = full_ids[len(prompt_ids):]
+        assistant_len = len(answer_ids)
+        full_len = int(model_inputs["attention_mask"][idx].sum())
+        if not 0 < assistant_len < full_len:
+            raise ValueError(f"Invalid assistant span for page {page_ids[idx]}.")
+        end = labels.shape[1] if padding_side == "left" else full_len
+        start = end - assistant_len
+        if model_inputs["input_ids"][idx, start:end].tolist() != answer_ids:
+            raise ValueError(f"Multimodal/text suffix mismatch for page {page_ids[idx]}; check the processor template.")
+        labels[idx, :start] = -100
+        labels[idx, end:] = -100
+        assistant_lengths.append(assistant_len)
+    # Mask positions, NOT token values: PAD can share the EOS id, which must
+    # remain supervised or the model never learns to stop generating.
+    labels.masked_fill_(model_inputs["attention_mask"].eq(0), -100)
 
     model_inputs["labels"] = labels
+    model_inputs["logits_to_keep"] = max(assistant_lengths) + 1 if padding_side == "left" else 0
     return model_inputs
 
 
@@ -247,8 +362,11 @@ class SuryaBBoxCollator:
         self.processor = processor
 
     def __call__(self, features):
+        if not features:
+            raise ValueError("Cannot collate an empty batch.")
         keys = ("page_id", "image_file", "split", "assistant_text")
         examples = {key: [feature.get(key) for feature in features] for key in keys}
+        examples["assistant_text"] = [extract_reference_text(feature) for feature in features]
         return process_batch(examples, self.processor)
 
 
@@ -379,26 +497,32 @@ def compute_metrics_from_results(results):
         inference_times.append(result.get("inference_time", 0.0))
 
         if n_gt == 0 and n_pred == 0:
-            exact_matches += 1
-            detection_rates.append(1.0)
+            success = not result.get("error")
+            exact_matches += int(success)
+            detection_rates.append(float(success))
+            all_sample_cer.append(0.0 if success else 1.0)
+            all_sample_wer.append(0.0 if success else 1.0)
+            for threshold in IOU_THRESHOLDS:
+                precision_by_threshold[threshold].append(float(success))
+                recall_by_threshold[threshold].append(float(success))
+                f1_by_threshold[threshold].append(float(success))
             per_sample.append(
                 {
                     "page_id": result.get("page_id"),
-                    "cer": 0.0,
-                    "wer": 0.0,
-                    "mean_iou": 1.0,
+                    "cer": 0.0 if success else 1.0,
+                    "wer": 0.0 if success else 1.0,
+                    "mean_iou": float(success),
                     "num_gt": 0,
                     "num_pred": 0,
-                    "detection_rate": 1.0,
-                    "precision@0_5": 1.0,
-                    "recall@0_5": 1.0,
-                    "f1@0_5": 1.0,
+                    "detection_rate": float(success),
+                    "precision@0_5": float(success),
+                    "recall@0_5": float(success),
+                    "f1@0_5": float(success),
                 }
             )
             continue
 
-        detection_rate = min(n_pred, n_gt) / max(n_gt, 1)
-        detection_rates.append(detection_rate)
+        detection_rate = 0.0
         if n_gt == n_pred and normalize_prediction_text(result["pred_text"]) == normalize_prediction_text(result["gt_text"]):
             exact_matches += 1
 
@@ -423,6 +547,7 @@ def compute_metrics_from_results(results):
             sample_pr[threshold] = (precision, recall, f1)
 
             if threshold == 0.5:
+                detection_rate = recall
                 for pred_idx, gt_idx, iou_value in matched:
                     pred_text = normalize_prediction_text(pred_items[pred_idx]["text"])
                     gt_text = normalize_prediction_text(gt_items[gt_idx]["text"])
@@ -453,6 +578,7 @@ def compute_metrics_from_results(results):
         sample_iou = float(np.mean(sample_ious)) if sample_ious else 0.0
         all_sample_cer.append(sample_cer)
         all_sample_wer.append(sample_wer)
+        detection_rates.append(detection_rate)
 
         p50, r50, f50 = sample_pr.get(0.5, (0.0, 0.0, 0.0))
         per_sample.append(
@@ -481,6 +607,7 @@ def compute_metrics_from_results(results):
     )
     metrics["avg_detection_rate"] = float(np.mean(detection_rates)) if detection_rates else 0.0
     metrics["avg_inference_time"] = float(np.mean(inference_times)) if inference_times else 0.0
+    metrics["generation_errors"] = sum(bool(result.get("error")) for result in results)
 
     for threshold in IOU_THRESHOLDS:
         suffix = str(threshold).replace(".", "_")
@@ -512,7 +639,7 @@ def compute_metrics_from_results(results):
     metrics["iou_p95"] = float(np.percentile(ious, 95)) if ious else 0.0
     metrics["cer_median"] = float(np.median(metrics["cer_distribution"])) if metrics["cer_distribution"] else 1.0
     metrics["combined_score"] = (
-        (1 - metrics["cer"]) * 0.4
+        (1 - min(max(metrics["cer"], 0.0), 1.0)) * 0.4
         + metrics["f1@0_5"] * 0.3
         + metrics["mean_iou"] * 0.2
         + metrics["avg_detection_rate"] * 0.1
@@ -545,6 +672,12 @@ def decode_tokens(processor, token_ids):
     return processor.tokenizer.decode(token_ids, skip_special_tokens=True)
 
 
+def batch_decode_tokens(processor, token_ids):
+    if hasattr(processor, "batch_decode"):
+        return processor.batch_decode(token_ids, skip_special_tokens=True)
+    return processor.tokenizer.batch_decode(token_ids, skip_special_tokens=True)
+
+
 def generate_surya_prediction(model, processor, entry):
     split_name = entry.get("split") or "test"
     image_path = resolve_image_path(entry, split_name)
@@ -560,14 +693,66 @@ def generate_surya_prediction(model, processor, entry):
     dtype = model_dtype(model)
     inputs = move_inputs_to_device(inputs, device, dtype)
 
-    with torch.inference_mode():
+    with torch.inference_mode(), torch.autocast(device_type=device.type, dtype=torch.bfloat16,
+                                               enabled=device.type == "cuda" and torch.cuda.is_bf16_supported()):
         output_ids = model.generate(
             **inputs,
             max_new_tokens=MAX_NEW_TOKENS,
             do_sample=False,
+            use_cache=True,
         )
     gen_ids = output_ids[0, inputs["input_ids"].shape[1] :]
     return decode_tokens(processor, gen_ids).strip()
+
+
+def generate_surya_predictions(model, processor, entries):
+    """Generate several pages in one call so large GPUs are not starved by batch=1 decoding."""
+    if not entries:
+        return []
+    prompts = []
+    images = []
+    try:
+        for entry in entries:
+            split_name = entry.get("split") or "test"
+            image_path = resolve_image_path(entry, split_name)
+            if image_path is None:
+                raise FileNotFoundError(f"Missing image for page {entry.get('page_id')}")
+            with Image.open(image_path) as img:
+                images.append(img.convert("RGB"))
+            messages = messages_for_entry(image_path, None)
+            prompts.append(apply_template(processor, messages, add_generation_prompt=True))
+
+        inputs = processor(
+            text=prompts,
+            images=images,
+            padding=True,
+            pad_to_multiple_of=int(os.getenv("SURYA_BBOX_PAD_TO_MULTIPLE_OF", "16")),
+            return_tensors="pt",
+        )
+    finally:
+        for image in images:
+            try:
+                image.close()
+            except Exception:
+                pass
+
+    device = next(model.parameters()).device
+    dtype = model_dtype(model)
+    inputs = move_inputs_to_device(inputs, device, dtype)
+    prompt_width = inputs["input_ids"].shape[1]
+    with torch.inference_mode(), torch.autocast(
+        device_type=device.type,
+        dtype=torch.bfloat16,
+        enabled=device.type == "cuda" and torch.cuda.is_bf16_supported(),
+    ):
+        output_ids = model.generate(
+            **inputs,
+            max_new_tokens=MAX_NEW_TOKENS,
+            do_sample=False,
+            use_cache=True,
+        )
+    generated = output_ids[:, prompt_width:].detach().cpu()
+    return [text.strip() for text in batch_decode_tokens(processor, generated)]
 
 
 def generate_lighton_prediction(model, processor, entry):
@@ -593,6 +778,7 @@ def generate_lighton_prediction(model, processor, entry):
             **inputs,
             max_new_tokens=MAX_NEW_TOKENS,
             do_sample=False,
+            use_cache=True,
         )
     gen_ids = output_ids[0, inputs["input_ids"].shape[1] :]
     return processor.tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
@@ -606,7 +792,34 @@ def benchmark_indices(dataset, max_samples):
     return sorted(rng.sample(range(total), max_samples))
 
 
-def run_generation_benchmark(
+def evaluation_subset(dataset, max_samples):
+    """Return a deterministic eval subset while keeping the held-out test set intact."""
+    if dataset is None or not max_samples or max_samples <= 0 or len(dataset) <= max_samples:
+        return dataset
+    indices = benchmark_indices(dataset, max_samples)
+    return dataset.select(indices) if hasattr(dataset, "select") else [dataset[index] for index in indices]
+
+
+def run_generation_benchmark(model, *args, **kwargs):
+    """Restore training/cache state even when generation or metric computation fails."""
+    configs = [model.config]
+    if hasattr(model.config, "get_text_config"):
+        text_config = model.config.get_text_config()
+        if text_config is not model.config:
+            configs.append(text_config)
+    old_caches = [(config, config.use_cache) for config in configs if hasattr(config, "use_cache")]
+    was_training = model.training
+    try:
+        for config, _ in old_caches:
+            config.use_cache = True
+        return _run_generation_benchmark(model, *args, **kwargs)
+    finally:
+        for config, value in old_caches:
+            config.use_cache = value
+        model.train(was_training)
+
+
+def _run_generation_benchmark(
     model,
     processor,
     dataset,
@@ -615,6 +828,8 @@ def run_generation_benchmark(
     model_label,
     max_samples=None,
     worst_count=20,
+    batch_generator=None,
+    batch_size=None,
 ):
     was_training = model.training
     old_use_cache = getattr(model.config, "use_cache", None)
@@ -624,43 +839,84 @@ def run_generation_benchmark(
 
     indices = benchmark_indices(dataset, max_samples)
     results = []
+    benchmark_start = time.perf_counter()
     print("", flush=True)
     print("=" * 72, flush=True)
     print(f"{model_label} BBOX BENCHMARK [{split_name}] - {len(indices)}/{len(dataset)} pages", flush=True)
     print("=" * 72, flush=True)
 
-    for sample_index, dataset_index in enumerate(indices, 1):
-        entry = dataset[dataset_index]
-        gt_text = extract_reference_text(entry)
-        start = time.time()
+    requested_batch_size = max(1, int(batch_size or os.getenv("SURYA_BBOX_GEN_BATCH", "1")))
+    active_batch_size = requested_batch_size if batch_generator is not None else 1
+    offset = 0
+    while offset < len(indices):
+        current_indices = indices[offset : offset + active_batch_size]
+        entries = [dataset[index] for index in current_indices]
+        device = next(model.parameters()).device
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+        start = time.perf_counter()
         try:
-            pred_text = generator(model, processor, entry)
-            error = None
+            if batch_generator is not None:
+                predictions = batch_generator(model, processor, entries)
+                if len(predictions) != len(entries):
+                    raise RuntimeError(
+                        f"Batch generator returned {len(predictions)} predictions for {len(entries)} inputs."
+                    )
+            else:
+                predictions = [generator(model, processor, entries[0])]
+            errors = [None] * len(entries)
+        except torch.cuda.OutOfMemoryError:
+            if batch_generator is None or active_batch_size <= 1:
+                raise
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+            reduced = max(1, active_batch_size // 2)
+            print(
+                f"  generation OOM at batch={active_batch_size}; retrying with batch={reduced}",
+                flush=True,
+            )
+            active_batch_size = reduced
+            continue
         except Exception as exc:
-            pred_text = ""
-            error = str(exc)
-        elapsed = time.time() - start
-        gt_items = parse_bbox_output(gt_text)
-        pred_items = parse_bbox_output(pred_text)
-        results.append(
-            {
-                "dataset_idx": dataset_index,
-                "page_id": entry.get("page_id"),
-                "image_file": entry.get("image_file"),
-                "gt_text": gt_text,
-                "pred_text": pred_text,
-                "gt_items": gt_items,
-                "pred_items": pred_items,
-                "num_gt_bubbles": len(gt_items),
-                "num_pred_bubbles": len(pred_items),
-                "inference_time": elapsed,
-                "error": error,
-            }
+            predictions = [""] * len(entries)
+            errors = [str(exc)] * len(entries)
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+        elapsed = time.perf_counter() - start
+        per_page_elapsed = elapsed / max(len(entries), 1)
+
+        for dataset_index, entry, pred_text, error in zip(
+            current_indices, entries, predictions, errors
+        ):
+            gt_text = extract_reference_text(entry)
+            gt_items = parse_bbox_output(gt_text)
+            pred_items = parse_bbox_output(pred_text)
+            results.append(
+                {
+                    "dataset_idx": dataset_index,
+                    "page_id": entry.get("page_id"),
+                    "image_file": entry.get("image_file"),
+                    "gt_text": gt_text,
+                    "pred_text": pred_text,
+                    "gt_items": gt_items,
+                    "pred_items": pred_items,
+                    "num_gt_bubbles": len(gt_items),
+                    "num_pred_bubbles": len(pred_items),
+                    "inference_time": per_page_elapsed,
+                    "error": error,
+                }
+            )
+        offset += len(current_indices)
+        print(
+            f"  generated {offset}/{len(indices)} (batch={len(current_indices)}, {elapsed:.1f}s)",
+            flush=True,
         )
-        if sample_index % 10 == 0 or sample_index == len(indices):
-            print(f"  generated {sample_index}/{len(indices)}", flush=True)
 
     metrics = compute_metrics_from_results(results)
+    benchmark_elapsed = time.perf_counter() - benchmark_start
+    metrics["benchmark_wall_time"] = benchmark_elapsed
+    metrics["pages_per_second"] = len(indices) / benchmark_elapsed if benchmark_elapsed > 0 else 0.0
+    metrics["generation_batch_size"] = active_batch_size
     ranked = sorted(
         metrics["per_sample"],
         key=lambda sample: (sample["f1@0_5"], sample["mean_iou"], -sample["cer"]),
@@ -673,6 +929,7 @@ def run_generation_benchmark(
     print(f"Detection rate:  {metrics['avg_detection_rate']:.6f}", flush=True)
     print(f"Combined score:  {metrics['combined_score']:.6f}", flush=True)
     print(f"Avg inference:   {metrics['avg_inference_time']:.3f}s/page", flush=True)
+    print(f"Throughput:      {metrics['pages_per_second']:.3f} pages/s (batch={active_batch_size})", flush=True)
     print("-" * 72, flush=True)
     for rank, sample in enumerate(ranked[: min(worst_count, len(ranked))], 1):
         print(
@@ -695,61 +952,88 @@ class PromptOnlyEvalTrainer(Seq2SeqTrainer):
         super().__init__(*args, **kwargs)
         self.processor = processor
         self.gen_eval_max_samples = gen_eval_max_samples
+        # This implementation really uses the token count over the whole gradient
+        # accumulation window. Do not divide again by gradient_accumulation_steps.
+        self.model_accepts_loss_kwargs = True
+        self._loss_shifts_labels = True
+        base = self.model.get_base_model() if hasattr(self.model, "get_base_model") else self.model
+        self.trim_logits = env_bool("SURYA_BBOX_TRIM_LOGITS", True) and "logits_to_keep" in inspect.signature(base.forward).parameters
 
-    def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix="eval"):
-        metrics = super().evaluate(
-            eval_dataset=eval_dataset,
+    def _get_eval_sampler(self, eval_dataset):
+        # Transformers 5.14.1 reuses `train_sampling_strategy=group_by_length`
+        # for evaluation too. Our eval dataset intentionally does not materialize
+        # image tensors or a synthetic length column, so the stock implementation
+        # tries to infer lengths from a `pixel_values` field and crashes at the
+        # first validation pass. Keep length grouping where it matters (training)
+        # and make eval deterministic/sequential on this single-GPU trainer.
+        if getattr(self.args, "train_sampling_strategy", None) == "group_by_length":
+            if eval_dataset is None:
+                return None
+            return torch.utils.data.SequentialSampler(eval_dataset)
+        return super()._get_eval_sampler(eval_dataset)
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        inputs = dict(inputs)
+        labels = inputs.pop("labels")
+        keep = inputs.pop("logits_to_keep", 0)
+        if self.trim_logits:
+            inputs["logits_to_keep"] = keep
+        outputs = model(**inputs, use_cache=False)
+        # Keep one preceding token: logits at position t predict label t+1.
+        logits = outputs.logits[:, :-1, :].contiguous()
+        targets = labels[:, -outputs.logits.shape[1]:][:, 1:].contiguous()
+        loss = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]),
+                               targets.reshape(-1), ignore_index=-100, reduction="sum")
+        denominator = num_items_in_batch if num_items_in_batch is not None else targets.ne(-100).sum()
+        if torch.is_tensor(denominator):
+            denominator = denominator.to(device=loss.device).clamp_min(1)
+        else:
+            denominator = max(denominator, 1)
+        loss = loss / denominator
+        return (loss, outputs) if return_outputs else loss
+
+    def evaluation_loop(self, dataloader, description, prediction_loss_only=None,
+                        ignore_keys=None, metric_key_prefix="eval"):
+        output = super().evaluation_loop(
+            dataloader, description, prediction_loss_only=True,
             ignore_keys=ignore_keys,
             metric_key_prefix=metric_key_prefix,
         )
-        dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        dataset = dataloader.dataset
         if dataset is None or self.gen_eval_max_samples == 0:
-            return metrics
+            return output
         try:
             split_name = dataset[0].get("split") or "val"
         except Exception:
             split_name = "val"
-        gen_metrics, _results = run_generation_benchmark(
-            self.model,
-            self.processor,
-            dataset,
-            split_name=split_name,
-            generator=generate_surya_prediction,
-            model_label="SURYA VALIDATION",
-            max_samples=self.gen_eval_max_samples,
-            worst_count=5,
-        )
+        monitor = next((cb for cb in self.callback_handler.callbacks if isinstance(cb, TrainingMonitorCallback)), None)
+        if monitor is not None:
+            monitor.summary["status"] = "validating"
+            monitor._persist("validation_start")
+        try:
+            with self.compute_loss_context_manager():
+                gen_metrics, results = run_generation_benchmark(
+                    self.model, self.processor, dataset, split_name=split_name,
+                    generator=generate_surya_prediction, model_label="SURYA VALIDATION",
+                    max_samples=self.gen_eval_max_samples, worst_count=5,
+                    batch_generator=generate_surya_predictions,
+                    batch_size=int(os.getenv("SURYA_BBOX_GEN_BATCH", "1")),
+                )
+            save_benchmark(Path(self.args.output_dir) / "validation_latest.json", MODEL_ID, gen_metrics, results)
+            if gen_metrics["generation_errors"] and env_bool("SURYA_BBOX_FAIL_ON_GENERATION_ERROR", True):
+                raise RuntimeError("Validation generation failed on one or more pages; see validation_latest.json.")
+        finally:
+            if monitor is not None:
+                monitor.summary["status"] = "training"
         prefixed = {
             f"{metric_key_prefix}_{key}": value
             for key, value in gen_metrics.items()
             if isinstance(value, (int, float))
         }
-        metrics.update(prefixed)
-        self.log(prefixed)
-        return metrics
-
-
-class LiveMetricsCallback(TrainerCallback):
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        if not logs:
-            return
-        keys = (
-            "loss",
-            "learning_rate",
-            "eval_loss",
-            "eval_cer",
-            "eval_wer",
-            "eval_mean_iou",
-            "eval_f1@0_5",
-            "eval_avg_detection_rate",
-            "eval_combined_score",
-        )
-        parts = [f"step={state.global_step}"]
-        for key in keys:
-            if key in logs:
-                value = logs[key]
-                parts.append(f"{key}={value:.6f}" if isinstance(value, float) else f"{key}={value}")
-        print("[LIVE] " + " | ".join(parts), flush=True)
+        # Trainer.evaluate logs and dispatches on_evaluate AFTER this method.
+        # EarlyStoppingCallback now sees the generation score on its first call.
+        output.metrics.update(prefixed)
+        return output
 
 
 def find_best_checkpoint(output_dir):
@@ -821,22 +1105,34 @@ def configure_generation(model, processor=None):
         return
     eos_token_id = getattr(tokenizer, "eos_token_id", None)
     pad_token_id = getattr(tokenizer, "pad_token_id", None)
+    configs = [model.config]
+    if hasattr(model.config, "get_text_config"):
+        text_config = model.config.get_text_config()
+        if text_config is not model.config:
+            configs.append(text_config)
     if valid_token_id(eos_token_id, tokenizer):
         model.generation_config.eos_token_id = eos_token_id
-        if hasattr(model.config, "eos_token_id"):
-            model.config.eos_token_id = eos_token_id
+        for config in configs:
+            if hasattr(config, "eos_token_id"):
+                config.eos_token_id = eos_token_id
     if valid_token_id(pad_token_id, tokenizer):
         model.generation_config.pad_token_id = pad_token_id
-        if hasattr(model.config, "pad_token_id"):
-            model.config.pad_token_id = pad_token_id
+        for config in configs:
+            if hasattr(config, "pad_token_id"):
+                config.pad_token_id = pad_token_id
 
 
-def load_surya_model(model_id_or_path=MODEL_ID):
-    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+def load_surya_model(model_id_or_path=MODEL_ID, for_training=False):
+    bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    dtype = torch.bfloat16 if bf16 else torch.float32
+    if for_training and os.getenv("SURYA_BBOX_TRAIN_MODE", "lora").lower() == "full":
+        # Full fine-tuning keeps master parameters/Adam moments in FP32; the
+        # Trainer still uses BF16 autocast. Avoid low-precision Adam updates.
+        dtype = torch.float32
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Loading Surya model: {model_id_or_path} ({dtype}, device={device})", flush=True)
     kwargs = {
-        "torch_dtype": dtype,
+        "dtype": dtype,
         "trust_remote_code": True,
         "low_cpu_mem_usage": True,
     }
@@ -885,7 +1181,8 @@ def build_lora_config():
         item.strip()
         for item in os.getenv(
             "SURYA_BBOX_LORA_TARGET_MODULES",
-            "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj,lm_head",
+            "q_proj,k_proj,v_proj,o_proj,in_proj_qkv,in_proj_z,in_proj_b,"
+            "in_proj_a,out_proj,gate_proj,up_proj,down_proj,lm_head",
         ).split(",")
         if item.strip()
     ]
@@ -893,77 +1190,133 @@ def build_lora_config():
         r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=float(os.getenv("SURYA_BBOX_LORA_DROPOUT", "0.01")),
-        use_dora=env_bool("SURYA_BBOX_USE_DORA", True),
+        use_dora=env_bool("SURYA_BBOX_USE_DORA", False),
         target_modules=target_modules,
         bias="none",
         task_type="CAUSAL_LM",
+        ensure_weight_tying=True,
     )
 
 
-def configure_trainable_model(model):
+def configure_trainable_model(model, resume_checkpoint=None):
     train_mode = os.getenv("SURYA_BBOX_TRAIN_MODE", "lora").strip().lower()
     if train_mode == "full":
+        if resume_checkpoint and (Path(resume_checkpoint) / "adapter_config.json").exists():
+            raise ValueError("Cannot resume an adapter checkpoint in full training mode.")
         print("Training mode: full fine-tuning", flush=True)
         for parameter in model.parameters():
             parameter.requires_grad = True
         return model, "full"
 
-    try:
-        from peft import get_peft_model
+    if train_mode != "lora":
+        raise ValueError("SURYA_BBOX_TRAIN_MODE must be lora or full.")
+    from peft import PeftModel, get_peft_model
 
-        print("Training mode: LoRA/DoRA", flush=True)
+    print("Training mode: LoRA (full attention + DeltaNet + MLP projections)", flush=True)
+    if resume_checkpoint:
+        if not (Path(resume_checkpoint) / "adapter_config.json").exists():
+            raise ValueError("This is a full-model checkpoint; set SURYA_BBOX_TRAIN_MODE=full.")
+        # Preserve the original adapter rank, targets and DoRA settings on resume.
+        model = PeftModel.from_pretrained(model, resume_checkpoint, is_trainable=True)
+    else:
         model = get_peft_model(model, build_lora_config())
-        model.print_trainable_parameters()
-        return model, "lora"
-    except Exception as exc:
-        if not env_bool("SURYA_BBOX_ALLOW_FULL_FALLBACK", True):
-            raise
-        print(f"LoRA setup failed, falling back to full fine-tuning: {exc}", flush=True)
-        for parameter in model.parameters():
-            parameter.requires_grad = True
-        return model, "full_fallback"
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
+    model.print_trainable_parameters()
+    return model, "lora"
 
 
-def make_training_args():
+def estimate_total_update_steps(train_size, train_batch, grad_accum, epochs, smoke_steps=0):
+    if smoke_steps:
+        return int(smoke_steps)
+    if not train_size or train_size < 1:
+        return 0
+    microbatches = math.ceil(train_size / max(int(train_batch), 1))
+    updates_per_epoch = math.ceil(microbatches / max(int(grad_accum), 1))
+    return max(1, math.ceil(updates_per_epoch * float(epochs)))
+
+
+def make_training_args(smoke_steps=0, train_size=None):
     eval_steps = int(os.getenv("SURYA_BBOX_EVAL_STEPS", "100"))
+    workers = int(os.getenv("SURYA_BBOX_DATALOADER_WORKERS", "0"))
+    strategy = os.getenv("SURYA_BBOX_EVAL_STRATEGY", "epoch").strip().lower()
+    if strategy not in {"steps", "epoch"}:
+        raise ValueError("SURYA_BBOX_EVAL_STRATEGY must be steps or epoch.")
+    bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    train_batch = int(os.getenv("SURYA_BBOX_TRAIN_BATCH", "2"))
+    grad_accum = int(os.getenv("SURYA_BBOX_GRAD_ACCUM", "4"))
+    epochs = float(os.getenv("SURYA_BBOX_EPOCHS", "6"))
+    total_update_steps = estimate_total_update_steps(
+        train_size,
+        train_batch,
+        grad_accum,
+        epochs,
+        smoke_steps=smoke_steps,
+    )
+    explicit_warmup_steps = os.getenv("SURYA_BBOX_WARMUP_STEPS")
+    if explicit_warmup_steps is not None:
+        warmup_steps = max(0, int(explicit_warmup_steps))
+    else:
+        warmup_ratio = float(os.getenv("SURYA_BBOX_WARMUP_RATIO", "0.05"))
+        warmup_steps = math.ceil(total_update_steps * max(0.0, warmup_ratio)) if total_update_steps else 0
+    os.environ.setdefault("TENSORBOARD_LOGGING_DIR", str(OUTPUT_DIR / "tensorboard"))
     kwargs = {
         "output_dir": str(OUTPUT_DIR),
         "learning_rate": float(os.getenv("SURYA_BBOX_LR", "5e-5")),
-        "num_train_epochs": float(os.getenv("SURYA_BBOX_EPOCHS", "6")),
-        "per_device_train_batch_size": int(os.getenv("SURYA_BBOX_TRAIN_BATCH", "2")),
+        "num_train_epochs": epochs,
+        "per_device_train_batch_size": train_batch,
         "per_device_eval_batch_size": int(os.getenv("SURYA_BBOX_EVAL_BATCH", "2")),
-        "gradient_accumulation_steps": int(os.getenv("SURYA_BBOX_GRAD_ACCUM", "4")),
+        "gradient_accumulation_steps": grad_accum,
         "gradient_checkpointing": env_bool("SURYA_BBOX_GRADIENT_CHECKPOINTING", True),
         "gradient_checkpointing_kwargs": {"use_reentrant": False},
         "optim": os.getenv(
             "SURYA_BBOX_OPTIM",
             "adamw_torch_fused" if torch.cuda.is_available() else "adamw_torch",
         ),
-        "bf16": torch.cuda.is_available(),
+        "bf16": bf16,
         "fp16": False,
-        "tf32": torch.cuda.is_available(),
-        "logging_steps": int(os.getenv("SURYA_BBOX_LOGGING_STEPS", "10")),
-        "eval_strategy": "steps",
+        "tf32": torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8,
+        "logging_steps": int(os.getenv("SURYA_BBOX_LOGGING_STEPS", "5")),
+        "logging_first_step": True,
+        "logging_nan_inf_filter": False,
+        "disable_tqdm": True,
+        "run_name": os.getenv("SURYA_BBOX_RUN_NAME", "surya-bbox"),
+        "eval_strategy": strategy,
         "eval_steps": eval_steps,
-        "save_strategy": "steps",
+        "save_strategy": strategy,
         "save_steps": eval_steps,
         "save_total_limit": int(os.getenv("SURYA_BBOX_SAVE_TOTAL_LIMIT", "3")),
         "load_best_model_at_end": True,
-        "metric_for_best_model": "eval_combined_score",
-        "greater_is_better": True,
+        "metric_for_best_model": "eval_combined_score" if GEN_EVAL_MAX_SAMPLES else "eval_loss",
+        "greater_is_better": bool(GEN_EVAL_MAX_SAMPLES),
         "remove_unused_columns": False,
         "report_to": os.getenv("SURYA_BBOX_REPORT_TO", "none"),
         "predict_with_generate": False,
-        "dataloader_num_workers": int(os.getenv("SURYA_BBOX_DATALOADER_WORKERS", "4")),
+        "prediction_loss_only": True,
+        "label_names": ["labels"],
+        "dataloader_num_workers": workers,
         "dataloader_pin_memory": torch.cuda.is_available(),
+        "dataloader_persistent_workers": workers > 0 and env_bool("SURYA_BBOX_PERSISTENT_WORKERS", False),
+        "dataloader_prefetch_factor": int(os.getenv("SURYA_BBOX_PREFETCH_FACTOR", "1")) if workers else None,
         "torch_compile": env_bool("SURYA_BBOX_TORCH_COMPILE", False),
         "lr_scheduler_type": os.getenv("SURYA_BBOX_LR_SCHEDULER", "cosine"),
-        "warmup_ratio": float(os.getenv("SURYA_BBOX_WARMUP_RATIO", "0.05")),
+        "warmup_steps": warmup_steps,
         "weight_decay": float(os.getenv("SURYA_BBOX_WEIGHT_DECAY", "0.01")),
         "max_grad_norm": float(os.getenv("SURYA_BBOX_MAX_GRAD_NORM", "1.0")),
         "seed": RANDOM_SEED,
         "data_seed": RANDOM_SEED,
     }
+    if kwargs["torch_compile"]:
+        kwargs["torch_compile_backend"] = os.getenv("SURYA_BBOX_TORCH_COMPILE_BACKEND", "inductor")
+        kwargs["torch_compile_mode"] = os.getenv("SURYA_BBOX_TORCH_COMPILE_MODE", "default")
+    fields = Seq2SeqTrainingArguments.__dataclass_fields__
+    if env_bool("SURYA_BBOX_GROUP_BY_LENGTH", True):
+        kwargs["length_column_name"] = "length"
+        kwargs["train_sampling_strategy" if "train_sampling_strategy" in fields else "group_by_length"] = (
+            "group_by_length" if "train_sampling_strategy" in fields else True
+        )
+    if smoke_steps:
+        kwargs.update(max_steps=smoke_steps, eval_strategy="no", save_strategy="no", load_best_model_at_end=False)
     try:
         return Seq2SeqTrainingArguments(**kwargs)
     except TypeError as exc:
@@ -973,14 +1326,49 @@ def make_training_args():
         return Seq2SeqTrainingArguments(**kwargs)
 
 
+def preflight_trainer(trainer):
+    """Fail before step 1 if the eval sampler/collator path is incompatible."""
+    print("Preflight: validating training/evaluation dataloaders...", flush=True)
+    train_loader = trainer.get_train_dataloader()
+    if len(train_loader) <= 0:
+        raise RuntimeError("Training dataloader is empty.")
+    if trainer.eval_dataset is not None:
+        eval_loader = trainer.get_eval_dataloader()
+        if len(eval_loader) <= 0:
+            raise RuntimeError("Evaluation dataloader is empty.")
+        # Materialize one batch so sampler + image processor + collator failures
+        # happen now instead of after an entire epoch.
+        iterator = iter(eval_loader)
+        batch = next(iterator)
+        required = ("input_ids", "attention_mask", "labels")
+        if not hasattr(batch, "keys") or any(key not in batch for key in required):
+            raise RuntimeError(
+                "Evaluation collator returned an invalid batch; expected mapping-like "
+                "input_ids/attention_mask/labels outputs."
+            )
+        for key in required:
+            value = batch[key]
+            if not torch.is_tensor(value) or value.ndim < 2 or value.shape[0] <= 0:
+                raise RuntimeError(f"Evaluation collator returned invalid tensor for {key}: {type(value).__name__}.")
+        if batch["input_ids"].shape != batch["attention_mask"].shape or batch["labels"].shape != batch["input_ids"].shape:
+            raise RuntimeError("Evaluation collator returned inconsistent input/attention/label shapes.")
+        supervised = int(batch["labels"].ne(-100).sum())
+        if supervised <= 0:
+            raise RuntimeError("Evaluation collator produced no supervised assistant tokens.")
+        del batch, iterator, eval_loader
+    del train_loader
+    gc.collect()
+    print("Preflight passed.", flush=True)
+
+
 def merge_and_save(model, processor, train_mode: str):
     print("Saving final model...", flush=True)
     if train_mode.startswith("lora"):
         print("Merging LoRA weights into the base model...", flush=True)
-        model = model.merge_and_unload()
+        model = model.merge_and_unload(safe_merge=True)
     configure_generation(model, processor)
     FINAL_DIR.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(FINAL_DIR)
+    model.save_pretrained(FINAL_DIR, safe_serialization=True)
     processor.save_pretrained(FINAL_DIR)
     print(f"Final model saved to {FINAL_DIR}", flush=True)
     return model
@@ -991,6 +1379,7 @@ def save_benchmark(path, model_id, metrics, results):
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "model_id": model_id,
+        "metrics_version": 2,
         "base_model": MODEL_ID,
         "prompt": USER_PROMPT,
         "bbox_norm_scale": BBOX_NORM_SCALE,
@@ -998,8 +1387,7 @@ def save_benchmark(path, model_id, metrics, results):
         "metrics": metrics,
         "results": results,
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+    atomic_json(path, payload)
     print(f"Benchmark saved to {path}", flush=True)
 
 
@@ -1014,6 +1402,7 @@ def metric_subset(metrics):
 def save_comparison(path, surya_metrics, lighton_metrics=None, error=None):
     payload = {
         "surya_model_id": os.getenv("HF_REPO", "Remidesbois/surya-ocr-2-poneglyph-bbox"),
+        "metrics_version": 2,
         "lighton_model_id": LIGHTON_BASELINE_MODEL_ID,
         "bbox_norm_scale": BBOX_NORM_SCALE,
         "surya": metric_subset(surya_metrics),
@@ -1110,6 +1499,8 @@ def run_final_surya_benchmark(model, processor, test_dataset):
         model_label="SURYA FINAL",
         max_samples=FINAL_TEST_MAX_SAMPLES or None,
         worst_count=20,
+        batch_generator=generate_surya_predictions,
+        batch_size=int(os.getenv("SURYA_BBOX_GEN_BATCH", "1")),
     )
     save_benchmark(
         FINAL_DIR / "benchmark_surya_bbox.json",
@@ -1117,6 +1508,8 @@ def run_final_surya_benchmark(model, processor, test_dataset):
         metrics,
         results,
     )
+    if metrics["generation_errors"] and env_bool("SURYA_BBOX_FAIL_ON_GENERATION_ERROR", True):
+        raise RuntimeError("Held-out generation failed on one or more pages; see benchmark_surya_bbox.json.")
     return metrics, results
 
 
@@ -1131,10 +1524,43 @@ def benchmark_existing_model(model_path: str, skip_lighton_comparison=False):
         run_lighton_comparison(test_dataset, metrics)
 
 
+def resolve_resume_checkpoint(requested):
+    if str(requested).strip().lower() in {"none", "", "0", "false", "off"}:
+        if list(OUTPUT_DIR.glob("checkpoint-*")) or (FINAL_DIR / "config.json").exists():
+            raise FileExistsError("Output already contains a training run. Use --resume auto or a new SURYA_BBOX_OUTPUT_DIR.")
+        return None
+    checkpoint = get_last_checkpoint(str(OUTPUT_DIR)) if requested == "auto" and OUTPUT_DIR.exists() else requested
+    if requested == "auto" and (not OUTPUT_DIR.exists() or not checkpoint):
+        if (FINAL_DIR / "config.json").exists():
+            raise FileExistsError("A final model exists but no resumable checkpoint was found. Use a new output directory.")
+        return None
+    path = Path(checkpoint)
+    required = ("trainer_state.json", "optimizer.pt", "scheduler.pt")
+    missing = [name for name in required if not (path / name).is_file()]
+    if missing:
+        raise ValueError(f"Incomplete resume checkpoint {path}: missing {', '.join(missing)}. Choose an earlier complete checkpoint.")
+    return str(path)
+
+
 def main():
+    global OUTPUT_DIR, FINAL_DIR
     args = parse_args()
-    configure_torch_runtime()
+    if args.smoke_steps < 0:
+        raise ValueError("--smoke-steps must be non-negative.")
+    if sum((args.merge_only, args.benchmark_only, args.diagnose, bool(args.smoke_steps))) > 1:
+        raise ValueError("Choose only one of --merge-only, --benchmark-only, --diagnose and --smoke-steps.")
+    profile = configure_torch_runtime(args.profile)
     set_seed(RANDOM_SEED)
+    training = not (args.merge_only or args.benchmark_only or args.diagnose)
+    if training and (int(os.getenv("WORLD_SIZE", "1")) > 1 or torch.cuda.device_count() > 1):
+        raise ValueError("This trainer targets one GPU. Select one with CUDA_VISIBLE_DEVICES before launching.")
+    runtime = runtime_diagnostics(profile, require_cuda=training)
+    if args.diagnose:
+        return
+    if args.smoke_steps:
+        OUTPUT_DIR = OUTPUT_DIR / f"smoke-{time.time_ns()}"
+        FINAL_DIR = OUTPUT_DIR / "final_merged"
+        args.resume = "none"
 
     if args.benchmark_only:
         benchmark_existing_model(
@@ -1143,8 +1569,11 @@ def main():
         )
         return
 
-    processor = configure_processor()
-    model = load_surya_model()
+    resume_checkpoint = resolve_resume_checkpoint(args.resume) if training else None
+    has_processor = resume_checkpoint and any((Path(resume_checkpoint) / name).exists()
+                                             for name in ("preprocessor_config.json", "processor_config.json"))
+    processor = configure_processor(resume_checkpoint if has_processor else MODEL_ID)
+    model = load_surya_model(for_training=training)
     configure_generation(model, processor)
 
     if args.merge_only:
@@ -1158,44 +1587,84 @@ def main():
         merge_and_save(model, processor, "lora")
         return
 
-    train_dataset = prepare_dataset(TRAIN_FILE, "train")
+    train_dataset = prepare_dataset(TRAIN_FILE, "train", processor=processor)
     val_dataset = prepare_dataset(VAL_FILE, "val")
-    test_dataset = prepare_dataset(TEST_FILE, "test")
+    test_dataset = prepare_dataset(TEST_FILE, "test") if not args.smoke_steps else None
+    trainer_val_dataset = evaluation_subset(val_dataset, LOSS_EVAL_MAX_SAMPLES)
+    if len(trainer_val_dataset) != len(val_dataset):
+        print(
+            f"Training-time eval subset: {len(trainer_val_dataset)}/{len(val_dataset)} pages "
+            f"(full held-out test remains unchanged).",
+            flush=True,
+        )
 
-    model, train_mode = configure_trainable_model(model)
+    model, train_mode = configure_trainable_model(model, resume_checkpoint=resume_checkpoint)
     if hasattr(model.config, "use_cache"):
         model.config.use_cache = False
 
-    callbacks = [LiveMetricsCallback()]
+    monitor = TrainingMonitorCallback(OUTPUT_DIR, os.getenv("SURYA_BBOX_RUN_NAME", f"Surya BBox / {profile}"))
+    callbacks = [monitor]
     patience = int(os.getenv("SURYA_BBOX_EARLY_STOPPING_PATIENCE", "0"))
-    if patience > 0:
+    if patience > 0 and not args.smoke_steps:
         callbacks.append(EarlyStoppingCallback(early_stopping_patience=patience))
 
     trainer = PromptOnlyEvalTrainer(
         model=model,
-        args=make_training_args(),
+        args=make_training_args(args.smoke_steps, train_size=len(train_dataset)),
         train_dataset=train_dataset,
-        eval_dataset=val_dataset,
+        eval_dataset=trainer_val_dataset,
         data_collator=SuryaBBoxCollator(processor),
         callbacks=callbacks,
         processor=processor,
+        processing_class=processor,
         gen_eval_max_samples=GEN_EVAL_MAX_SAMPLES,
     )
-
-    print("Starting Surya bbox fine-tuning...", flush=True)
-    trainer.train()
-    print(f"Best checkpoint: {trainer.state.best_model_checkpoint or find_best_checkpoint(OUTPUT_DIR)}", flush=True)
-
-    final_model = merge_and_save(trainer.model, processor, train_mode)
-    print("Running held-out Surya bbox benchmark...", flush=True)
-    surya_metrics, _results = run_final_surya_benchmark(final_model, processor, test_dataset)
-
-    release_model(final_model)
-    final_model = None
-    del trainer
-    gc.collect()
-    if not args.skip_lighton_comparison and env_bool("SURYA_BBOX_COMPARE_LIGHTON", True):
-        run_lighton_comparison(test_dataset, surya_metrics)
+    trainer.remove_callback(PrinterCallback)
+    preflight_trainer(trainer)
+    manifest = {"runtime": runtime, "model_id": MODEL_ID, "train_mode": train_mode,
+                "resume_checkpoint": resume_checkpoint, "training_arguments": trainer.args.to_dict(),
+                "train_samples": len(train_dataset), "val_samples": len(val_dataset),
+                "trainer_eval_samples": len(trainer_val_dataset),
+                "trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
+                "model_revision": getattr(model.config, "_commit_hash", None),
+                "trim_logits": trainer.trim_logits, "metrics_version": 2}
+    atomic_json(OUTPUT_DIR / "run_manifest.json", manifest)
+    state = trainer.state
+    try:
+        print(f"Starting Surya bbox fine-tuning; profile={profile}, resume={resume_checkpoint or 'none'}", flush=True)
+        print(f"Local dashboard: {OUTPUT_DIR / 'training_dashboard.html'}", flush=True)
+        result = trainer.train(resume_from_checkpoint=resume_checkpoint)
+        state = trainer.state
+        trainer.save_state()
+        trainer.save_metrics("train", result.metrics)
+        if args.smoke_steps:
+            monitor.close("smoke_complete", state)
+            print("Smoke run complete. No merge, final benchmark or upload was performed.", flush=True)
+            return
+        print(f"Best checkpoint: {state.best_model_checkpoint or find_best_checkpoint(OUTPUT_DIR)}", flush=True)
+        trained_model = trainer.model
+        # Free optimizer/moment tensors before merging and running autoregressive tests.
+        del trainer
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        monitor.summary["status"] = "exporting"
+        monitor._persist("export_start")
+        final_model = merge_and_save(trained_model, processor, train_mode)
+        print("Running held-out Surya bbox benchmark...", flush=True)
+        surya_metrics, _results = run_final_surya_benchmark(final_model, processor, test_dataset)
+        release_model(final_model)
+        final_model = trained_model = model = None
+        gc.collect()
+        if not args.skip_lighton_comparison and env_bool("SURYA_BBOX_COMPARE_LIGHTON", True):
+            run_lighton_comparison(test_dataset, surya_metrics)
+        monitor.close("complete", state)
+    except KeyboardInterrupt:
+        monitor.close("interrupted", trainer.state if "trainer" in locals() else state)
+        raise
+    except BaseException:
+        monitor.close("failed", trainer.state if "trainer" in locals() else state)
+        raise
 
 
 if __name__ == "__main__":

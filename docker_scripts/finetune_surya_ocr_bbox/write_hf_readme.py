@@ -29,7 +29,7 @@ LIGHTON_MODEL = os.getenv(
     "SURYA_BBOX_LIGHTON_BASELINE_MODEL_ID",
     "Remidesbois/LightonOCR-2-1b-poneglyph-bbox",
 )
-PROMPT = get_prompt("ocr_page_bbox", "SURYA_BBOX_USER_PROMPT")
+PROMPT = get_prompt("ocr_page_bbox_training_lines", "SURYA_BBOX_USER_PROMPT")
 
 
 def load_json(path: Path):

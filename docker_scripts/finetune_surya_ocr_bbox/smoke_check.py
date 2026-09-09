@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 SCRIPT_DIR = Path(__file__).resolve().parent
 DOCKER_SCRIPTS_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = DOCKER_SCRIPTS_DIR.parent
+sys.path.insert(0, str(DOCKER_SCRIPTS_DIR))
 
 load_dotenv(SCRIPT_DIR / ".env")
 load_dotenv(DOCKER_SCRIPTS_DIR / ".env")
@@ -32,6 +34,13 @@ def parse_bbox_output(text):
 
 
 def main():
+    from common_training.prompts import get_prompt
+
+    prompt = get_prompt("ocr_page_bbox_training_lines", "SURYA_BBOX_USER_PROMPT")
+    if "[x1,y1,x2,y2]" not in prompt:
+        raise RuntimeError("Shared Surya bbox training prompt has an unexpected contract.")
+    print("Shared Surya bbox prompt registry check passed.", flush=True)
+
     parsed = parse_bbox_output("Salut [10,20,300,400]\nA plus [500,10,900,120]")
     if len(parsed) != 2 or parsed[0]["bbox"] != [10, 20, 300, 400]:
         raise RuntimeError("BBox parser smoke check failed.")

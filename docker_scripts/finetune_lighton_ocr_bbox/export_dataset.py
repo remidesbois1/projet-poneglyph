@@ -14,6 +14,7 @@ from collections import defaultdict
 import threading
 import hashlib
 import random
+from urllib.parse import quote, unquote, urlsplit
 
 try:
     import pillow_avif as _pillow_avif  # noqa: F401 - registers the Pillow codec
@@ -49,6 +50,10 @@ RANDOM_SEED = 42
 JPEG_QUALITY = 95
 MIN_BUBBLES_PER_PAGE = 1
 MIN_TEXT_LENGTH = 1
+DOWNLOAD_WORKERS = int(os.getenv("LIGHTON_BBOX_DOWNLOAD_WORKERS", "16"))
+REQUEST_TIMEOUT_SECONDS = int(
+    os.getenv("LIGHTON_BBOX_REQUEST_TIMEOUT_SECONDS", "45")
+)
 USER_PROMPT = ""
 
 
@@ -57,6 +62,170 @@ def normalize_text(text):
         return ""
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def parse_r2_reference(reference: str, allowed_bucket: str):
+    """Validate the canonical private-page R2 reference used by the backend."""
+    parts = urlsplit(reference)
+    if (
+        reference != reference.strip()
+        or parts.scheme != "r2"
+        or not allowed_bucket
+        or parts.netloc != allowed_bucket
+        or parts.query
+        or parts.fragment
+    ):
+        raise ValueError("Invalid or unconfigured private page bucket")
+
+    segments = parts.path.removeprefix("/").split("/")
+    decoded = [unquote(segment, errors="strict") for segment in segments]
+    for raw, value in zip(segments, decoded):
+        if (
+            not value
+            or value in {".", ".."}
+            or "/" in value
+            or "\\" in value
+            or any(ord(char) < 32 or ord(char) == 127 for char in value)
+            or quote(value, safe="~!*'()-._") != raw
+        ):
+            raise ValueError("Invalid private page object key")
+    return parts.netloc, "/".join(decoded)
+
+
+def create_r2_client():
+    """Create a clock-skew-aware S3 client for Cloudflare R2 private pages."""
+    required = (
+        "R2_ENDPOINT",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+        "R2_PAGES_BUCKET_NAME",
+    )
+    missing = [name for name in required if not os.getenv(name)]
+    if missing:
+        raise RuntimeError("Private page export requires: " + ", ".join(missing))
+
+    from datetime import datetime, timedelta, timezone
+    from email.utils import parsedate_to_datetime
+
+    import boto3
+    from botocore.auth import AUTH_TYPE_MAPS, SIGV4_TIMESTAMP, S3SigV4Auth
+    from botocore.config import Config as S3Config
+
+    clock_offset = timedelta()
+
+    class R2ClockAuth(S3SigV4Auth):
+        def _modify_request_before_signing(self, request):
+            request.context["timestamp"] = (
+                datetime.now(timezone.utc) + clock_offset
+            ).strftime(SIGV4_TIMESTAMP)
+            super()._modify_request_before_signing(request)
+
+    def clock_skew_retry(response=None, attempts=0, **_kwargs):
+        nonlocal clock_offset
+        parsed = response[1] if response else {}
+        if (
+            parsed.get("Error", {}).get("Code") == "RequestTimeTooSkewed"
+            and attempts < 3
+        ):
+            date = (
+                parsed.get("ResponseMetadata", {})
+                .get("HTTPHeaders", {})
+                .get("date")
+            )
+            if date:
+                clock_offset = parsedate_to_datetime(date) - datetime.now(timezone.utc)
+                return 0
+        return None
+
+    AUTH_TYPE_MAPS["poneglyph-r2-v4"] = R2ClockAuth
+    client = boto3.client(
+        "s3",
+        endpoint_url=os.environ["R2_ENDPOINT"],
+        region_name="auto",
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        config=S3Config(
+            signature_version="poneglyph-r2-v4",
+            retries={"max_attempts": 4, "mode": "standard"},
+            max_pool_connections=max(DOWNLOAD_WORKERS, 8),
+            connect_timeout=min(REQUEST_TIMEOUT_SECONDS, 30),
+            read_timeout=REQUEST_TIMEOUT_SECONDS,
+        ),
+    )
+    client.meta.events.register("needs-retry.s3.GetObject", clock_skew_retry)
+    return client
+
+
+def download_pages(pages):
+    """Download every source page, refusing to create a partial dataset."""
+    print(f"Downloading {len(pages)} unique source pages...", flush=True)
+    page_images = {}
+    page_images_lock = threading.Lock()
+    has_private_r2 = any(
+        str(data.get("url_image") or "").startswith("r2://")
+        for data in pages.values()
+    )
+    r2_client = create_r2_client() if has_private_r2 else None
+
+    def download_page(page_id, url):
+        if str(url).startswith("r2://"):
+            from botocore.exceptions import BotoCoreError, ClientError
+
+            bucket, key = parse_r2_reference(
+                str(url), os.environ["R2_PAGES_BUCKET_NAME"]
+            )
+            try:
+                response = r2_client.get_object(Bucket=bucket, Key=key)
+                with response["Body"] as body:
+                    content = body.read()
+            except (BotoCoreError, ClientError) as exc:
+                raise OSError(
+                    f"private R2 read failed ({type(exc).__name__})"
+                ) from None
+        else:
+            response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            content = response.content
+
+        try:
+            with Image.open(io.BytesIO(content)) as img:
+                page_img = img.convert("RGB")
+        except (OSError, ValueError) as exc:
+            raise OSError(f"image decode failed ({type(exc).__name__})") from None
+        return page_id, page_img
+
+    failures = []
+    with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as executor:
+        futures = {
+            executor.submit(download_page, page_id, data["url_image"]): page_id
+            for page_id, data in pages.items()
+        }
+        for future in tqdm(
+            as_completed(futures), total=len(futures), desc="Downloading pages"
+        ):
+            page_id = futures[future]
+            try:
+                completed_page_id, image = future.result()
+                with page_images_lock:
+                    page_images[completed_page_id] = image
+            except Exception as exc:
+                failures.append((page_id, str(exc)))
+
+    if failures:
+        print(f"Failed source pages: {len(failures)}/{len(pages)}", flush=True)
+        for page_id, message in failures[:20]:
+            print(f"  page {page_id}: {message}", flush=True)
+        if len(failures) > 20:
+            print(f"  ... and {len(failures) - 20} more", flush=True)
+        raise RuntimeError(
+            "Source page download failed; refusing to create a partial bbox dataset."
+        )
+
+    if not page_images:
+        raise RuntimeError("No source page image was downloaded; refusing empty export.")
+
+    print(f"  -> {len(page_images)}/{len(pages)} pages downloaded.", flush=True)
+    return page_images
 
 
 def resize_page(image, target_longest_side):
@@ -121,6 +290,18 @@ def build_frozen_splits(page_hashes, manifest_path, force_new=False):
     existing = None
     if manifest_path.exists() and not force_new:
         existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+        # A previously failed export used to persist an all-empty manifest. Treat
+        # that artifact as uninitialized rather than freezing an empty test set.
+        existing_splits = existing.get("splits", {}) if isinstance(existing, dict) else {}
+        required_splits = ("train", "val", "test")
+        # Old failed/partial exports could leave either an all-empty manifest or
+        # a manifest such as train/val populated with test empty. Such a manifest
+        # must not be treated as frozen because it can never recover the missing
+        # split on later exports.
+        if len(page_hashes) >= 3 and any(
+            not existing_splits.get(split) for split in required_splits
+        ):
+            existing = None
 
     groups = defaultdict(list)
     for page_id, digest in page_hashes.items():
@@ -156,8 +337,13 @@ def build_frozen_splits(page_hashes, manifest_path, force_new=False):
     rng = random.Random(RANDOM_SEED)
     rng.shuffle(unassigned_groups)
     total = len(page_hashes)
-    target_test = round(total * TEST_SIZE)
-    target_val = round(total * VAL_SIZE)
+    if total < 3:
+        raise ValueError("At least 3 distinct pages are required for train/val/test splits.")
+    target_test = max(1, round(total * TEST_SIZE))
+    target_val = max(1, round(total * VAL_SIZE))
+    if target_test + target_val >= total:
+        target_test = 1
+        target_val = 1
     counts = {
         split: sum(value == split for value in assignments.values())
         for split in ("train", "val", "test")
@@ -272,35 +458,10 @@ def main():
     print(f"Total bubbles in dataset: {total_bubbles}", flush=True)
 
     if not pages_dict:
-        print("Nothing to export.")
-        return
+        raise RuntimeError("No valid page bbox samples were exported from Supabase.")
 
-    print(f"\nDownloading {len(pages_dict)} unique pages in parallel...", flush=True)
-    page_images = {}
-    page_images_lock = threading.Lock()
-    session = requests.Session()
-
-    def download_page(page_id, url):
-        try:
-            resp = session.get(url, timeout=30)
-            resp.raise_for_status()
-            img = Image.open(io.BytesIO(resp.content)).convert("RGB")
-            with page_images_lock:
-                page_images[page_id] = img
-        except Exception as e:
-            print(f"  ⚠️ Failed to download page {page_id}: {e}", flush=True)
-
-    with ThreadPoolExecutor(max_workers=16) as executor:
-        futures = [
-            executor.submit(download_page, pid, pdata["url_image"])
-            for pid, pdata in pages_dict.items()
-        ]
-        for f in tqdm(
-            as_completed(futures), total=len(futures), desc="Downloading pages"
-        ):
-            pass
-
-    print(f"  -> {len(page_images)} pages downloaded.", flush=True)
+    print("", flush=True)
+    page_images = download_pages(pages_dict)
 
     page_hashes = {
         page_id: image_sha256(image) for page_id, image in page_images.items()
@@ -427,6 +588,10 @@ def verify_dataset(output_dir):
 
         with open(jsonl_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
+
+        if not lines:
+            print(f"  ❌ Empty split: {split}", flush=True)
+            errors += 1
 
         for i, line in enumerate(lines):
             entry = json.loads(line)

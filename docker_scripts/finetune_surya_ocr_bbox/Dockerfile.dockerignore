@@ -1,0 +1,22 @@
+# This Dockerfile uses the project root as context. Send only its actual inputs.
+**
+!docker_scripts/
+!docker_scripts/common_training/
+!docker_scripts/common_training/*.py
+!docker_scripts/finetune_surya_bubble_ocr/
+!docker_scripts/finetune_surya_bubble_ocr/patch_causal_conv1d_arch.py
+!docker_scripts/finetune_surya_ocr_bbox/
+!docker_scripts/finetune_surya_ocr_bbox/*.py
+!docker_scripts/finetune_surya_ocr_bbox/*.bat
+!docker_scripts/finetune_surya_ocr_bbox/requirements.txt
+!docker_scripts/finetune_surya_ocr_bbox/README.md
+!packages/
+!packages/shared/
+!packages/shared/src/
+!packages/shared/src/llm-prompts.json
+docker_scripts/finetune_surya_ocr_bbox/hf-cache/
+docker_scripts/finetune_surya_ocr_bbox/outputs_surya_bbox/
+docker_scripts/finetune_surya_ocr_bbox/surya_bbox_dataset/
+docker_scripts/finetune_surya_ocr_bbox/__pycache__/
+**/__pycache__/
+**/.env*

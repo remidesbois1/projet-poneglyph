@@ -1,13 +1,18 @@
 **
-!finetune_lighton_ocr_bbox
-!finetune_lighton_ocr_bbox/**
-!finetune_lighton_ocr/train_lighton_ocr.py
-!common_training
-!common_training/**
+!docker_scripts
+!docker_scripts/finetune_lighton_ocr_bbox
+!docker_scripts/finetune_lighton_ocr_bbox/**
+!docker_scripts/common_training
+!docker_scripts/common_training/**
+!packages
+!packages/shared
+!packages/shared/src
+!packages/shared/src/llm-prompts.json
 
 **/__pycache__
 **/*.pyc
 **/.env
 **/lighton_bbox_dataset
 **/outputs_lighton_bbox
+**/hf-cache
 **/logs

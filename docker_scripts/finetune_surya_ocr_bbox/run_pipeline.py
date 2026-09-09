@@ -101,8 +101,40 @@ def run_probe(label, command):
     ).returncode
 
 
+def dataset_readiness(path: Path):
+    """Return (ready, reason) after validating persisted split artifacts."""
+
+    for split in ("train", "val", "test"):
+        metadata = path / split / "metadata.jsonl"
+        if not metadata.exists():
+            return False, f"missing {split}/metadata.jsonl"
+        if metadata.stat().st_size <= 0:
+            return False, f"empty {split}/metadata.jsonl"
+
+        first_entry = None
+        try:
+            with metadata.open("r", encoding="utf-8") as stream:
+                for line in stream:
+                    if line.strip():
+                        first_entry = json.loads(line)
+                        break
+        except (OSError, json.JSONDecodeError) as exc:
+            return False, f"invalid {split}/metadata.jsonl ({exc})"
+
+        if not isinstance(first_entry, dict):
+            return False, f"no JSON samples in {split}/metadata.jsonl"
+
+        image_file = str(first_entry.get("image_file") or "").strip()
+        if not image_file:
+            return False, f"first {split} sample has no image_file"
+        if not (path / split / image_file).is_file():
+            return False, f"missing image referenced by first {split} sample: {image_file}"
+
+    return True, "all splits contain at least one valid sample and referenced image"
+
+
 def dataset_is_ready(path: Path):
-    return all((path / split / "metadata.jsonl").exists() for split in ("train", "val", "test"))
+    return dataset_readiness(path)[0]
 
 
 def final_model_is_ready(path: Path):
@@ -302,9 +334,15 @@ def main():
         print(f"Output directory:  {output_dir()}", flush=True)
         print(f"Hugging Face repo: {hf_repo_id()}", flush=True)
 
-        if dataset_is_ready(dataset_dir()) and not env_bool("SURYA_BBOX_FORCE_EXPORT", False):
+        dataset_ready, dataset_reason = dataset_readiness(dataset_dir())
+        if dataset_ready and not env_bool("SURYA_BBOX_FORCE_EXPORT", False):
             print("Dataset already exists. Skipping export.", flush=True)
         else:
+            if not dataset_ready and dataset_dir().exists():
+                print(
+                    f"Existing dataset is incomplete/invalid ({dataset_reason}). Re-exporting it.",
+                    flush=True,
+                )
             hooks.set_status("preparing_dataset")
             run_step("Step 1: exporting Supabase full-page bbox dataset", "export_dataset.py")
             hooks.set_status("dataset_ready")
@@ -331,7 +369,15 @@ def main():
                 "--benchmark-only",
             )
         else:
-            run_step("Step 2: fine-tuning Surya OCR 2 bbox model", "train_surya_bbox.py")
+            resume_args = ()
+            if any(output_dir().glob("checkpoint-*")):
+                print("Training checkpoint found. Resuming automatically.", flush=True)
+                resume_args = ("--resume", "auto")
+            run_step(
+                "Step 2: fine-tuning Surya OCR 2 bbox model",
+                "train_surya_bbox.py",
+                *resume_args,
+            )
 
         write_model_card()
         hooks.set_status("uploading")

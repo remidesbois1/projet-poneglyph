@@ -1,41 +1,48 @@
-# LightOnOCR-2 BBox — entraînement RTX 5090
+# LightOnOCR-2 BBox — RTX 5090
 
-Adaptation de LightOnOCR sur des pages manga
-Le point de depart est volontairement `lightonai/LightOnOCR-2-1B-bbox-base`.
-Le modele publie sert uniquement de reference de benchmark et de quality gate.
-complètes. Les images restent plafonnées à **1500 px côté long** : cette
-résolution n'est jamais réduite par le profil GPU.
+Fine-tuning pleine page de `lightonai/LightOnOCR-2-1B-bbox-base` pour Poneglyph.
+Les images sont plafonnées à **1500 px côté long** et la sortie supervisée reste
+strictement une zone par ligne :
 
-Par défaut, le pipeline reprend le modèle publié
-`Remidesbois/LightonOCR-2-1b-poneglyph-bbox` afin de préserver le record OCR
-existant. Pour repartir volontairement du modèle brut, définir explicitement
-`LIGHTON_MODEL_ID=lightonai/LightOnOCR-2-1B-bbox-base`.
+```text
+Texte exact [x1,y1,x2,y2]
+```
 
-## Profil RTX 5090 par défaut
+Les coordonnées sont des entiers normalisés dans `[0,1000]`. LightOn-BBox reste
+conditionné **image-only**, comme le modèle de base, l'export historique et le
+runtime desktop Poneglyph. Le prompt textuel bbox partagé sert de contrat de
+validation/documentation mais n'est pas injecté à LightOn pendant le SFT.
 
-- BF16, TF32, SDPA et optimizer AdamW fusionné ;
-- calibration progressive des batchs `1, 2, 4, 8` sur les pages les plus
-  coûteuses ; le batch offrant le meilleur débit est retenu ;
-- backward sans gradient checkpointing en priorité, checkpointing uniquement
-  si la VRAM l'impose ;
-- batch effectif 8, avec accumulation calculée automatiquement. Il reste
-  identique à l'ancien entraînement afin de préserver le nombre d'updates et
-  la dynamique d'optimisation ;
-- pages regroupées par coût image + longueur de réponse afin de réduire le
-  padding et les formes très variables au sein d'un batch ;
-- quatre workers persistants, mémoire pinnée et préchargement de quatre batchs ;
-- logits calculés uniquement sur la tranche utile à la réponse assistant ;
-- rsLoRA rang 64, alpha 128, dropout 0, sans `lm_head` ;
-- maximum 6 époques, validation bbox batchée une fois par époque, early stopping
-  patience 2, puis une époque optionnelle sur les pages difficiles ;
-- LR par défaut `1e-5` lors de l'adaptation du modèle publié, pour éviter
-  l'oubli catastrophique de la transcription ;
-- test final gelé et aucun upload si le candidat régresse.
+## Profil RTX 5090
 
-Le batch retenu dépend réellement du contenu des pages. La calibration arrête
-les essais dès que le débit régresse, que le temps prédit devient excessif ou
-que la marge VRAM de 10 % serait dépassée. Un batch plus gros mais plus lent
-n'est donc pas choisi.
+- PyTorch 2.8 CUDA 12.8, BF16, TF32 et SDPA ;
+- AdamW fusionné ;
+- profil large par défaut : rsLoRA `r=128`, `alpha=256`, dropout `0`, sans `lm_head`
+  ni DoRA, sur les projections attention+MLP du vision encoder et du language model ;
+- `vision_projection` (le pont vision→langage, ~6,3 M paramètres) est entraîné en
+  entier via `modules_to_save`, pour environ **159 M paramètres entraînables** au
+  total (~13,7 % du modèle) ;
+- selective logits LightOn : le loss ne matérialise que la fin supervisée quand
+  `logits_to_keep` est disponible ;
+- calibration automatique des batchs physiques `1,2,4,8` sur les pages les plus
+  coûteuses, avec une limite par défaut de 90 % de VRAM et extrapolation du pic
+  avant chaque batch supérieur pour éviter de faire tomber le contexte CUDA ;
+- batch effectif conservé à 8 (`gradient_accumulation` est recalculé si le batch
+  physique maximal ne rentre pas) ;
+- gradient checkpointing désactivé par défaut et activé uniquement comme fallback
+  si aucun batch utile ne tient nativement ;
+- group-by-length, mémoire pinnée, 2 workers, prefetch 1 et workers non persistants
+  pour exploiter la 5090 sans reproduire les OOM RAM/WSL ;
+- validation loss bornée, génération bbox déterministe sur un sous-ensemble fixe,
+  benchmark final complet sur le split test ;
+- meilleur checkpoint sélectionné sur `eval_combined_score` ;
+- checkpoints resumables, `--resume auto`, `--smoke-steps`, `--diagnose` et
+  `--benchmark-only` ;
+- dashboard HTML + JSON/JSONL/TensorBoard avec loss, LR, ETA, GPU/VRAM et métriques.
+
+Il n'y a **aucune comparaison de modèle ni quality gate final**. Le pipeline fait
+uniquement export si nécessaire → entraînement/reprise → merge → benchmark LightOn
+→ upload optionnel.
 
 ## Lancement Windows
 
@@ -45,53 +52,46 @@ cd docker_scripts\finetune_lighton_ocr_bbox
 .\run_pipeline.bat
 ```
 
-Les rapports sont écrits sous `outputs_lighton_bbox/`, notamment
-`5090_profile.json`, `training_timing.json`, `benchmark_test.json` et
-`quality_gate.json`.
+Le profil réellement retenu est enregistré dans
+`outputs_lighton_bbox/hardware_profile.json`. Le suivi principal se trouve dans
+`outputs_lighton_bbox/training_dashboard.html` et le modèle final dans
+`outputs_lighton_bbox/final_merged/`.
 
-## Variables utiles
+## Commandes utiles
 
-- `LIGHTON_BASELINE_BENCHMARK` : JSON du benchmark du modèle publié ;
-- `LIGHTON_BASELINE_TRAIN_SECONDS` : durée réelle de l'ancien entraînement ;
-- `LIGHTON_CALIBRATE_ONLY=1` : calibration GPU sans entraînement ;
-- `LIGHTON_SKIP_UPLOAD=1` : interdit tout upload ;
-- `LIGHTON_FORCE_EXPORT=1` : rafraîchit l'export en conservant le split gelé ;
-- `LIGHTON_RESET_SPLIT=1` : recrée volontairement le split, à ne pas utiliser
-  pour comparer au benchmark public ;
-- `LIGHTON_TORCH_COMPILE=1` : essai opt-in seulement ; les formes dynamiques des
-  pages peuvent rendre la compilation plus lente que le mode eager.
-- `LIGHTON_HARDWARE_PROFILE=h200` : profil H200 avec batchs candidats jusqu'à
-  32, validation/génération par 8 et checkpointing désactivé en priorité.
+```powershell
+# Diagnostic CUDA/Blackwell sans charger le modèle
+docker run --rm --gpus all lighton-ocr-bbox-finetune:latest `
+  python train_lighton_bbox.py --diagnose --profile auto
 
-Les benchmarks batchent désormais les pages par coût image + longueur de
-réponse estimée. Cela évite qu'une page très longue ralentisse tout un batch,
-sans modifier l'ensemble des pages évaluées ni leur ordre dans les métriques.
+# Petit run technique, sans benchmark final
+docker run --rm --gpus all lighton-ocr-bbox-finetune:latest `
+  python train_lighton_bbox.py --smoke-steps 2
 
-Pour réutiliser le profil conservateur RTX 3090 :
-
-```dotenv
-LIGHTON_HARDWARE_PROFILE=rtx3090
-LIGHTON_EFFECTIVE_BATCH=8
-LIGHTON_CALIBRATION_REQUIRE_CHECKPOINTING=1
-LIGHTON_GENERATION_BATCH=1
-LIGHTON_EVAL_BATCH=1
-LIGHTON_PROFILE_FILENAME=3090_profile.json
+# Reprendre automatiquement le dernier checkpoint sain
+docker run --rm --gpus all lighton-ocr-bbox-finetune:latest `
+  python train_lighton_bbox.py --resume auto
 ```
 
-## Récupération après interruption du hard-SFT
+## Variables principales
 
-Si le SFT principal est terminé mais que le replay échoue, la commande SSH
-suivante fusionne le meilleur checkpoint principal, exécute le benchmark bbox,
-crée le README du modèle et publie le dossier fusionné :
+- `LIGHTON_BBOX_TRAIN_BATCH`, `LIGHTON_BBOX_EFFECTIVE_BATCH=8` ;
+- `LIGHTON_BBOX_BATCH_CANDIDATES=1,2,4,8` ;
+- `LIGHTON_BBOX_CALIBRATION_MAX_VRAM_RATIO=0.90` ;
+- `LIGHTON_BBOX_EVAL_BATCH=4`, `LIGHTON_BBOX_GEN_BATCH=4` ;
+- `LIGHTON_BBOX_DATALOADER_WORKERS=2`, `LIGHTON_BBOX_PREFETCH_FACTOR=1` ;
+- `LIGHTON_BBOX_GRADIENT_CHECKPOINTING=0` ;
+- `LIGHTON_BBOX_LORA_R=128`, `LIGHTON_BBOX_LORA_ALPHA=256` ;
+- `LIGHTON_BBOX_MODULES_TO_SAVE=vision_projection` ;
+- `LIGHTON_BBOX_LR=1e-5`, `LIGHTON_BBOX_EPOCHS=3` ;
+- `LIGHTON_BBOX_GEN_EVAL_MAX_SAMPLES=16`, `LIGHTON_BBOX_LOSS_EVAL_MAX_SAMPLES=64` ;
+- `LIGHTON_BBOX_SKIP_UPLOAD=1` pour ne jamais publier ;
+- `LIGHTON_BBOX_REQUIRE_UPLOAD=1` pour rendre une erreur d'upload fatale ;
+- `LIGHTON_BBOX_FORCE_EXPORT=1` pour refaire l'export gelé ;
+- l'export privé `r2://` utilise `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
+  `R2_SECRET_ACCESS_KEY` et `R2_PAGES_BUCKET_NAME` (les mêmes variables que Surya) ;
+- `LIGHTON_BBOX_TORCH_COMPILE=1` uniquement pour tester : les formes multimodales
+  dynamiques peuvent rendre Inductor moins rapide que l'eager sur ce modèle.
 
-```bash
-docker run --rm --gpus all --ipc=host --shm-size=16g --env-file ../../.env \
-  -v "$PWD/lighton_bbox_dataset:/app/lighton_bbox_dataset" \
-  -v "$PWD/outputs_lighton_bbox:/app/outputs_lighton_bbox" \
-  -v "$PWD/logs:/app/logs" \
-  lighton-ocr-bbox-finetune python publish_main_sft.py --force
-```
-
-`--force` est nécessaire ici car le benchmark relancé seul ne possède pas le
-temps historique complet pour le test de vitesse automatique. Le score et le
-rapport `quality_gate.json` sont tout de même recalculés avant l'upload.
+Un échec d'upload Hugging Face **n'invalide pas** un entraînement et un benchmark
+déjà terminés, sauf si `LIGHTON_BBOX_REQUIRE_UPLOAD=1` est explicitement activé.

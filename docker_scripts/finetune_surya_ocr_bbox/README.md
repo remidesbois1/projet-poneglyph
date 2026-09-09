@@ -68,15 +68,31 @@ SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
 ```
 
+If `pages.url_image` uses private `r2://...` references (the current production
+page storage), the exporter also requires:
+
+```text
+R2_ENDPOINT
+R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY
+R2_PAGES_BUCKET_NAME
+```
+
+Private R2 pages are fetched through Cloudflare's S3-compatible API. The exporter
+validates the bucket/key contract, retries transient S3 failures, compensates for
+R2 request clock skew, and aborts rather than silently training on a partial
+dataset when any source page cannot be read or decoded.
+
 Optional env:
 
 ```text
 HF_TOKEN
 HF_REPO=Remidesbois/surya-ocr-2-poneglyph-bbox
-SURYA_BBOX_TRAIN_BATCH=2
+SURYA_BBOX_PROFILE=auto
+SURYA_BBOX_TRAIN_BATCH=4
 SURYA_BBOX_EVAL_BATCH=2
-SURYA_BBOX_GRAD_ACCUM=4
-SURYA_BBOX_DATALOADER_WORKERS=4
+SURYA_BBOX_GRAD_ACCUM=2
+SURYA_BBOX_DATALOADER_WORKERS=2
 SURYA_BBOX_REQUIRE_UPLOAD=1
 SURYA_BBOX_COMPARE_LIGHTON=1
 SURYA_BBOX_REQUIRE_LIGHTON_COMPARISON=1
@@ -104,30 +120,126 @@ The trainer uses the same Surya/Qwen3.5 image-text path as
 
 - `AutoProcessor`
 - `AutoModelForImageTextToText`
-- LoRA/DoRA by default
+- LoRA by default (DoRA is explicitly opt-in)
 - prompt-only generation checks during validation
 - held-out generation benchmark after merge
 - EOS/PAD token normalization before generation
 
-Default training knobs are set for a moderately used RTX 5090:
+### RTX 5090 profile
+
+`--profile auto` detects the RTX 5090; `--profile rtx5090` selects it explicitly.
+Environment variables override profile defaults, including old values in `.env`.
+The profile is a starting point for 32 GiB, not a guarantee that every page size
+or target length fits. Keep the GPU free of other workloads during measurement.
+
+```text
+SURYA_BBOX_TRAIN_BATCH=4
+SURYA_BBOX_EVAL_BATCH=2
+SURYA_BBOX_GRAD_ACCUM=2
+SURYA_BBOX_DATALOADER_WORKERS=2
+SURYA_BBOX_GEN_EVAL_MAX_SAMPLES=48
+SURYA_BBOX_EVAL_STRATEGY=epoch
+SURYA_BBOX_LOGGING_STEPS=5
+```
+
+The effective batch is 8 pages on one GPU. The default LoRA configuration is
+rank 64 / alpha 128 / dropout 0.01; learning rate is 5e-5, cosine schedule,
+5% warmup, six epochs. Both full-attention and DeltaNet projections are targeted.
+The training dtype is BF16 when supported; full fine-tuning keeps FP32 master
+weights under autocast. Fused AdamW, TF32, non-reentrant gradient checkpointing,
+persistent spawn workers, pinned memory and length grouping are enabled on CUDA
+as appropriate. Single-GPU only: select one device with `CUDA_VISIBLE_DEVICES`.
+
+The collator preprocesses images once per batch and validates the tokenized
+prompt/answer boundary. Padding is masked by position, preserving EOS supervision
+even if PAD and EOS share an ID. The output head can omit prompt/image positions;
+the loss is normalized by the supervised token count across accumulation steps.
+No image resolution or answer truncation is introduced by this profile.
+
+For a smaller memory budget, use `--profile safe` (batch 1 / accumulation 8,
+evaluation batch 1, zero workers), or explicitly set a 2 / 4 pair:
 
 ```text
 SURYA_BBOX_TRAIN_BATCH=2
-SURYA_BBOX_EVAL_BATCH=2
 SURYA_BBOX_GRAD_ACCUM=4
-SURYA_BBOX_DATALOADER_WORKERS=4
-SURYA_BBOX_GEN_EVAL_MAX_SAMPLES=48
 ```
 
-For a 24GB RTX 3090, use the safer profile:
+Changing only the microbatch also changes the effective batch, so adjust
+accumulation deliberately. There is no silent OOM retry that changes training
+semantics, and no silent fallback from a failed LoRA setup to full fine-tuning.
+
+### Diagnose, smoke test, train, resume
+
+Run these inside the installed training environment, after exporting the dataset:
+
+```bash
+# No weights or dataset download; prints CUDA, GPU, package and kernel checks.
+python train_surya_bbox.py --diagnose --profile rtx5090
+
+# Three optimizer steps in a separate smoke-* directory. No final model,
+# validation, baseline comparison or upload; checks the actual training path.
+python train_surya_bbox.py --profile rtx5090 --smoke-steps 3
+
+python train_surya_bbox.py --profile rtx5090
+python train_surya_bbox.py --profile rtx5090 --resume auto
+# A complete explicit checkpoint path is also accepted after --resume.
+```
+
+An existing run is never overwritten by an accidental fresh start. Resume
+requires optimizer, scheduler and Trainer state files; an incomplete latest
+checkpoint produces a clear error instead of pretending to resume. Choose a
+complete earlier checkpoint explicitly when necessary. Adapter rank, targets and
+DoRA configuration are loaded from the checkpoint, not the new defaults. Keep the
+same dataset, hyperparameters and software environment for consistent resumption.
+To use resume through `run_pipeline.py`, set
+`SURYA_BBOX_RESUME_FROM_CHECKPOINT=auto` in its environment.
+
+Optional controls:
 
 ```text
-SURYA_BBOX_TRAIN_BATCH=1
-SURYA_BBOX_EVAL_BATCH=1
-SURYA_BBOX_GRAD_ACCUM=8
-SURYA_BBOX_DATALOADER_WORKERS=2
-SURYA_BBOX_GEN_EVAL_MAX_SAMPLES=32
+SURYA_BBOX_OUTPUT_DIR=/workspace/outputs_surya_bbox_experiment2
+SURYA_BBOX_RUN_NAME=surya-bbox-5090
+SURYA_BBOX_EVAL_STRATEGY=steps
+SURYA_BBOX_EVAL_STEPS=100
+SURYA_BBOX_EARLY_STOPPING_PATIENCE=3
+SURYA_BBOX_REQUIRE_FAST_LINEAR_ATTENTION=1
+SURYA_BBOX_GROUP_BY_LENGTH=1
+SURYA_BBOX_TRIM_LOGITS=1
+SURYA_BBOX_USE_DORA=0
+SURYA_BBOX_RICH=1
+SURYA_BBOX_REPORT_TO=tensorboard
 ```
+
+Early stopping is disabled unless a positive patience is provided. Generation
+metrics are computed before Trainer's evaluation callbacks, so best-checkpoint
+selection and early stopping see the same score. Setting
+`SURYA_BBOX_GEN_EVAL_MAX_SAMPLES=0` uses validation loss instead. Generation errors
+fail the run by default and are recorded in `validation_latest.json`.
+
+`torch.compile` stays opt-in (`SURYA_BBOX_TORCH_COMPILE=1`): dynamic image/token
+shapes, Triton compilation and recompilations must be measured on the actual
+dataset. No FP8 or quantized training is enabled merely because the card supports
+low-precision inference. `SURYA_BBOX_TRIM_LOGITS=0` is available for comparison.
+
+### Monitoring
+
+An interactive terminal displays a Rich progress panel; redirected logs stay
+plain text. It shows train/validation loss, CER, F1, IoU, LR, gradient norm,
+allocated/peak VRAM, optimizer steps per second and an indicative ETA.
+
+The output directory contains `training_dashboard.html` (responsive, offline,
+no server or CDN), `metrics.jsonl` (append-only sessions),
+`training_summary.json`, `run_manifest.json` and `validation_latest.json`.
+The HTML file refreshes every 15 seconds during training; its curves concern the
+current session, while JSONL preserves previous sessions. HTML writes are
+throttled independently of scalar logging. Resume throughput starts at the resumed
+step, not step zero. ETA includes elapsed validation/checkpoint overhead; it is
+not a prediction of final export/baseline duration. Non-finite logged losses or
+gradient norms stop the run rather than disappearing from the log.
+
+TensorBoard is optional; it is not needed for the local dashboard. No external
+tracking/upload is enabled by the trainer. The existing pipeline's HF upload is
+separate; set `SURYA_BBOX_SKIP_UPLOAD=1` to disable it.
 
 ## Benchmark Contract
 
@@ -141,6 +253,15 @@ The benchmark computes:
 - detection rate
 - combined score
 - average inference time
+
+Reports now include `metrics_version: 2`: empty pages participate in the means,
+the detection rate is recall at IoU 0.5 rather than a count-only ratio, and CER
+is clamped only inside the combined score (raw CER may exceed 1). Consequently,
+scores from older reports are not directly interchangeable with new scores.
+Mean IoU still concerns matched boxes; CER/WER concern matched text, with a
+penalty of 1 on nonempty pages with no matches. No-match IoU is 0. Benchmark
+latency includes preprocessing and generation, synchronizes CUDA, and includes
+first-use kernel overhead; it is not a warm-kernel-only throughput claim.
 
 The same held-out pages are then evaluated with
 `Remidesbois/LightonOCR-2-1b-poneglyph-bbox`, and the comparison is saved in
@@ -157,13 +278,67 @@ with drawn boxes.
 
 ## Docker
 
-```bash
-docker build -t remidesbois/surya-ocr-bbox-finetune:latest .
-docker run --gpus all --env-file ../../.env ^
+The build context is the **project root**, not this package directory, because
+the image includes both `docker_scripts/common_training` and the canonical shared
+prompt registry in `packages/shared/src/llm-prompts.json`. The Dockerfile-specific
+ignore file still sends only required source/configuration files, excluding
+datasets, caches and secrets.
+The image pins PyTorch 2.8 / CUDA 12.8, Transformers 5.14.1 and PEFT 0.20.0.
+It builds causal-conv1d 1.6.2.post1 for **SM120** and includes FLA 0.5.2; missing
+DeltaNet fast kernels cause an explicit failure instead of a hidden slow path.
+The Docker build itself only verifies that the CUDA dependencies import: Docker
+build stages normally have no GPU, so FLA intentionally selects its CPU device
+there. The strict Qwen3.5 fast-path and compute-capability checks run when the
+container starts with `--gpus all`, where the RTX 5090 is actually visible.
+
+From this directory (Windows Command Prompt / `.bat` syntax):
+
+```bat
+build.bat
+REM or build + push:
+build_and_push.bat
+
+REM equivalent manual build:
+docker build -f Dockerfile -t remidesbois/surya-ocr-bbox-finetune:latest ..\..
+docker run --rm -it --gpus all --shm-size=8g ^
+  --env-file ../../backend/.env ^
+  --env-file ../../.env ^
   -v "%cd%\surya_bbox_dataset:/workspace/surya_bbox_dataset" ^
   -v "%cd%\outputs_surya_bbox:/workspace/outputs_surya_bbox" ^
+  -v "%cd%\hf-cache:/workspace/hf-cache" ^
   remidesbois/surya-ocr-bbox-finetune:latest
 ```
+
+`run_pipeline.bat` uses its own directory, shared memory for image workers and a
+persistent HF/Triton cache. For local runs it loads `backend/.env` first (R2
+credentials) and the project-root `.env` second (training/HF overrides). Neither
+file is copied into the Docker image. For a noninteractive log, remove `-it`. To
+diagnose without exporting or training:
+
+```bash
+docker run --rm --gpus all remidesbois/surya-ocr-bbox-finetune:latest python train_surya_bbox.py --diagnose
+```
+
+The native Windows Python path can use the plain PyTorch fallback, but the
+documented fast-kernel environment is Linux through Docker/WSL. For another GPU
+architecture, rebuild with matching `TORCH_CUDA_ARCH_LIST` and
+`CAUSAL_CONV_CUDA_ARCH` build arguments; the SM120 binary is specific to 5090-class
+Blackwell, not an all-GPU image.
+
+## Regression tests
+
+```bash
+python -m unittest discover -s . -p 'test_*.py' -v
+```
+
+The tests load selected production functions through AST to isolate numerical,
+collation and monitoring behavior without model downloads or database access.
+They need CPU PyTorch, NumPy and Pillow. They cover padding/EOS, suffix validation,
+trimmed/full loss and gradients, unequal accumulation, evaluation-metric ordering,
+empty-page/error metrics, resume guards, cache restoration and monitoring files.
+They do not validate the installed Transformers/PEFT integration, CUDA kernels,
+Docker build, real-model quality or achieved 5090 performance; use an actual
+`--smoke-steps` run and held-out benchmark for those checks.
 
 ## Notes
 

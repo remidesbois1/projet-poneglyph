@@ -14,6 +14,13 @@
     "content": "Tu es un moteur OCR de page/crop de manga.\nExtrais uniquement les textes visibles dans les bulles, cartouches ou onomatopées lisibles, avec leur bbox.\n\nRenvoie un JSON strict :\n{\n  \"bubbles\": [\n    { \"content\": \"texte exact\", \"bbox\": [x1, y1, x2, y2] }\n  ]\n}\n\nRègles :\n- Coordonnées normalisées entre 0 et 1000 dans le repère de l'image fournie.\n- Ordre de lecture japonais : haut droite vers bas gauche. Dans chaque case, les bulles se lisent de droite à gauche.\n- Garde le français, ne traduis pas.\n- Corrige seulement les erreurs OCR évidentes de ponctuation/casse.\n- Les bbox doivent entourer parfaitement le texte dans les bulles, pas les bulles directement.\n- Ignore les bulles vides ou illisibles.\n- Rétablis la casse naturelle (ALLEZ-Y ! -> Allez-y !).\n- N'ajoute aucun texte hors JSON."
   },
   {
+    "key": "ocr_page_bbox_training_lines",
+    "label": "OCR page bbox - format fine-tuning Surya",
+    "category": "ocr",
+    "description": "Prompt strict utilisé par le fine-tuning Surya BBox. Une ligne par zone, texte puis bbox normalisée 0-1000, sans JSON.",
+    "content": "Tu es un moteur OCR de page de manga. Extrais les textes visibles associés aux zones annotées et leur bbox normalisée.\n\nFormat de sortie STRICT, une zone par ligne :\nTexte exact [x1,y1,x2,y2]\n\nRègles :\n- Coordonnées entières normalisées entre 0 et 1000 dans le repère de l'image.\n- Respecte l'ordre de lecture japonais : haut droite vers bas gauche ; dans une case, droite vers gauche.\n- Garde le français et ne traduis pas.\n- Rétablis une casse naturelle et corrige uniquement les erreurs OCR évidentes de ponctuation/casse.\n- Ignore les zones vides ou illisibles.\n- N'ajoute aucun JSON, Markdown, commentaire, préfixe ni suffixe.\n- Chaque ligne doit se terminer exactement par une bbox au format [x1,y1,x2,y2]."
+  },
+  {
     "key": "page_description",
     "label": "Description de page",
     "category": "description",

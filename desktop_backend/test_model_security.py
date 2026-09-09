@@ -81,9 +81,9 @@ class ModelRegistryTests(unittest.TestCase):
                 "9d3554f1487caa1fd33c30e6a397d306b0d71fe041639f8668482ad3b02a223d",
             ),
             "surya_bbox": (
-                "95e841b7dfcfa3cd7ea18f4d87a1c112490c909c",
+                "671cfe63672286ccfe629079a8d57f7ed967f3d5",
                 1331461328,
-                "20bd380b1029b9b706fb32d0ef72e6c989de87669a21a1cfd6c31bc242a17b00",
+                "67167ac7ce6fd3e87744ee554a7af0c214dc6ec1d059e4d79442803b6a8db065",
             ),
         }
         for model_key, (revision, size, sha256) in expected.items():

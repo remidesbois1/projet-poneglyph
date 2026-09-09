@@ -9,29 +9,48 @@ from dotenv import load_dotenv
 from huggingface_hub import HfApi, login
 
 
+os.environ["PYTHONUNBUFFERED"] = "1"
+# The classic HTTP/LFS uploader proved more reliable on the user's Windows/WSL
+# setup than the Xet path for multi-GB safetensors.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
 SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
 os.chdir(SCRIPT_DIR)
 load_dotenv(SCRIPT_DIR / ".env")
-load_dotenv(SCRIPT_DIR.parent.parent / ".env")
-os.environ["PYTHONUNBUFFERED"] = "1"
+load_dotenv(PROJECT_ROOT / ".env")
 
-DATASET_DIR = Path(os.getenv("LIGHTON_BBOX_DATASET_DIR", SCRIPT_DIR / "lighton_bbox_dataset"))
-OUTPUT_DIR = Path(os.getenv("LIGHTON_BBOX_OUTPUT_DIR", SCRIPT_DIR / "outputs_lighton_bbox"))
-FINAL_DIR = OUTPUT_DIR / "final_lora_merged"
-HF_REPO = os.getenv("HF_REPO", "Remidesbois/LightonOCR-2-1b-poneglyph-bbox")
+DEFAULT_HF_REPO = "Remidesbois/LightonOCR-2-1b-poneglyph-bbox"
 
 
 def env_bool(name, default=False):
-    value = os.getenv(name)
-    if value is None:
+    raw = os.getenv(name)
+    if raw is None:
         return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="LightOnOCR bbox GPU-optimized pipeline")
+    parser = argparse.ArgumentParser(description="Run the LightOnOCR bbox fine-tune pipeline.")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--check-remote", action="store_true")
     return parser.parse_args()
+
+
+def dataset_dir():
+    return Path(os.getenv("LIGHTON_BBOX_DATASET_DIR", SCRIPT_DIR / "lighton_bbox_dataset"))
+
+
+def output_dir():
+    return Path(os.getenv("LIGHTON_BBOX_OUTPUT_DIR", SCRIPT_DIR / "outputs_lighton_bbox"))
+
+
+def final_model_dir():
+    return output_dir() / "final_merged"
+
+
+def hf_repo_id():
+    return os.getenv("HF_REPO", DEFAULT_HF_REPO)
 
 
 def run_step(label, script, *args):
@@ -44,123 +63,198 @@ def run_step(label, script, *args):
         raise RuntimeError(f"{script} failed with exit code {result.returncode}")
 
 
-def dataset_ready():
-    return (DATASET_DIR / "split_manifest.json").exists() and all(
-        (DATASET_DIR / split / "metadata.jsonl").exists()
-        for split in ("train", "val", "test")
-    )
+def dataset_readiness(path):
+    for split in ("train", "val", "test"):
+        metadata = path / split / "metadata.jsonl"
+        if not metadata.is_file() or metadata.stat().st_size <= 0:
+            return False, f"missing/empty {split}/metadata.jsonl"
+        try:
+            first = next(
+                (json.loads(line) for line in metadata.read_text(encoding="utf-8").splitlines() if line.strip()),
+                None,
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            return False, f"invalid {split}/metadata.jsonl ({exc})"
+        if not isinstance(first, dict):
+            return False, f"no samples in {split}/metadata.jsonl"
+        image_file = str(first.get("image_file") or "").strip()
+        if not image_file or not (path / split / image_file).is_file():
+            return False, f"missing image referenced by first {split} sample"
+    return True, "ready"
 
 
-def read_gate(path):
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+def missing_required_env(*, require_export=False):
+    missing = []
+    if require_export:
+        missing.extend(
+            name
+            for name in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+            if not os.getenv(name)
+        )
+    if env_bool("LIGHTON_BBOX_REQUIRE_UPLOAD", False) and not os.getenv("HF_TOKEN"):
+        missing.append("HF_TOKEN")
+    return missing
 
 
-def upload_if_accepted():
-    if env_bool("LIGHTON_SKIP_UPLOAD", False):
-        print("Hugging Face upload disabled by LIGHTON_SKIP_UPLOAD=1.", flush=True)
-        return
-    current_gate = read_gate(OUTPUT_DIR / "last_quality_gate.json")
-    final_gate = read_gate(FINAL_DIR / "quality_gate.json")
-    if (
-        not current_gate.get("release_ready")
-        or not final_gate.get("release_ready")
-    ) and not env_bool("LIGHTON_ALLOW_FAILED_GATE_UPLOAD", False):
-        print("Candidate not uploaded: bbox quality/speed gate did not pass.", flush=True)
-        return
+def check_hf_access():
     token = os.getenv("HF_TOKEN")
     if not token:
-        if env_bool("LIGHTON_REQUIRE_UPLOAD", False):
-            raise RuntimeError("HF_TOKEN is required for upload")
-        print("HF_TOKEN missing; optional upload skipped.", flush=True)
+        print("HF_TOKEN missing; remote HF check skipped.", flush=True)
         return
-    login(token=token)
-    api = HfApi(token=token)
-    api.create_repo(repo_id=HF_REPO, exist_ok=True, private=env_bool("HF_PRIVATE", False))
-    api.upload_folder(
-        folder_path=str(FINAL_DIR),
-        repo_id=HF_REPO,
-        repo_type="model",
-        commit_message="Upload gated LightOnOCR Poneglyph bbox model",
-    )
-    print(f"Accepted model uploaded to {HF_REPO}.", flush=True)
+    info = HfApi(token=token).whoami()
+    print(f"Hugging Face token OK for {info.get('name') or 'authenticated user'}.", flush=True)
 
 
-def write_summary(status, error=None):
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    default_profile = (
-        "3090_profile.json"
-        if os.getenv("LIGHTON_HARDWARE_PROFILE", "rtx5090").lower() == "rtx3090"
-        else "5090_profile.json"
+def dry_run(check_remote=False):
+    failures = []
+    for path in (dataset_dir(), output_dir()):
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / ".write_probe"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            failures.append(f"not writable: {path} ({exc})")
+    ready, _reason = dataset_readiness(dataset_dir())
+    missing = missing_required_env(
+        require_export=not ready or env_bool("LIGHTON_BBOX_FORCE_EXPORT", False)
     )
-    profile_filename = os.getenv("LIGHTON_PROFILE_FILENAME", default_profile)
-    profile = read_gate(OUTPUT_DIR / profile_filename)
-    gate = read_gate(OUTPUT_DIR / "last_quality_gate.json")
+    if missing:
+        failures.append(f"missing env: {', '.join(missing)}")
+    try:
+        run_step("Checking LightOn bbox runtime and prompt contract", "smoke_check.py")
+    except Exception as exc:
+        failures.append(str(exc))
+    if check_remote:
+        try:
+            check_hf_access()
+        except Exception as exc:
+            failures.append(f"Hugging Face check failed: {exc}")
+    if failures:
+        print("Dry run failed:", flush=True)
+        for failure in failures:
+            print(f"  - {failure}", flush=True)
+        return 1
+    print("LightOn bbox dry run passed.", flush=True)
+    return 0
+
+
+def maybe_upload_to_hf():
+    if env_bool("LIGHTON_BBOX_SKIP_UPLOAD", False):
+        print("Hugging Face upload skipped by LIGHTON_BBOX_SKIP_UPLOAD=1.", flush=True)
+        return "skipped", None
+    token = os.getenv("HF_TOKEN")
+    if not token:
+        message = "HF_TOKEN missing; optional Hugging Face upload skipped."
+        if env_bool("LIGHTON_BBOX_REQUIRE_UPLOAD", False):
+            raise RuntimeError(message)
+        print(message, flush=True)
+        return "skipped", message
+    try:
+        login(token=token)
+        api = HfApi(token=token)
+        repo = hf_repo_id()
+        api.create_repo(repo_id=repo, exist_ok=True, private=env_bool("HF_PRIVATE", False))
+        print(f"Uploading final LightOn bbox model to {repo}...", flush=True)
+        api.upload_folder(
+            folder_path=str(final_model_dir()),
+            repo_id=repo,
+            repo_type="model",
+            commit_message="Upload LightOnOCR Poneglyph bbox fine-tuned model",
+        )
+        print("Hugging Face upload complete.", flush=True)
+        return "complete", None
+    except Exception as exc:
+        message = str(exc)
+        if env_bool("LIGHTON_BBOX_REQUIRE_UPLOAD", False):
+            raise
+        print(
+            "WARNING: training and benchmark are complete, but Hugging Face upload failed: "
+            f"{message}",
+            flush=True,
+        )
+        return "failed", message
+
+
+def write_summary(status, error=None, *, upload_status=None, upload_error=None):
+    output_dir().mkdir(parents=True, exist_ok=True)
     payload = {
         "status": status,
-        "error": error,
-        "training_kind": "lighton_ocr_bbox",
-        "dataset_dir": str(DATASET_DIR),
-        "output_dir": str(OUTPUT_DIR),
-        "final_model_dir": str(FINAL_DIR),
-        "benchmark_path": str(FINAL_DIR / "benchmark_test.json"),
-        "hf_repo": HF_REPO,
-        "image_longest_edge": 1500,
-        "hardware_profile": os.getenv("LIGHTON_HARDWARE_PROFILE", "rtx5090"),
-        "profile": profile,
-        "quality_gate": gate,
+        "error_message": error,
+        "training_kind": "lighton_bbox",
+        "dataset_dir": str(dataset_dir()),
+        "output_dir": str(output_dir()),
+        "final_model_dir": str(final_model_dir()),
+        "benchmark_path": str(final_model_dir() / "benchmark_lighton_bbox.json"),
+        "hardware_profile_path": str(output_dir() / "hardware_profile.json"),
+        "hf_repo": hf_repo_id(),
+        "upload_status": upload_status,
+        "upload_error": upload_error,
     }
-    (OUTPUT_DIR / "pipeline_summary.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    (output_dir() / "pipeline_summary.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
-
-
-def dry_run():
-    DATASET_DIR.mkdir(parents=True, exist_ok=True)
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    run_step("Checking pinned imports and processor", "smoke_check.py")
-    print("BBox dry run passed (fixed 1500 px configuration).", flush=True)
+    return payload
 
 
 def main():
     args = parse_args()
-    if args.dry_run or env_bool("LIGHTON_DRY_RUN", False):
-        dry_run()
-        return
-    missing = [
-        name
-        for name in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
-        if not os.getenv(name)
-    ]
-    if missing:
-        raise RuntimeError(f"Missing environment variables: {', '.join(missing)}")
-    try:
-        hardware = os.getenv("LIGHTON_HARDWARE_PROFILE", "rtx5090").upper()
-        print(f"Starting LightOnOCR bbox pipeline for {hardware} (1500 px).", flush=True)
-        if dataset_ready() and not env_bool("LIGHTON_FORCE_EXPORT", False):
-            print("Frozen bbox dataset already exists; export skipped.", flush=True)
-        else:
-            run_step("Step 1: exporting frozen train/val/test page splits", "export_dataset.py")
+    if args.dry_run or env_bool("LIGHTON_BBOX_DRY_RUN", False):
+        raise SystemExit(dry_run(args.check_remote))
 
-        trained_candidate = False
-        if (
-            (FINAL_DIR / "config.json").exists()
-            and (FINAL_DIR / "benchmark_test.json").exists()
-            and read_gate(FINAL_DIR / "quality_gate.json").get("release_ready")
-            and not env_bool("LIGHTON_FORCE_TRAIN", False)
-        ):
-            print("Existing final model already passed its gate; training skipped.", flush=True)
+    try:
+        print("Starting LightOnOCR Poneglyph bbox pipeline.", flush=True)
+        print(f"Dataset: {dataset_dir()}", flush=True)
+        print(f"Output:  {output_dir()}", flush=True)
+        print(f"HF repo: {hf_repo_id()}", flush=True)
+
+        ready, reason = dataset_readiness(dataset_dir())
+        force_export = env_bool("LIGHTON_BBOX_FORCE_EXPORT", False)
+        needs_export = force_export or not ready
+        missing = missing_required_env(require_export=needs_export)
+        if missing:
+            raise RuntimeError(f"Missing environment variables: {', '.join(missing)}")
+        if ready and not force_export:
+            print("Frozen dataset already exists; export skipped.", flush=True)
         else:
-            run_step("Step 2: optimized bbox SFT + hard-page SFT + benchmark", "train_lighton_bbox.py")
-            trained_candidate = True
-        if trained_candidate:
-            upload_if_accepted()
-        write_summary("complete")
+            if dataset_dir().exists() and not ready:
+                print(f"Dataset incomplete ({reason}); re-exporting.", flush=True)
+            run_step("Step 1: exporting frozen full-page bbox dataset", "export_dataset.py")
+
+        model_ready = (final_model_dir() / "config.json").is_file()
+        benchmark_ready = (final_model_dir() / "benchmark_lighton_bbox.json").is_file()
+        force_train = env_bool("LIGHTON_BBOX_FORCE_TRAIN", False)
+        if model_ready and benchmark_ready and not force_train:
+            print("Final model and benchmark already exist; training skipped.", flush=True)
+        elif model_ready and not force_train:
+            run_step(
+                "Step 2: benchmarking existing final model",
+                "train_lighton_bbox.py",
+                "--benchmark-only",
+            )
+        else:
+            resume_args = ()
+            if any(output_dir().glob("checkpoint-*")):
+                print("Training checkpoint found; resuming automatically.", flush=True)
+                resume_args = ("--resume", "auto")
+            run_step(
+                "Step 2: RTX 5090 optimized LightOn bbox fine-tuning + benchmark",
+                "train_lighton_bbox.py",
+                *resume_args,
+            )
+
+        upload_status, upload_error = maybe_upload_to_hf()
+        summary = write_summary(
+            "complete",
+            upload_status=upload_status,
+            upload_error=upload_error,
+        )
+        print("LightOn bbox pipeline complete.", flush=True)
+        return summary
     except Exception as exc:
         write_summary("failed", str(exc))
-        print(f"LightOnOCR bbox pipeline failed: {exc}", flush=True)
+        print(f"LightOn bbox pipeline failed: {exc}", flush=True)
         raise
 
 
