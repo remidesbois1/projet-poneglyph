@@ -380,4 +380,56 @@ describe('AuthContext', () => {
         });
         expect(screen.getByTestId('userEmail')).toHaveTextContent('zoro@test.com');
     });
+
+    it('does not reset the loaded role when Supabase repeats SIGNED_IN on tab focus', async () => {
+        const session = {
+            access_token: 'stable-token',
+            refresh_token: 'stable-refresh',
+            user: { id: 'user-focus', email: 'focus@test.com' },
+        };
+        supabase.auth.getSession.mockResolvedValue({ data: { session }, error: null });
+        supabase.auth.getUser.mockResolvedValue({ data: { user: session.user }, error: null });
+
+        render(
+            <AuthProvider>
+                <TestComponent />
+            </AuthProvider>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('roleStatus')).toHaveTextContent(ROLE_STATUS.READY);
+        });
+        expect(profileSingle).toHaveBeenCalledTimes(1);
+
+        act(() => authListener('SIGNED_IN', { ...session, user: { ...session.user } }));
+
+        expect(screen.getByTestId('roleStatus')).toHaveTextContent(ROLE_STATUS.READY);
+        expect(screen.getByTestId('role')).toHaveTextContent('User');
+        expect(profileSingle).toHaveBeenCalledTimes(1);
+    });
+
+    it('updates a refreshed token without dropping the already loaded role', async () => {
+        const session = {
+            access_token: 'old-token',
+            refresh_token: 'refresh-token',
+            user: { id: 'user-refresh', email: 'refresh@test.com' },
+        };
+        supabase.auth.getSession.mockResolvedValue({ data: { session }, error: null });
+        supabase.auth.getUser.mockResolvedValue({ data: { user: session.user }, error: null });
+
+        render(
+            <AuthProvider>
+                <TestComponent />
+            </AuthProvider>
+        );
+
+        await waitFor(() => expect(screen.getByTestId('roleStatus')).toHaveTextContent(ROLE_STATUS.READY));
+        expect(profileSingle).toHaveBeenCalledTimes(1);
+
+        act(() => authListener('TOKEN_REFRESHED', { ...session, access_token: 'new-token' }));
+
+        expect(screen.getByTestId('token')).toHaveTextContent('new-token');
+        expect(screen.getByTestId('roleStatus')).toHaveTextContent(ROLE_STATUS.READY);
+        expect(profileSingle).toHaveBeenCalledTimes(1);
+    });
 });

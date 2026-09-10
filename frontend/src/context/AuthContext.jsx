@@ -190,15 +190,26 @@ export function AuthProvider({ children }) {
         });
     }, [loadRole, resetRoleState]);
 
-    const applyAuthenticatedSession = useCallback((nextSession) => {
+    const applyAuthenticatedSession = useCallback((nextSession, { preserveRole = false } = {}) => {
         const userId = nextSession?.user?.id;
         if (!userId) throw createSessionExpiredError();
 
-        setSession(nextSession);
+        setSession((previousSession) => {
+            if (
+                previousSession?.user?.id === userId
+                && previousSession?.access_token === nextSession.access_token
+                && previousSession?.refresh_token === nextSession.refresh_token
+            ) {
+                return previousSession;
+            }
+            return nextSession;
+        });
         setGuestState(false);
         setError(null);
         setAuthStatus(AUTH_STATUS.AUTHENTICATED);
-        scheduleRoleLoad(userId);
+        if (!preserveRole || roleUserIdRef.current !== userId) {
+            scheduleRoleLoad(userId);
+        }
     }, [scheduleRoleLoad, setGuestState]);
 
     const applyNoSession = useCallback((guestMode = false) => {
@@ -328,7 +339,11 @@ export function AuthProvider({ children }) {
                 authRequestRef.current += 1;
 
                 if (nextSession?.user) {
-                    applyAuthenticatedSession(nextSession);
+                    const sameUser = roleUserIdRef.current === nextSession.user.id;
+                    // Supabase may emit SIGNED_IN again when a browser tab regains focus.
+                    // That is not a new login: keep the already loaded role/profile stable
+                    // so the whole authenticated UI does not flicker or refetch.
+                    applyAuthenticatedSession(nextSession, { preserveRole: sameUser });
                     return;
                 }
 
