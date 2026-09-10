@@ -1,6 +1,7 @@
 "use client";
 import React, { createContext, useContext, useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { formatBenchmarkContext, formatRegistryMetric, OCR_MODEL_REGISTRY_IDS } from '@/lib/modelRegistry';
+import { DEEPSEEK_LABEL } from '@/lib/deepseekConfig';
 
 const WorkerContext = createContext();
 
@@ -59,6 +60,15 @@ export const OCR_MODELS = {
         benchmark: formatBenchmarkContext(OCR_MODEL_REGISTRY_IDS.gemini),
         size: 'Cloud',
         type: 'api'
+    },
+    deepseek: {
+        key: 'deepseek',
+        label: DEEPSEEK_LABEL,
+        description: 'OCR vision avec votre clé API DeepSeek',
+        size: 'Cloud',
+        type: 'api',
+        runtime: 'cloud',
+        byok: true,
     },
     lighton: {
         key: 'lighton',

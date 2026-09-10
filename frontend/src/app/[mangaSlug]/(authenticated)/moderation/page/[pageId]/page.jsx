@@ -692,7 +692,7 @@ export default function PageReview() {
       </Dialog>
 
       <Dialog open={showApiKeyModal} onOpenChange={setShowApiKeyModal}>
-        <AiAccessDialog onSave={handleSaveApiKey} />
+        <AiAccessDialog onSave={handleSaveApiKey} onSaveDeepSeek={() => setShowApiKeyModal(false)} />
       </Dialog>
 
       <ModerationCommentModal

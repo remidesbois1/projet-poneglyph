@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { arrayMove } from '@dnd-kit/sortable';
 import { useAnnotationInteractions } from '@/hooks/useAnnotationInteractions';
 import { useAnnotationOCR } from '@/hooks/useAnnotationOCR';
+import { useDeepSeekPageOcr } from '@/hooks/useDeepSeekPageOcr';
 import { useAnnotationDetection } from '@/hooks/useAnnotationDetection';
 import { useAnnotationMetadata } from '@/hooks/useAnnotationMetadata';
 import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
@@ -491,9 +492,10 @@ export default function SandboxClient() {
     const {
         preferLocalOCR, toggleOcrPreference, activeModelKey,
         modelStatus, loadModel, switchModel, downloadProgress, runLocalOcr,
-        runBackgroundOcr, handleRetryWithCloud, selectedOcrModelKeys, toggleOcrModel
+        runBackgroundOcr, handleRetryWithCloud, selectedOcrModelKeys, toggleOcrModel,
+        hasDeepSeekKey, handleRetryWithDeepSeek
     } = useAnnotationOCR({
-        imageRef, pageId: 'sandbox', rectangle, pendingAnnotation, setPendingAnnotation,
+        imageRef, pageId: imageUrl, rectangle, pendingAnnotation, setPendingAnnotation,
         setIsSubmitting, setLoadingText, setIsModalOpen, setOcrSource,
         setDebugImageUrl, setShowApiKeyModal, isSandbox: true
     });
@@ -507,6 +509,23 @@ export default function SandboxClient() {
         runLocalOcr, runBackgroundOcr, setIsSubmitting, setLoadingText
     });
 
+    const { handleDeepSeekOneShot, isDeepSeekLoading } = useDeepSeekPageOcr({
+        imageRef, contextKey: imageUrl, canRun: Boolean(page && imageUrl),
+        busy: isSubmitting || isAutoDetecting || isPoneglyphLoading || isChatGptLoading,
+        detectionStatus, detectBubbles,
+        onConfigure: () => setShowApiKeyModal(true),
+        onApply: (bubbles, { isCurrent }) => {
+            if (!isCurrent()) return;
+            const runId = crypto.randomUUID();
+            setExistingBubbles(previous => [...previous, ...bubbles.map((bubble, index) => ({
+                id: `sandbox-deepseek-${runId}-${index}`, id_page: 'sandbox',
+                x: bubble.x, y: bubble.y, w: bubble.w, h: bubble.h, texte_propose: bubble.content,
+                statut: 'Proposé', id_user_createur: 'sandbox-user', order: previous.length + index + 1,
+            }))]);
+            toast.success(`${bubbles.length} bulles DeepSeek ajoutées à la sandbox.`);
+        },
+    });
+
     const {
         isDrawing, startPoint, endPoint, mousePos, isShiftPressed,
         hoveredBubble, setHoveredBubble, handleMouseDown, handleMouseMove,
@@ -514,7 +533,7 @@ export default function SandboxClient() {
     } = useAnnotationInteractions({
         containerRef, imageRef, imageDimensions, existingBubbles, setExistingBubbles,
         pendingAnnotation, setPendingAnnotation, setRectangle, canEdit: true, canEditBubble: canEditSandboxBubble, isMobile,
-        pageStatus: 'not_started', isSubmitting, showApiKeyModal, showDescModal,
+        pageStatus: 'not_started', isSubmitting: isSubmitting || isDeepSeekLoading, showApiKeyModal, showDescModal,
         onUpdateGeometry: (targetId, geometry) => {
             setExistingBubbles(prev => prev.map(b => b.id === targetId ? { ...b, ...geometry } : b));
             toast.success("Position mise à jour");
@@ -944,6 +963,9 @@ export default function SandboxClient() {
                     loadModel={loadModel}
                     downloadProgress={downloadProgress}
                     geminiKey={null}
+                    hasDeepSeekKey={hasDeepSeekKey}
+                    handleDeepSeekOneShot={handleDeepSeekOneShot}
+                    isDeepSeekLoading={isDeepSeekLoading}
                     selectedOcrModelKeys={selectedOcrModelKeys}
                     toggleOcrModel={toggleOcrModel}
                     detectionStatus={detectionStatus}
@@ -1032,8 +1054,8 @@ export default function SandboxClient() {
                             handleMouseMove={handleMouseMove}
                             handleMouseUp={handleMouseUp}
                             imageUrl={imageUrl}
-                            isSubmitting={isSubmitting}
-                            loadingText={loadingText}
+                            isSubmitting={isSubmitting || isDeepSeekLoading}
+                            loadingText={isDeepSeekLoading ? 'Lecture de la page avec DeepSeek…' : loadingText}
                             rectangle={rectangle}
                             pendingAnnotation={pendingAnnotation}
                             isAutoDetecting={isAutoDetecting}
@@ -1082,12 +1104,15 @@ export default function SandboxClient() {
                 processNextBubble={processNextBubble}
                 debugImageUrl={debugImageUrl}
                 runLocalOcr={runLocalOcr}
+                handleRetryWithCloud={handleRetryWithCloud}
+                handleRetryWithDeepSeek={handleRetryWithDeepSeek}
+                isSubmitting={isSubmitting || isDeepSeekLoading}
                 selectedOcrModelKeys={selectedOcrModelKeys}
                 isSandbox={true}
             />
 
             <Dialog open={showApiKeyModal} onOpenChange={setShowApiKeyModal}>
-                <AiAccessDialog onSave={handleSaveApiKey} />
+                <AiAccessDialog onSave={handleSaveApiKey} onSaveDeepSeek={() => setShowApiKeyModal(false)} />
             </Dialog>
 
             <AnnotateMetadataModal

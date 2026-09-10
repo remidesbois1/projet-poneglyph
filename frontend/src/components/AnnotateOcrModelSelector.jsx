@@ -13,6 +13,9 @@ export default function AnnotateOcrModelSelector({
     loadModel,
     selectedOcrModelKeys = [],
     toggleOcrModel,
+    hasDeepSeekKey = false,
+    onConfigureDeepSeek,
+    disabled = false,
     isSandbox = false,
     isTauri = false,
     localTextModelStatus = null,
@@ -55,6 +58,12 @@ export default function AnnotateOcrModelSelector({
     };
 
     const renderModelAction = (model) => {
+        if (model.key === 'deepseek') {
+            return <div className="space-y-2 text-xs leading-5 text-slate-400">
+                <p>Appels facturés sur votre compte DeepSeek.</p>
+                {!hasDeepSeekKey && <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onConfigureDeepSeek} className="h-9 text-xs">Configurer la clé DeepSeek</Button>}
+            </div>;
+        }
         if (model.runtime === 'tauri') {
             const controls = getTauriControls(model);
             const isDownloading = Boolean(
@@ -163,6 +172,7 @@ export default function AnnotateOcrModelSelector({
                         <label className="flex min-h-8 cursor-pointer items-center gap-3 rounded-sm text-[13px] text-slate-300 hover:text-white">
                             <input
                                 type="checkbox"
+                                disabled={disabled}
                                 checked={checked}
                                 onChange={() => toggleOcrModel(model.key)}
                                 className="h-4 w-4 shrink-0 cursor-pointer [color-scheme:dark] accent-sky-400 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-400"

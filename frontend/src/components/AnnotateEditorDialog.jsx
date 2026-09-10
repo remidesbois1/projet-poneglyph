@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Cpu, CloudLightning, RotateCcw } from "lucide-react";
 import DraggableWrapper from '@/components/DraggableWrapper';
 import ValidationForm from '@/components/ValidationForm';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function AnnotateEditorDialog({
     isOpen,
@@ -20,6 +21,9 @@ export default function AnnotateEditorDialog({
     processNextBubble,
     debugImageUrl,
     runLocalOcr,
+    handleRetryWithCloud,
+    handleRetryWithDeepSeek,
+    isSubmitting = false,
     selectedOcrModelKeys = [],
     isSandbox = false
 }) {
@@ -77,9 +81,9 @@ export default function AnnotateEditorDialog({
                                     <Cpu className="h-3 w-3 mr-1" /> Local IA
                                 </Badge>
                             )}
-                            {ocrSource === 'cloud' && (
+                            {(ocrSource === 'cloud' || ocrSource === 'deepseek') && (
                                 <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200 bg-blue-50">
-                                    <CloudLightning className="h-3 w-3 mr-1" /> Cloud IA
+                                    <CloudLightning className="h-3 w-3 mr-1" /> {ocrSource === 'deepseek' ? 'DeepSeek' : 'Gemini'}
                                 </Badge>
                             )}
                         </div>
@@ -119,18 +123,30 @@ export default function AnnotateEditorDialog({
                             </div>
                         )}
 
-                        {!isSandbox && (
-                            <div className="mt-4 pt-4 border-t border-slate-100 flex justify-center">
+                        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t border-white/10 pt-4">
+                            {!isSandbox && (
                                 <Button
                                     variant="ghost"
                                     size="sm"
+                                    disabled={isSubmitting}
                                     className="text-xs text-slate-500 hover:text-slate-900"
                                     onClick={() => runLocalOcr()}
                                 >
                                     <><RotateCcw className="h-3 w-3 mr-1" /> Relancer les modèles OCR ({selectedOcrModelKeys.length})</>
                                 </Button>
-                            </div>
-                        )}
+                            )}
+                            {(handleRetryWithCloud || handleRetryWithDeepSeek) && (
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button type="button" variant="outline" size="sm" disabled={isSubmitting} className="h-10 text-xs"><CloudLightning className="size-4" />Relire via API</Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="z-[70]">
+                                        {handleRetryWithCloud && <DropdownMenuItem onSelect={() => handleRetryWithCloud()} className="min-h-10">Gemini</DropdownMenuItem>}
+                                        {handleRetryWithDeepSeek && <DropdownMenuItem onSelect={() => handleRetryWithDeepSeek()} className="min-h-10">DeepSeek</DropdownMenuItem>}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            )}
+                        </div>
                     </div>
                 </DraggableWrapper>
             </div>

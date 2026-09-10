@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useWorker, OCR_MODELS } from '@/context/WorkerContext';
 import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
 import { analyzeBubble } from '@/lib/geminiClient';
+import { analyzeDeepSeekBubble } from '@/lib/deepseekClient';
+import { DEEPSEEK_LABEL, getDeepSeekApiKey } from '@/lib/deepseekConfig';
 import { capitalizeOcrSentenceStarts } from '@/lib/ocr-utils';
 import { postOcrImage } from '@/lib/ocrProxyClient';
 import { isSelectableOcrModel } from '@/lib/ocrModelAvailability';
@@ -12,6 +14,7 @@ import { toast } from 'sonner';
 
 export function useAnnotationOCR({
     imageRef,
+    pageId,
     rectangle,
     pendingAnnotation,
     setPendingAnnotation,
@@ -27,6 +30,7 @@ export function useAnnotationOCR({
     const tauriLocalOcr = useTauriLocalOcrContext();
     const [preferLocalOCR, setPreferLocalOCR] = useState(isSandbox);
     const [geminiKey, setGeminiKey] = useState(null);
+    const [hasDeepSeekKey, setHasDeepSeekKey] = useState(false);
     const [ocrResults, setOcrResults] = useState({});
     const selectableModelKeys = useMemo(() => Object.values(OCR_MODELS)
         .filter(model => isSelectableOcrModel(model, isSandbox))
@@ -43,12 +47,38 @@ export function useAnnotationOCR({
         }
     });
     const inFlightRequests = useRef(new Map());
+    const completedRequests = useRef(new Map());
     const workerWaiters = useRef(new Map());
+    const deepSeekRequests = useRef(new Set());
+    const deepSeekRetry = useRef(null);
+    const pageGeneration = useRef(0);
+
+    useEffect(() => {
+        const requests = deepSeekRequests.current;
+        const inFlight = inFlightRequests.current;
+        const completed = completedRequests.current;
+        return () => {
+            pageGeneration.current += 1;
+            if (requests.size || inFlight.size) setIsSubmitting?.(false);
+            for (const controller of requests) controller.abort();
+            requests.clear();
+            inFlight.clear();
+            completed.clear();
+        };
+    }, [pageId, setIsSubmitting]);
+
+    const pendingTargetKey = pendingAnnotation
+        ? JSON.stringify([pendingAnnotation.id, pendingAnnotation.x, pendingAnnotation.y, pendingAnnotation.w, pendingAnnotation.h])
+        : null;
+    useEffect(() => () => deepSeekRetry.current?.abort(), [pendingTargetKey]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
         setPreferLocalOCR(isSandbox || localStorage.getItem('preferLocalOCR') !== 'false');
-        const loadKey = () => setGeminiKey(localStorage.getItem('google_api_key'));
+        const loadKey = () => {
+            setGeminiKey(localStorage.getItem('google_api_key'));
+            setHasDeepSeekKey(Boolean(getDeepSeekApiKey()));
+        };
         loadKey();
         window.addEventListener('storage', loadKey);
         return () => window.removeEventListener('storage', loadKey);
@@ -112,6 +142,17 @@ export function useAnnotationOCR({
         if (!isSelectableOcrModel(modelData, isSandbox)) {
             throw new Error('Ce moteur OCR n’est pas disponible dans la sandbox.');
         }
+        if (modelData.key === 'deepseek') {
+            const controller = new AbortController();
+            deepSeekRequests.current.add(controller);
+            try {
+                const result = await analyzeDeepSeekBubble(imageRef.current, areaToCrop, getDeepSeekApiKey(), { signal: controller.signal });
+                controller.signal.throwIfAborted();
+                return result.data.texte_propose;
+            } finally {
+                deepSeekRequests.current.delete(controller);
+            }
+        }
         if (modelData.key === 'lighton') {
             const blob = await cropImage(imageRef.current, areaToCrop);
             const response = await postOcrImage('/api/local_lighton', blob);
@@ -150,8 +191,13 @@ export function useAnnotationOCR({
     }, [modelStates, getTauriTextRuntime, imageRef, isSandbox, runOcr, waitForWorkerResult]);
 
     const executeSelectedOcr = useCallback((areaToCrop, requestId) => {
-        if (inFlightRequests.current.has(requestId)) return inFlightRequests.current.get(requestId);
+        // A detected bubble is first read in the background, then opened for review.
+        // Reuse that result rather than charging for the same provider request twice.
+        const jobKey = JSON.stringify([requestId, selectedOcrModelKeys, areaToCrop.x, areaToCrop.y, areaToCrop.w, areaToCrop.h]);
+        if (completedRequests.current.has(jobKey)) return Promise.resolve(completedRequests.current.get(jobKey));
+        if (inFlightRequests.current.has(jobKey)) return inFlightRequests.current.get(jobKey);
 
+        const generation = pageGeneration.current;
         const models = selectedOcrModelKeys
             .map(key => OCR_MODELS[key])
             .filter(Boolean);
@@ -160,6 +206,7 @@ export function useAnnotationOCR({
             label: model.label,
             text: capitalizeOcrSentenceStarts(await runModel(model, areaToCrop, requestId))
         }))).then(settled => {
+            if (generation !== pageGeneration.current) throw new DOMException('Requête annulée.', 'AbortError');
             const candidates = settled
                 .filter(result => result.status === 'fulfilled')
                 .map(result => result.value);
@@ -168,10 +215,15 @@ export function useAnnotationOCR({
                 : []);
 
             setOcrResults(previous => ({ ...previous, [requestId]: candidates }));
-            return { candidates, failures };
-        }).finally(() => inFlightRequests.current.delete(requestId));
+            const result = { candidates, failures };
+            completedRequests.current.set(jobKey, result);
+            if (completedRequests.current.size > 256) completedRequests.current.delete(completedRequests.current.keys().next().value);
+            return result;
+        }).finally(() => {
+            if (inFlightRequests.current.get(jobKey) === job) inFlightRequests.current.delete(jobKey);
+        });
 
-        inFlightRequests.current.set(requestId, job);
+        inFlightRequests.current.set(jobKey, job);
         return job;
     }, [runModel, selectedOcrModelKeys]);
 
@@ -190,6 +242,7 @@ export function useAnnotationOCR({
         try {
             await executeSelectedOcr(areaToCrop, requestId);
         } catch (error) {
+            if (error.name === 'AbortError') return;
             console.error('Background OCR error:', error);
         }
     }, [executeSelectedOcr]);
@@ -206,7 +259,14 @@ export function useAnnotationOCR({
             return;
         }
 
+        if (selectedOcrModelKeys.includes('deepseek') && !getDeepSeekApiKey()) {
+            toast.info('Configurez votre clé DeepSeek, puis relancez la transcription.');
+            setShowApiKeyModal(true);
+            return;
+        }
+
         const requestId = customRequestId || Date.now();
+        const generation = pageGeneration.current;
         setLoadingText(selectedOcrModelKeys.length > 1
             ? `Analyse de ${selectedOcrModelKeys.length} modèles OCR...`
             : 'Analyse OCR...');
@@ -222,16 +282,51 @@ export function useAnnotationOCR({
             }
             if (!candidates.length) {
                 toast.error('Aucun modèle OCR sélectionné n’a pu traiter cette bulle.');
+                setIsModalOpen(true);
+                return;
             }
             applyCandidatesToModal(candidates);
         } catch (error) {
+            if (error.name === 'AbortError') return;
             console.error('OCR error:', error);
             toast.error(`Erreur OCR : ${error.message}`);
             setIsModalOpen(true);
         } finally {
-            setIsSubmitting(false);
+            if (generation === pageGeneration.current) setIsSubmitting(false);
         }
-    }, [applyCandidatesToModal, executeSelectedOcr, pendingAnnotation, rectangle, selectedOcrModelKeys.length, setDebugImageUrl, setIsModalOpen, setIsSubmitting, setLoadingText]);
+    }, [applyCandidatesToModal, executeSelectedOcr, pendingAnnotation, rectangle, selectedOcrModelKeys, setDebugImageUrl, setIsModalOpen, setIsSubmitting, setLoadingText, setShowApiKeyModal]);
+
+    const handleRetryWithDeepSeek = useCallback(async () => {
+        if (!pendingAnnotation || deepSeekRetry.current) return;
+        const apiKey = getDeepSeekApiKey();
+        if (!apiKey) {
+            setShowApiKeyModal(true);
+            toast.info('Configurez votre clé DeepSeek, puis relancez la transcription.');
+            return;
+        }
+        const target = pendingAnnotation;
+        const controller = new AbortController();
+        const generation = pageGeneration.current;
+        deepSeekRetry.current = controller;
+        deepSeekRequests.current.add(controller);
+        setIsSubmitting(true);
+        setLoadingText(`Transcription avec ${DEEPSEEK_LABEL}…`);
+        try {
+            const response = await analyzeDeepSeekBubble(imageRef.current, target, apiKey, { signal: controller.signal });
+            controller.signal.throwIfAborted();
+            setPendingAnnotation(previous => previous && previous.id === target.id && ['x', 'y', 'w', 'h'].every(key => previous[key] === target[key]) ? {
+                ...previous, texte_propose: capitalizeOcrSentenceStarts(response.data.texte_propose),
+                ocr_candidates: [{ modelKey: 'deepseek', label: DEEPSEEK_LABEL, text: capitalizeOcrSentenceStarts(response.data.texte_propose) }],
+            } : previous);
+            setOcrSource('deepseek');
+        } catch (error) {
+            if (!controller.signal.aborted) toast.error(error.message || 'Transcription DeepSeek indisponible.');
+        } finally {
+            deepSeekRequests.current.delete(controller);
+            if (deepSeekRetry.current === controller) deepSeekRetry.current = null;
+            if (generation === pageGeneration.current) setIsSubmitting(false);
+        }
+    }, [imageRef, pendingAnnotation, setIsSubmitting, setLoadingText, setOcrSource, setPendingAnnotation, setShowApiKeyModal]);
 
     const handleRetryWithCloud = useCallback((dataOverride = null) => {
         const dataToUse = dataOverride || pendingAnnotation;
@@ -267,6 +362,8 @@ export function useAnnotationOCR({
         preferLocalOCR,
         toggleOcrPreference,
         geminiKey,
+        hasDeepSeekKey,
+        handleRetryWithDeepSeek,
         activeModelKey,
         modelStatus,
         loadModel,

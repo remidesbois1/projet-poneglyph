@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPageById, getBubblesForPage, deleteBubble, submitPageForReview, updatePageStatus, reorderBubbles, savePageDescription, getMetadataSuggestions, getPages } from '@/lib/api';
+import { getPageById, getBubblesForPage, createBubble, deleteBubble, submitPageForReview, updatePageStatus, reorderBubbles, savePageDescription, getMetadataSuggestions, getPages } from '@/lib/api';
 import { analyzeBubble, generatePageDescription, generateGeminiEmbedding, generateOneShotBubbles } from '@/lib/geminiClient';
 import AiAccessDialog from '@/components/AiAccessDialog';
 import { useAuth } from '@/context/AuthContext';
@@ -11,6 +11,7 @@ import { useManga } from '@/context/MangaContext';
 import { arrayMove } from '@dnd-kit/sortable';
 import { useAnnotationInteractions } from '@/hooks/useAnnotationInteractions';
 import { useAnnotationOCR } from '@/hooks/useAnnotationOCR';
+import { useDeepSeekPageOcr } from '@/hooks/useDeepSeekPageOcr';
 import { useAnnotationDetection } from '@/hooks/useAnnotationDetection';
 import { useAnnotationMetadata } from '@/hooks/useAnnotationMetadata';
 import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
@@ -408,6 +409,7 @@ export default function AnnotatePage() {
         preferLocalOCR, toggleOcrPreference, geminiKey, activeModelKey,
         modelStatus, loadModel, switchModel, downloadProgress, runLocalOcr,
         runBackgroundOcr, ocrResults, handleRetryWithCloud,
+        hasDeepSeekKey, handleRetryWithDeepSeek,
         selectedOcrModelKeys, toggleOcrModel
     } = useAnnotationOCR({
         imageRef, pageId, rectangle, pendingAnnotation, setPendingAnnotation,
@@ -445,6 +447,41 @@ export default function AnnotatePage() {
         });
     }, [cacheBubblesForPage]);
 
+    const { handleDeepSeekOneShot, isDeepSeekLoading } = useDeepSeekPageOcr({
+        imageRef,
+        contextKey: `${pageId}:${user?.id || ''}:${originalImageUrl || ''}`,
+        canRun: !isGuest && role === 'Admin' && canEdit && imageLoadStatus === RESOURCE_STATUS.READY,
+        busy: isSubmitting || isAutoDetecting || isOneShotLoading || isChatGptLoading || isPoneglyphLoading,
+        detectionStatus,
+        detectBubbles: runDebuggableDetection,
+        onConfigure: () => setShowApiKeyModal(true),
+        onApply: async (bubbles, { isCurrent }) => {
+            const targetPageId = pageId;
+            const targetGeneration = navGenerationRef.current;
+            const isTargetCurrent = () => isCurrent() && targetGeneration === navGenerationRef.current && String(pageIdRef.current) === String(targetPageId);
+            const created = [];
+            for (const bubble of bubbles) {
+                if (!isTargetCurrent()) break;
+                try {
+                    const response = await createBubble({
+                        id_page: Number(targetPageId), x: bubble.x, y: bubble.y, w: bubble.w, h: bubble.h,
+                        texte_propose: bubble.content,
+                    });
+                    created.push(response.data);
+                } catch {
+                    // Preserve successful creations and report a partial import; never retry a paid extraction.
+                }
+            }
+            if (!isTargetCurrent()) {
+                bubbleCacheRef.current.delete(normalizePageId(targetPageId));
+                return;
+            }
+            if (created.length) setExistingBubblesAndCache(previous => sortBubblesForAnnotation([...previous, ...created]));
+            if (created.length === bubbles.length) toast.success(`${created.length} bulles créées avec DeepSeek.`);
+            else toast.warning(`DeepSeek : ${created.length} bulles créées sur ${bubbles.length}. Vérifiez les annotations avant de relancer.`);
+        },
+    });
+
     const {
         isDrawing, startPoint, endPoint, mousePos, isShiftPressed,
         hoveredBubble, setHoveredBubble, handleMouseDown, handleMouseMove,
@@ -452,7 +489,7 @@ export default function AnnotatePage() {
     } = useAnnotationInteractions({
         containerRef, imageRef, imageDimensions, existingBubbles, setExistingBubbles: setExistingBubblesAndCache,
         pendingAnnotation, setPendingAnnotation, setRectangle, canEdit, canEditBubble: canEditExistingBubble, isMobile,
-        pageStatus: page?.statut, isSubmitting, showApiKeyModal, showDescModal
+        pageStatus: page?.statut, isSubmitting: isSubmitting || isDeepSeekLoading, showApiKeyModal, showDescModal
     });
 
     const fetchBubbles = useCallback(({ force = false } = {}) => {
@@ -729,7 +766,7 @@ export default function AnnotatePage() {
     };
 
     const handleOneShot = async () => {
-        if (!imageRef.current) return;
+        if (!imageRef.current || isDeepSeekLoading) return;
         const key = geminiKey || localStorage.getItem('google_api_key');
         if (!key) {
             toast.error("Clé API Google requise pour l'extraction One-Shot.");
@@ -1138,6 +1175,7 @@ export default function AnnotatePage() {
                 loadModel={loadModel}
                 downloadProgress={downloadProgress}
                 geminiKey={geminiKey}
+                hasDeepSeekKey={hasDeepSeekKey}
                 selectedOcrModelKeys={selectedOcrModelKeys}
                 toggleOcrModel={toggleOcrModel}
                 detectionStatus={detectionStatus}
@@ -1155,6 +1193,8 @@ export default function AnnotatePage() {
                 isUpdatingPageStatus={isUpdatingPageStatus}
                 handleOneShot={handleOneShot}
                 isOneShotLoading={isOneShotLoading}
+                handleDeepSeekOneShot={handleDeepSeekOneShot}
+                isDeepSeekLoading={isDeepSeekLoading}
                 geminiFullPageModel={aiModelConfig.model_ocr}
                 handleChatGptOneShot={handleChatGptOneShot}
                 isChatGptLoading={isChatGptLoading}
@@ -1230,7 +1270,7 @@ export default function AnnotatePage() {
                                 <FileText size={16} />
                             </Button>
                         )}
-                        <Button variant="default" size="sm" className="h-9" disabled={page.statut === 'pending_review' || page.statut === 'completed' || isGuest || role === 'User'} onClick={handleSubmitPage}>
+                        <Button variant="default" size="sm" className="h-9" disabled={isDeepSeekLoading || page.statut === 'pending_review' || page.statut === 'completed' || isGuest || role === 'User'} onClick={handleSubmitPage}>
                             <Send size={14} className="mr-2" /> Soumettre
                         </Button>
                     </div>
@@ -1314,8 +1354,8 @@ export default function AnnotatePage() {
                             setImageLoadStatus(RESOURCE_STATUS.ERROR);
                             setImageLoadError("Impossible d’afficher l’image de la page.");
                         }}
-                        isSubmitting={isSubmitting}
-                        loadingText={loadingText}
+                        isSubmitting={isSubmitting || isDeepSeekLoading}
+                        loadingText={isDeepSeekLoading ? 'Lecture de la page avec DeepSeek…' : loadingText}
                         rectangle={rectangle}
                         pendingAnnotation={pendingAnnotation}
                         isAutoDetecting={isAutoDetecting}
@@ -1368,11 +1408,14 @@ export default function AnnotatePage() {
                 processNextBubble={processNextBubble}
                 debugImageUrl={debugImageUrl}
                 runLocalOcr={runLocalOcr}
+                handleRetryWithCloud={handleRetryWithCloud}
+                handleRetryWithDeepSeek={handleRetryWithDeepSeek}
+                isSubmitting={isSubmitting || isDeepSeekLoading}
                 selectedOcrModelKeys={selectedOcrModelKeys}
             />
 
             <Dialog open={showApiKeyModal} onOpenChange={setShowApiKeyModal}>
-                <AiAccessDialog onSave={handleSaveApiKey} />
+                <AiAccessDialog onSave={handleSaveApiKey} onSaveDeepSeek={() => setShowApiKeyModal(false)} />
             </Dialog>
 
             {!isGuest && (

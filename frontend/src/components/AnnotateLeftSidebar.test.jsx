@@ -2,6 +2,11 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import AnnotateLeftSidebar, { formatPageStatus } from './AnnotateLeftSidebar';
 
+vi.mock('@/context/WorkerContext', async importOriginal => ({
+    ...await importOriginal(),
+    useWorker: () => ({ modelStates: {} }),
+}));
+
 const editorProps = {
     mangaSlug: 'one-piece',
     page: { numero_page: 3, statut: 'in_progress', chapitres: { numero: 1 } },
@@ -182,5 +187,40 @@ describe('AnnotateLeftSidebar', () => {
         expect(
             screen.getByRole('button', { name: 'Envoyer en validation' })
         ).toBeDisabled();
+    });
+
+    it('offers BYOK DeepSeek in the sandbox without exposing Modal', () => {
+        const configure = vi.fn();
+        render(<AnnotateLeftSidebar {...editorProps} isSandbox selectedOcrModelKeys={['deepseek']} setShowApiKeyModal={configure} handleDeepSeekOneShot={vi.fn()} />);
+        expect(screen.getByRole('checkbox', { name: /DeepSeek/ })).toBeChecked();
+        expect(screen.queryByRole('checkbox', { name: /LightOn OCR/ })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Configurer la clé DeepSeek' }));
+        expect(configure).toHaveBeenCalledWith(true);
+    });
+
+    it('runs only DeepSeek when selected as the full-page engine', async () => {
+        const oldScroll = HTMLElement.prototype.scrollIntoView;
+        HTMLElement.prototype.scrollIntoView = vi.fn();
+        const deepseek = vi.fn();
+        const gemini = vi.fn();
+        try {
+            render(<AnnotateLeftSidebar {...editorProps} handleOneShot={gemini} handleDeepSeekOneShot={deepseek} />);
+            fireEvent.keyDown(screen.getByRole('combobox', { name: 'Moteur pour la page entière' }), { key: 'Enter' });
+            fireEvent.click(await screen.findByRole('option', { name: 'DeepSeek', exact: true }));
+            fireEvent.click(screen.getByRole('button', { name: 'Lire la page entière' }));
+            expect(deepseek).toHaveBeenCalledOnce();
+            expect(gemini).not.toHaveBeenCalled();
+        } finally {
+            if (oldScroll) HTMLElement.prototype.scrollIntoView = oldScroll;
+            else delete HTMLElement.prototype.scrollIntoView;
+        }
+    });
+
+    it('blocks competing OCR and validation during a DeepSeek page request', () => {
+        render(<AnnotateLeftSidebar {...editorProps} handleDeepSeekOneShot={vi.fn()} isDeepSeekLoading />);
+        expect(screen.getByRole('button', { name: 'Lecture en cours…' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Détecter les bulles' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Envoyer en validation' })).toBeDisabled();
+        for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toBeDisabled();
     });
 });

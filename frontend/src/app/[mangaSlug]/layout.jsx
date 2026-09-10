@@ -37,7 +37,7 @@ export default function MangaLayout({ children }) {
             </TauriLocalOcrProvider>
 
             <Dialog open={showApiKeyModal} onOpenChange={setShowApiKeyModal}>
-                <AiAccessDialog onSave={handleSaveApiKey} />
+                <AiAccessDialog onSave={handleSaveApiKey} onSaveDeepSeek={() => setShowApiKeyModal(false)} />
             </Dialog>
         </MangaProvider>
     );

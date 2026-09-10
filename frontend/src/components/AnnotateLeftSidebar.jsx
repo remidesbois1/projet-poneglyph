@@ -21,6 +21,7 @@ import {
 import AnnotateOcrModelSelector from './AnnotateOcrModelSelector';
 import AnnotateBubbleScanner from './AnnotateBubbleScanner';
 import { canDownloadMissingLocalModel } from './localModelRecovery';
+import { DEEPSEEK_LABEL } from '@/lib/deepseekConfig';
 
 const PAGE_STATUSES = [
     { value: 'not_started', label: 'Non commencée' },
@@ -57,6 +58,7 @@ export default function AnnotateLeftSidebar({
     loadModel,
     downloadProgress,
     geminiKey,
+    hasDeepSeekKey = false,
     selectedOcrModelKeys,
     toggleOcrModel,
     detectionStatus,
@@ -76,6 +78,8 @@ export default function AnnotateLeftSidebar({
     isSandbox = false,
     handleOneShot,
     isOneShotLoading,
+    handleDeepSeekOneShot,
+    isDeepSeekLoading = false,
     geminiFullPageModel = 'gemini-2.5-flash-lite',
     handleChatGptOneShot,
     isChatGptLoading = false,
@@ -138,6 +142,7 @@ export default function AnnotateLeftSidebar({
         isSubmitting ||
             isAutoDetecting ||
             isOneShotLoading ||
+            isDeepSeekLoading ||
             isChatGptLoading ||
             isPoneglyphLoading ||
             isLocalInferencing ||
@@ -243,10 +248,19 @@ export default function AnnotateLeftSidebar({
             available: chatGptDesktopAvailable && Boolean(handleChatGptOneShot),
             handler: handleChatGptOneShot,
         },
+        {
+            key: 'deepseek',
+            label: 'DeepSeek',
+            model: DEEPSEEK_LABEL,
+            available: Boolean(handleDeepSeekOneShot),
+            handler: handleDeepSeekOneShot,
+            message: 'Utilise votre clé personnelle. Appels facturés par DeepSeek.',
+        },
     ].filter((engine) => engine.available);
     const engine =
         engines.find((item) => item.key === selectedEngine) || engines[0];
     const running =
+        isDeepSeekLoading ||
         isOneShotLoading ||
         isChatGptLoading ||
         isPoneglyphLoading ||
@@ -486,6 +500,9 @@ export default function AnnotateLeftSidebar({
                                     loadModel={loadModel}
                                     downloadProgress={downloadProgress}
                                     geminiKey={geminiKey}
+                                    hasDeepSeekKey={hasDeepSeekKey}
+                                    onConfigureDeepSeek={() => setShowApiKeyModal(true)}
+                                    disabled={busy}
                                     selectedOcrModelKeys={selectedOcrModelKeys}
                                     toggleOcrModel={toggleOcrModel}
                                     isSandbox={isSandbox}

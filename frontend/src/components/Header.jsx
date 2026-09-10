@@ -167,7 +167,7 @@ const Header = ({ onOpenApiKeyModal }) => {
                                     )}
                                     <DropdownMenuItem onClick={onOpenApiKeyModal} className="cursor-pointer">
                                         <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
-                                        <span>Clé API IA (Gemini)</span>
+                                        <span>Clés API IA</span>
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
@@ -303,7 +303,7 @@ const Header = ({ onOpenApiKeyModal }) => {
                                             <div className="p-1.5 bg-emerald-50 rounded border border-emerald-100 shadow-sm text-emerald-600 ">
                                                 <Sparkles size={18} />
                                             </div>
-                                            Clé API Gemini
+                                            Clés API IA
                                         </button>
                                     </nav>
                                 </div>
