@@ -60,3 +60,45 @@ python docker_scripts/train_pagetype_classifier/train_final.py `
   --selection-metrics docker_scripts/train_pagetype_classifier/runs/<validation-run>/metrics.json `
   --epochs <best_epoch>
 ```
+
+## Dataset & Benchmark (One Piece Tomes 1 à 7)
+
+- **Hugging Face Model:** [Remidesbois/Poneglyph-Classifier](https://huggingface.co/Remidesbois/Poneglyph-Classifier)
+
+### Dataset Annoté (1 415 pages)
+
+| Tome | Total Pages | Story Page | Annexe | Cover | Summary |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| One Piece T01 | 210 | 187 | 15 | 7 | 1 |
+| One Piece T02 | 211 | 167 | 33 | 10 | 1 |
+| One Piece T03 | 213 | 172 | 31 | 9 | 1 |
+| One Piece T04 | 196 | 165 | 21 | 9 | 1 |
+| One Piece T05 | 196 | 164 | 22 | 9 | 1 |
+| One Piece T06 | 193 | 158 | 25 | 9 | 1 |
+| **One Piece T07 (Held-out Test)** | **196** | **164** | **22** | **9** | **1** |
+| **TOTAL** | **1 415** | **1 177** | **169** | **62** | **7** |
+
+### Held-out Test Metrics (Tome 7 - 196 pages)
+
+- **Accuracy:** **99.49%** (195 / 196)
+- **Macro F1:** **0.9845**
+- **Loss:** **0.0476**
+
+| Classe | Support | Précision | Rappel | F1-Score |
+| :--- | :---: | :---: | :---: | :---: |
+| `annexe` | 22 | 100.0% | 100.0% | 1.000 |
+| `summary` | 1 | 100.0% | 100.0% | 1.000 |
+| `story_page` | 164 | 99.39% | 100.0% | 0.997 |
+| `cover` | 9 | 100.0% | 88.89% | 0.941 |
+
+#### Matrice de Confusion
+
+```
+               Classes Prédites
+               cover   story_page   annexe   summary
+cover            8         1           0        0
+story_page       0       164           0        0
+annexe           0         0          22        0
+summary          0         0           0        1
+```
+

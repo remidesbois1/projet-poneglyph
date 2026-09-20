@@ -1,5 +1,5 @@
-const MODEL_REVISION = 'a4440acf39800eaef1294c2663897093b5751e98';
-const MODEL_URL = `https://huggingface.co/Remidesbois/Poneglyph_slicer/resolve/${MODEL_REVISION}/page_type_classifier.onnx`;
+const MODEL_REVISION = '5830f91ae3524a7a9da8d33a7a1b5242b677e5f1';
+const MODEL_URL = `https://huggingface.co/Remidesbois/Poneglyph-Classifier/resolve/${MODEL_REVISION}/page_type_classifier.onnx`;
 
 export const runtime = 'nodejs';
 

@@ -35,6 +35,12 @@ scripts/polygon_case_annotator/runs/
 scripts/polygon_case_annotator/polygon_annotations.json
 scripts/polygon_case_annotator/*.pt
 
+!scripts/annotate_bubble_lines.py
+!scripts/bubble_line_annotation_common.py
+!scripts/prepare_bubble_line_annotation.py
+!scripts/download_bubbles_for_annotation.py
+!scripts/BUBBLE_LINE_ANNOTATION.md
+
 # Archives & compressed files
 *.zip
 *.tar
@@ -56,3 +62,4 @@ docker_scripts/finetune_lighton_ocr_bbox/hf-cache/
 docker_scripts/finetune_surya_ocr_bbox/hf-cache/
 docker_scripts/finetune_surya_ocr_bbox/outputs_surya_bbox/
 docker_scripts/finetune_surya_ocr_bbox/surya_bbox_dataset/
+

@@ -27,7 +27,8 @@ from torchvision import models, transforms
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DATASET_DIR = REPO_ROOT / "scripts" / "pagetype_labelizer" / "data"
+LOCAL_DATASET_DIR = Path(__file__).resolve().parent / "dataset"
+DEFAULT_DATASET_DIR = LOCAL_DATASET_DIR if LOCAL_DATASET_DIR.exists() else REPO_ROOT / "scripts" / "pagetype_labelizer" / "data"
 RUNS_DIR = Path(__file__).resolve().parent / "runs"
 CLASS_NAMES = ("cover", "story_page", "annexe", "summary")
 CLASS_TO_INDEX = {name: index for index, name in enumerate(CLASS_NAMES)}
