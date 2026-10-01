@@ -13,6 +13,7 @@ vi.mock('axios', () => ({
             post: apiMocks.post,
             interceptors: {
                 request: { use: apiMocks.useInterceptor },
+                response: { use: vi.fn() },
             },
         }),
     },

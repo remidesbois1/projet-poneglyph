@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { supabase } from './supabaseClient';
+import { getSupabaseSession, refreshSupabaseSession } from './supabaseSession';
 import {
     bubbleCreatePayloadSchema,
     bubbleUpdatePayloadSchema,
@@ -17,7 +17,7 @@ const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use(async (config) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = await getSupabaseSession({ expectedUserId: config._supabaseUserId });
     const token = session?.access_token;
     if (typeof window !== 'undefined') {
 
@@ -31,10 +31,32 @@ apiClient.interceptors.request.use(async (config) => {
     }
 
     if (token) {
+        config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${token}`;
+        config._supabaseUserId = session.user.id;
     }
 
     return config;
+});
+
+apiClient.interceptors.response.use(response => response, async (error) => {
+    const config = error.config;
+    const status = error.response?.status;
+    const code = error.response?.data?.code;
+    const authorization = config?.headers?.get?.('Authorization') || config?.headers?.Authorization;
+    const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+    const authRejected = status === 401 && (!code || code === 'SUPABASE_AUTH_REQUIRED');
+    const authUnavailable = status === 503 && code === 'SUPABASE_UNAVAILABLE';
+    // These failures happen in authentication middleware, before any page work.
+    // Never retry embeddings, a denied admin role, or an ambiguous network failure.
+    if (!config || config._supabaseRetried || config.signal?.aborted || !token
+        || (!authRejected && !authUnavailable)) throw error;
+    config._supabaseRetried = true;
+    if (authRejected) {
+        await refreshSupabaseSession(token, { expectedUserId: config._supabaseUserId });
+    }
+    if (config.signal?.aborted) throw error;
+    return apiClient.request(config);
 });
 
 export const getTomes = (mangaSlug, { signal } = {}) => apiClient.get('/tomes', {
@@ -199,10 +221,25 @@ export const updateAdminPrompts = (prompts) => apiClient.put('/admin/prompts', {
 export const getPublicPrompts = () => apiClient.get('/admin/prompts/public');
 
 export const getEmbeddingStats = (mangaSlug) => apiClient.get('/admin/ai-models/embedding-stats', { params: mangaSlug ? { manga: mangaSlug } : {} });
+function geminiFallbackHeaders() {
+    try {
+        const key = typeof window === 'undefined' ? '' : window.localStorage.getItem('google_api_key')?.trim();
+        return key ? { 'X-Gemini-API-Key': key } : {};
+    } catch { return {}; }
+}
+
+export const getSemanticRebuildStatus = () => apiClient.get('/admin/ai-models/semantic-rebuild-status', {
+    headers: geminiFallbackHeaders(),
+});
 export const triggerGeminiBackfill = (mangaSlug) => apiClient.post('/admin/ai-models/trigger-backfill', { manga: mangaSlug });
 export const triggerVoyageBackfill = (mangaSlug) => apiClient.post('/admin/ai-models/trigger-backfill-voyage', { manga: mangaSlug });
 export const triggerF2llmBackfill = (mangaSlug) => apiClient.post('/admin/ai-models/trigger-backfill-f2llm', { manga: mangaSlug });
 export const savePageData = (data) => apiClient.post('/admin/ai-models/save-page-data', data);
+export const rebuildPageSemanticData = (data, mangaSlug) => apiClient.post('/admin/ai-models/rebuild-page-semantic-data', data, {
+    params: { manga: mangaSlug },
+    headers: geminiFallbackHeaders(),
+    timeout: 600000,
+});
 export const generateVoyageEmbedding = (text) => apiClient.post('/admin/ai-models/generate-voyage-embedding', { text });
 export const generateF2llmEmbedding = (text) => apiClient.post('/admin/ai-models/generate-f2llm-embedding', { text });
 

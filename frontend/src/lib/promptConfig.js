@@ -1,6 +1,6 @@
 import defaultPrompts from '@poneglyph/shared/llm-prompts.json';
 
-const STORAGE_KEY = 'poneglyph:llm-prompts';
+const STORAGE_KEY = 'poneglyph:llm-prompts:v2';
 const STORAGE_TTL = 5 * 60 * 1000;
 const PROMPT_CONFIG_EVENT = 'poneglyph:llm-prompts-changed';
 

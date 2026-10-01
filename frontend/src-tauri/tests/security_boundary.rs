@@ -74,6 +74,7 @@ fn chatgpt_commands_are_explicitly_scoped() {
         "allow-get-chatgpt-auth-status",
         "allow-chatgpt-logout",
         "allow-run-chatgpt-page-ocr",
+        "allow-run-chatgpt-page-description",
         "allow-switch-frontend-origin",
     ] {
         assert!(permissions.iter().any(|item| item == permission));

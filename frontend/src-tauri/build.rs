@@ -23,6 +23,7 @@ fn main() {
         "get_chatgpt_auth_status",
         "chatgpt_logout",
         "run_chatgpt_page_ocr",
+        "run_chatgpt_page_description",
     ];
 
     tauri_build::try_build(

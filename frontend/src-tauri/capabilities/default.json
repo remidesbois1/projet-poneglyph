@@ -27,7 +27,8 @@
     "allow-chatgpt-login",
     "allow-get-chatgpt-auth-status",
     "allow-chatgpt-logout",
-    "allow-run-chatgpt-page-ocr"
+    "allow-run-chatgpt-page-ocr",
+    "allow-run-chatgpt-page-description"
   ],
   "remote": {
     "urls": [

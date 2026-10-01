@@ -1,5 +1,7 @@
 import { getAiModelConfig } from './aiModelConfig';
 import { getPrompt } from './promptConfig';
+import { prepareChatGptImage } from './chatGptImage';
+import { ASTRA_DESCRIPTION_MODEL, ASTRA_REASONING_EFFORT, parsePageDescription } from '@poneglyph/shared/page-description';
 
 const CHATGPT_AUTH_EVENT = 'poneglyph:chatgpt-auth-changed';
 
@@ -74,14 +76,29 @@ export async function runChatGptPageOcr(imageBlob, options = {}) {
     const fastMode = options.fastMode ?? config.chatgpt_fast_mode;
     const reasoningEffort = options.reasoningEffort || config.chatgpt_reasoning_effort;
     const prompt = options.prompt || await getPrompt('ocr_page_bbox');
+    const chatGptImage = await prepareChatGptImage(imageBlob);
     return invokeDesktop('run_chatgpt_page_ocr', {
-        image_bytes_base64: await blobToBase64(imageBlob),
-        mime_type: imageBlob.type || 'image/jpeg',
+        image_bytes_base64: await blobToBase64(chatGptImage),
+        mime_type: chatGptImage.type,
         model,
         fast_mode: Boolean(fastMode),
         reasoning_effort: reasoningEffort,
         prompt,
     });
+}
+
+export async function runChatGptPageDescription(imageBlob, options = {}) {
+    if (!(imageBlob instanceof Blob) || !imageBlob.size) throw new Error('Image originale manquante.');
+    const prompt = options.prompt || `${await getPrompt('page_description')}\n\n${await getPrompt('strict_json_suffix')}`;
+    const chatGptImage = await prepareChatGptImage(imageBlob);
+    const response = await invokeDesktop('run_chatgpt_page_description', {
+        image_bytes_base64: await blobToBase64(chatGptImage),
+        mime_type: chatGptImage.type,
+        model: ASTRA_DESCRIPTION_MODEL,
+        reasoning_effort: ASTRA_REASONING_EFFORT,
+        prompt,
+    });
+    return parsePageDescription(response.text);
 }
 
 export function subscribeToChatGptAuth(listener) {

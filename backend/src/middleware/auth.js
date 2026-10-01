@@ -1,54 +1,62 @@
-const { supabase } = require('../config/supabaseClient');
+const { supabase, supabaseAdmin } = require('../config/supabaseClient');
 
 function getBearerToken(req) {
   const authorization = req.headers.authorization;
-  if (!authorization) return null;
+  if (typeof authorization !== 'string') return null;
 
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() || null;
 }
 
-const optionalAuthMiddleware = async (req, res, next) => {
-  const token = getBearerToken(req);
-  if (!token) return next();
+function authUnavailable(res) {
+  return res.status(503).json({
+    code: 'SUPABASE_UNAVAILABLE',
+    error: 'Vérification Supabase temporairement indisponible. Réessayez la reprise dans un instant.',
+  });
+}
 
-  try {
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) {
-      return res.status(401).json({ error: 'Accès non autorisé : token invalide ou expiré.' });
+function authRequired(res) {
+  return res.status(401).json({ code: 'SUPABASE_AUTH_REQUIRED', error: 'Accès non autorisé : token manquant, invalide ou expiré.' });
+}
+
+function isTransientAuthError(error) {
+  return error instanceof TypeError || error?.name === 'AuthRetryableFetchError'
+    || error?.status === 0 || error?.status === 429 || error?.status >= 500
+    || /fetch failed|failed to fetch|network|timeout|socket/i.test(error?.message || '');
+}
+
+function createAuthMiddleware({ authClient = supabase, profileClient = supabaseAdmin, optional = false } = {}) {
+  return async (req, res, next) => {
+    const token = getBearerToken(req);
+    if (!token) return optional ? next() : authRequired(res);
+
+    let result;
+    try { result = await authClient.auth.getUser(token); }
+    catch (error) { return isTransientAuthError(error) ? authUnavailable(res) : authRequired(res); }
+    if (result.error) return isTransientAuthError(result.error) ? authUnavailable(res) : authRequired(res);
+    const user = result.data?.user;
+    if (!user) return authRequired(res);
+    if (optional) {
+      req.user = user;
+      return next();
     }
-    req.user = user;
+
+    // Read the verified user's role without depending on anonymous profile policies.
+    let profileResult;
+    try {
+      profileResult = await profileClient.from('profiles').select('role').eq('id', user.id).maybeSingle();
+    } catch { return authUnavailable(res); }
+    if (profileResult.error) return authUnavailable(res);
+    if (!profileResult.data) {
+      return res.status(403).json({ code: 'SUPABASE_PERMISSION_DENIED', error: 'Accès refusé : profil utilisateur introuvable.' });
+    }
+    req.user = { ...user, role: profileResult.data.role };
     return next();
-  } catch {
-    return res.status(401).json({ error: 'Accès non autorisé : token invalide ou expiré.' });
-  }
-};
+  };
+}
 
-const authMiddleware = async (req, res, next) => {
-  const token = getBearerToken(req);
-
-  if (!token) {
-    return res.status(401).json({ error: 'Accès non autorisé : token manquant.' });
-  }
-
-  try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !user) throw new Error('Token invalide ou expiré.');
-
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !profile) throw new Error('Profil utilisateur introuvable.');
-
-    req.user = { ...user, role: profile.role };
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Accès non autorisé : ' + error.message });
-  }
-};
+const authMiddleware = createAuthMiddleware();
+const optionalAuthMiddleware = createAuthMiddleware({ optional: true });
 
 const roleCheck = (allowedRoles) => {
   return (req, res, next) => {
@@ -56,9 +64,9 @@ const roleCheck = (allowedRoles) => {
     if (userRole && allowedRoles.includes(userRole)) {
       next();
     } else {
-      res.status(403).json({ error: 'Accès refusé : permissions insuffisantes.' });
+      res.status(403).json({ code: 'SUPABASE_PERMISSION_DENIED', error: 'Accès refusé : permissions insuffisantes.' });
     }
   };
 };
 
-module.exports = { authMiddleware, getBearerToken, optionalAuthMiddleware, roleCheck };
+module.exports = { authMiddleware, createAuthMiddleware, getBearerToken, optionalAuthMiddleware, roleCheck };

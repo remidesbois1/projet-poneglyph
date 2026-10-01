@@ -161,6 +161,22 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:3001/api
 
 Les traitements qui manipulent les pages nécessitent notamment `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` et `R2_PAGES_BUCKET_NAME`. La recherche sémantique distante utilise `VOYAGE_API_KEY` et `GOOGLE_API_KEY`. Les routes OCR distantes possèdent leurs propres secrets et quotas ; consulter `backend/sql/` avant de les activer.
 
+### Reconstruction des descriptions avec Astra
+
+Appliquer `backend/sql/2026-10-01_astra_semantic_rebuild.sql` dans Supabase, puis déployer le backend, le frontend et une nouvelle version de Poneglyph Desktop. Cette migration ajoute la provenance des descriptions et met à jour le prompt `page_description` existant s’il a été personnalisé. Les descriptions et vecteurs existants restent disponibles. Si la première version de cette migration a déjà été appliquée avec F2LLM obligatoire, appliquer aussi `backend/sql/2026-10-01_astra_rebuild_voyage_gemini.sql` pour que la reprise exige uniquement Voyage et Gemini.
+
+Dans l’administration du manga courant, ouvrir la gestion des modèles/embeddings, se connecter à ChatGPT dans le profil Desktop et cliquer sur **Refaire descriptions + embeddings avec Astra**. La confirmation précise le périmètre et le quota utilisé. Astra utilise `gpt-6-astra`, le raisonnement `high` et la session OAuth ChatGPT ; aucune clé API OpenAI n’est nécessaire. Le serveur doit disposer d’une clé Voyage. Gemini utilise la clé serveur en priorité ; si l’appel échoue, il réessaie une fois avec la clé Gemini enregistrée dans le profil utilisateur, lorsqu’elle existe. Cette clé peut également servir si aucune clé Gemini serveur n’est configurée.
+
+Le repli Gemini réutilise le même texte et la même image originale dans le même traitement, sans régénérer Astra ou Voyage. La clé personnelle est transmise uniquement aux routes admin du rebuild, dans un en-tête de requête ; elle n’est enregistrée ni dans les pages ni dans les journaux. La progression indique les pages enregistrées avec la clé personnelle. Si celle-ci est également refusée ou à court de quota, le batch suspend les nouveaux départs et conserve les descriptions Astra pour la reprise.
+
+La session Supabase est renouvelée avant l’expiration et après un refus HTTP 401, avec un renouvellement partagé entre les pages parallèles. Les images privées, sauvegardes et statistiques réessaient une seule fois après ce refus ou une indisponibilité signalée par la vérification d’authentification, avant tout calcul d’embedding. Un refus réel des permissions admin (403) suspend le batch ; une panne Supabase est affichée séparément et ne demande pas de se reconnecter. Les pages enregistrées et les descriptions Astra en cache restent réutilisables à la reprise.
+
+Toutes les pages sont candidates au premier passage, même si elles disposent déjà d’une description et de vecteurs. Chaque nouvelle description est validée, puis Voyage et Gemini multimodal sont recalculés avec le texte canonique (description, arc, personnages, dialogues validés). L’image originale privée est utilisée pour Astra et Gemini. Une seule mise à jour publie la description, les deux embeddings et la provenance, et invalide l’ancien vecteur F2LLM s’il existe.
+
+ChatGPT reçoit directement les originaux JPEG/PNG/WebP/GIF. Les originaux AVIF sont décodés puis envoyés en PNG sans redimensionnement ni compression supplémentaire avec perte, pour les descriptions comme pour l’OCR. L’original stocké reste intact.
+
+Le traitement utilise **3 pages simultanées par défaut**, avec un choix de 2 ou 3 avant le lancement. Chaque page avance indépendamment de l’image originale à la sauvegarde atomique ; l’interface affiche l’étape de toutes les pages en cours. **Arrêter** cesse de lancer de nouvelles pages et laisse finir les appels Astra et sauvegardes déjà lancés. Une erreur de quota ou de connexion suspend également les nouveaux départs et attend les pages déjà lancées. Relancer le bouton principal reprend les pages restantes d’après la provenance en base et la présence des deux vecteurs Voyage/Gemini. Les descriptions obtenues avant un échec d’embedding sont conservées dans le stockage local du même compte/manga pour éviter un nouvel appel Astra sur ce Desktop. **Tout recommencer, y compris les pages Astra** force explicitement un nouveau passage complet et abandonne ce cache. Garder l’application ouverte pendant le traitement.
+
 ### Démarrage
 
 ```bash

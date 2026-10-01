@@ -15,6 +15,8 @@ const { clearBubbleGeometryCache } = require('../utils/bubbleGeometry');
 const { generateGeminiEmbedding } = require('../utils/geminiClient');
 const { generateVoyageEmbedding } = require('../utils/voyageClient');
 const { generateF2llmEmbedding } = require('../utils/f2llmClient');
+const { createPageSemanticRebuildHandler, readUserGeminiApiKey, ensureSemanticRebuildAvailable } = require('./pageSemanticRebuildRoutes');
+const { SemanticRebuildError } = require('../services/pageSemanticRebuild');
 const {
   PROMPT_KEYS,
   PROMPT_CONTENT_MAX_LENGTH,
@@ -686,6 +688,9 @@ router.get('/ai-models/embedding-stats', authMiddleware, roleCheck(['Admin']), a
       has_gemini: page.has_gemini,
       has_f2llm: page.has_f2llm,
       has_description: page.has_description,
+      description_model: page.description_model,
+      description_prompt_version: page.description_prompt_version,
+      description_generated_at: page.description_generated_at,
     }));
 
     res.json(stats);
@@ -695,6 +700,27 @@ router.get('/ai-models/embedding-stats', authMiddleware, roleCheck(['Admin']), a
   }
 });
 
+
+router.get('/ai-models/semantic-rebuild-status', authMiddleware, roleCheck(['Admin']), async (req, res) => {
+  try {
+    const userGeminiApiKey = readUserGeminiApiKey(req);
+    ensureSemanticRebuildAvailable(userGeminiApiKey);
+    const { error } = await supabaseAdmin.from('pages')
+      .select('description_model, description_prompt_version, description_generated_at').limit(1);
+    if (error) throw error;
+    res.json({ ready: true });
+  } catch (error) {
+    res.status(error instanceof SemanticRebuildError ? error.statusCode : 503).json({ code: error instanceof SemanticRebuildError ? error.code : 'SEMANTIC_REBUILD_UNAVAILABLE', error: error instanceof SemanticRebuildError
+      ? error.message : 'Appliquez la migration SQL du rebuild Astra avant de lancer le traitement.' });
+  }
+});
+
+router.post('/ai-models/rebuild-page-semantic-data', authMiddleware, roleCheck(['Admin']), createPageSemanticRebuildHandler({
+  db: supabaseAdmin,
+  generateVoyageEmbedding,
+  generateGeminiEmbedding,
+  ensureAvailable: ensureSemanticRebuildAvailable,
+}));
 
 router.post('/ai-models/save-page-data', authMiddleware, roleCheck(['Admin']), async (req, res) => {
   const { id_page, description, embedding_voyage, embedding_gemini, embedding_f2llm } = req.body;

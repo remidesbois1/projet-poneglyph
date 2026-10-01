@@ -11,8 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Loader2, Save, RotateCcw, Cpu, Eye, MessageSquareText, Sparkles, Play, Square, Zap } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn, loadImage, getProxiedImageUrl } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import ModelBenchmarkRegistry from '@/components/ModelBenchmarkRegistry';
+import AstraSemanticRebuild from '@/components/AstraSemanticRebuild';
+import { fetchOriginalPageImage } from '@/lib/pageImageClient';
+import { getRebuildFailure, requireSupabaseSession } from '@/lib/astraSemanticRebuild';
 
 const MODEL_ROLES = [
     {
@@ -77,11 +80,13 @@ export default function AiModelManager({ mangaSlug }) {
     const [embeddingStats, setEmbeddingStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [loadingStats, setLoadingStats] = useState(true);
+    const [statsError, setStatsError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [triggeringGeminiBackfill, setTriggeringGeminiBackfill] = useState(false);
     const [triggeringVoyageBackfill, setTriggeringVoyageBackfill] = useState(false);
 
     const [isBackfilling, setIsBackfilling] = useState(false);
+    const [isRebuildingAstra, setIsRebuildingAstra] = useState(false);
     const [backfillProgress, setBackfillProgress] = useState({ current: 0, total: 0, log: [] });
     const shouldStopRef = useRef(false);
 
@@ -91,11 +96,7 @@ export default function AiModelManager({ mangaSlug }) {
 
     async function loadData() {
         setLoading(true);
-        setLoadingStats(true);
-        const statsPromise = getEmbeddingStats(mangaSlug)
-            .then(statsRes => setEmbeddingStats(statsRes.data))
-            .catch(() => setEmbeddingStats([]))
-            .finally(() => setLoadingStats(false));
+        const statsPromise = refreshEmbeddingStats();
 
         try {
             const settingsRes = await getAiModels();
@@ -108,6 +109,20 @@ export default function AiModelManager({ mangaSlug }) {
         }
 
         await statsPromise;
+    }
+
+    async function refreshEmbeddingStats() {
+        setLoadingStats(true);
+        setStatsError(null);
+        try {
+            setEmbeddingStats((await getEmbeddingStats(mangaSlug)).data);
+        } catch (error) {
+            const message = getRebuildFailure(error).message;
+            setStatsError(message);
+            toast.error('Impossible d’actualiser les statistiques.', { description: message });
+        } finally {
+            setLoadingStats(false);
+        }
     }
 
     const hasChanges = models && draft && (
@@ -163,6 +178,7 @@ export default function AiModelManager({ mangaSlug }) {
     };
 
     const handleClientBackfill = async () => {
+        if (isRebuildingAstra || isBackfilling) return;
         const apiKey = localStorage.getItem('google_api_key');
         if (!apiKey) {
             toast.error("Clé API Google manquante.", { description: "Configurez votre clé API Gemini dans le profil avant de lancer le backfill client." });
@@ -172,6 +188,13 @@ export default function AiModelManager({ mangaSlug }) {
         const pagesToProcess = embeddingStats.filter(s => !s.has_description || !s.has_voyage || !s.has_gemini);
         if (pagesToProcess.length === 0) {
             toast.info("Toutes les pages sont déjà à jour !");
+            return;
+        }
+
+        try {
+            await requireSupabaseSession();
+        } catch (error) {
+            toast.error(error.message);
             return;
         }
 
@@ -190,8 +213,8 @@ export default function AiModelManager({ mangaSlug }) {
             try {
                 setBackfillProgress(prev => ({ ...prev, current: currentCount, log: [`Traitement page ${page.id}...`, ...prev.log.slice(0, 10)] }));
 
-                const proxiedUrl = getProxiedImageUrl(page.url_image);
-                const img = await loadImage(proxiedUrl);
+                const session = await requireSupabaseSession();
+                const img = await fetchOriginalPageImage(page.id, session.access_token);
 
                 let currentDescription = page.description;
                 let currentVoyage = page.has_voyage ? null : undefined;
@@ -206,7 +229,7 @@ export default function AiModelManager({ mangaSlug }) {
                 if (!page.has_voyage) {
                     let text = "";
                     try {
-                        const d = JSON.parse(currentDescription);
+                        const d = typeof currentDescription === 'string' ? JSON.parse(currentDescription) : currentDescription;
                         text = d.content || "";
                         if (d.metadata?.characters) text += " " + d.metadata.characters.join(" ");
                     } catch (e) { text = typeof currentDescription === 'string' ? currentDescription : ""; }
@@ -221,7 +244,7 @@ export default function AiModelManager({ mangaSlug }) {
                 if (!page.has_gemini) {
                     let text = "";
                     try {
-                        const d = JSON.parse(currentDescription);
+                        const d = typeof currentDescription === 'string' ? JSON.parse(currentDescription) : currentDescription;
                         text = d.content || "";
                         if (d.metadata?.characters) text += " " + d.metadata.characters.join(" ");
                     } catch (e) { text = typeof currentDescription === 'string' ? currentDescription : ""; }
@@ -435,9 +458,13 @@ export default function AiModelManager({ mangaSlug }) {
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                        <Button onClick={refreshEmbeddingStats} variant="outline"
+                            disabled={loadingStats || isRebuildingAstra || isBackfilling}>
+                            <RotateCcw className="mr-2 h-4 w-4" /> Actualiser les statistiques
+                        </Button>
                         <Button
                             onClick={handleTriggerVoyageBackfill}
-                            disabled={triggeringVoyageBackfill || loadingStats}
+                            disabled={triggeringVoyageBackfill || loadingStats || isRebuildingAstra || isBackfilling}
                             variant="outline"
                             className="border-white/12 bg-white/[0.055] text-slate-200 hover:bg-white/12 hover:text-white"
                         >
@@ -446,7 +473,7 @@ export default function AiModelManager({ mangaSlug }) {
                         </Button>
                         <Button
                             onClick={handleTriggerGeminiBackfill}
-                            disabled={triggeringGeminiBackfill || loadingStats}
+                            disabled={triggeringGeminiBackfill || loadingStats || isRebuildingAstra || isBackfilling}
                             className="bg-[#3d86ff] hover:bg-[#2f73dc]"
                         >
                             {triggeringGeminiBackfill ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -455,11 +482,24 @@ export default function AiModelManager({ mangaSlug }) {
                     </div>
                 </div>
 
+                <AstraSemanticRebuild
+                    key={mangaSlug}
+                    mangaSlug={mangaSlug}
+                    pages={embeddingStats || []}
+                    disabled={loadingStats || isBackfilling || triggeringGeminiBackfill || triggeringVoyageBackfill}
+                    onBusyChange={setIsRebuildingAstra}
+                    onComplete={refreshEmbeddingStats}
+                />
+
+                {statsError && <p role="alert" className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+                    Impossible d’actualiser les statistiques. {statsError}
+                </p>}
+
                 {loadingStats ? (
                     <div className="flex justify-center py-10">
                         <Loader2 className="h-6 w-6 animate-spin text-[#8dbbff]" />
                     </div>
-                ) : !embeddingStats || embeddingStats.length === 0 ? (
+                ) : statsError && !embeddingStats ? null : !embeddingStats || embeddingStats.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-white/12 py-10 text-center text-sm text-slate-400">
                         Aucune donnée d&apos;embedding trouvée.
                     </div>
@@ -522,7 +562,7 @@ export default function AiModelManager({ mangaSlug }) {
                                         {embeddingStats.filter(s => !s.has_description || !s.has_voyage || !s.has_gemini).length} pages manquantes, via votre navigateur.
                                     </p>
                                 </div>
-                                <Button onClick={handleClientBackfill} className="bg-[#3d86ff] hover:bg-[#2f73dc]">
+                                <Button onClick={handleClientBackfill} disabled={isRebuildingAstra} className="bg-[#3d86ff] hover:bg-[#2f73dc]">
                                     <Play className="mr-2 h-4 w-4" /> Lancer
                                 </Button>
                             </div>

@@ -5,6 +5,7 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
+    "./page-description": "./src/page-description.js",
     "./input-limits": "./src/input-limits.json",
     "./input-limits.json": "./src/input-limits.json",
     "./llm-prompts": "./src/llm-prompts.json",

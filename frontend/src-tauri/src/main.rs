@@ -31,11 +31,13 @@ const CHATGPT_REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
 const CHATGPT_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const CHATGPT_CODEX_RESPONSES_URL: &str = "https://chatgpt.com/backend-api/codex/responses";
 const CHATGPT_OCR_MODEL: &str = "gpt-5.6-luna";
+const CHATGPT_DESCRIPTION_MODEL: &str = "gpt-6-astra";
 
 #[derive(Clone)]
 struct ChatGptState {
     client: reqwest::Client,
     session: Arc<Mutex<Option<ChatGptSession>>>,
+    refresh_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Clone)]
@@ -55,6 +57,7 @@ impl Default for ChatGptState {
                 .build()
                 .unwrap_or_else(|_| reqwest::Client::new()),
             session: Arc::new(Mutex::new(None)),
+            refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 }
@@ -78,6 +81,13 @@ struct ChatGptAuthStatus {
 #[derive(Debug, Serialize)]
 struct ChatGptOcrResponse {
     bubbles: Vec<Bubble>,
+    elapsed_ms: u64,
+    model: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ChatGptTextResponse {
+    text: String,
     elapsed_ms: u64,
     model: String,
 }
@@ -420,6 +430,15 @@ fn auth_status(session: Option<&ChatGptSession>) -> ChatGptAuthStatus {
 }
 
 async fn refresh_chatgpt_session(state: &ChatGptState) -> Result<ChatGptSession, String> {
+    refresh_chatgpt_session_at(state, CHATGPT_TOKEN_URL).await
+}
+
+async fn refresh_chatgpt_session_at(
+    state: &ChatGptState,
+    token_url: &str,
+) -> Result<ChatGptSession, String> {
+    // Concurrent pages reuse one refreshed session rather than rotating the same token twice.
+    let _refresh_guard = state.refresh_lock.lock().await;
     let current = state
         .session
         .lock()
@@ -435,7 +454,7 @@ async fn refresh_chatgpt_session(state: &ChatGptState) -> Result<ChatGptSession,
         .ok_or_else(|| "Session ChatGPT expiree. Reconnectez-vous.".to_string())?;
     let response = state
         .client
-        .post(CHATGPT_TOKEN_URL)
+        .post(token_url)
         .json(&serde_json::json!({
             "grant_type": "refresh_token",
             "client_id": CHATGPT_CLIENT_ID,
@@ -487,10 +506,124 @@ fn extract_response_text(value: &serde_json::Value) -> Option<String> {
         })
 }
 
-fn parse_codex_response(body: &str) -> Result<Vec<Bubble>, String> {
-    let mut output_text = serde_json::from_str::<serde_json::Value>(body)
-        .ok()
-        .and_then(|value| extract_response_text(&value));
+fn chatgpt_service_error(status: u16, code: &str) -> String {
+    if matches!(status, 401 | 403)
+        || matches!(
+            code,
+            "invalid_api_key" | "token_expired" | "authentication_error"
+        )
+    {
+        return "CHATGPT_AUTH_REQUIRED: Session ChatGPT refusee. Reconnectez-vous.".to_string();
+    }
+    if status == 429
+        || ["usage_limit", "rate_limit", "quota", "insufficient_quota"]
+            .iter()
+            .any(|marker| code.contains(marker))
+    {
+        return "CHATGPT_QUOTA_EXCEEDED: Quota ChatGPT Work/Codex atteint. Reprenez apres sa reinitialisation.".to_string();
+    }
+    if matches!(status, 400 | 404 | 422)
+        || matches!(
+            code,
+            "invalid_request_error"
+                | "unsupported_parameter"
+                | "model_not_found"
+                | "unsupported_model"
+        )
+    {
+        return format!("CHATGPT_REQUEST_REJECTED: Requete ChatGPT refusee (HTTP {status}).");
+    }
+    if status >= 500 {
+        return format!("CHATGPT_SERVICE_UNAVAILABLE: Service ChatGPT indisponible (HTTP {status}). Reprenez plus tard.");
+    }
+    format!("Appel ChatGPT interrompu ou refuse (HTTP {status}).")
+}
+
+fn bounded_chatgpt_error_detail(text: &str, secrets: &[&str]) -> String {
+    let mut redacted = text.to_string();
+    for secret in secrets {
+        if !secret.is_empty() {
+            redacted = redacted.replace(secret, "[secret]");
+        }
+    }
+    let mut after_bearer = false;
+    let words: Vec<&str> = redacted
+        .split_whitespace()
+        .map(|word| {
+            let redact = after_bearer
+                || word.contains("base64,")
+                || word.starts_with("sk-")
+                || word.len() > 160;
+            after_bearer = word.eq_ignore_ascii_case("bearer");
+            if redact {
+                "[redacted]"
+            } else {
+                word
+            }
+        })
+        .collect();
+    words.join(" ").chars().take(600).collect()
+}
+
+fn chatgpt_response_error(status: u16, value: &serde_json::Value, secrets: &[&str]) -> String {
+    let error = value
+        .get("error")
+        .filter(|error| error.is_object())
+        .unwrap_or(value);
+    let code = error
+        .get("code")
+        .or_else(|| error.get("type"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let detail = error
+        .get("message")
+        .or_else(|| value.get("detail"))
+        .or_else(|| value.get("error"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let mut message = chatgpt_service_error(status, code);
+    let safe_detail = bounded_chatgpt_error_detail(detail, secrets);
+    if !safe_detail.is_empty() {
+        message.push(' ');
+        message.push_str(&safe_detail);
+    }
+    if let Some(parameter) = error.get("param").and_then(serde_json::Value::as_str) {
+        message.push_str(" Parametre: ");
+        message.push_str(&bounded_chatgpt_error_detail(parameter, secrets));
+    }
+    message
+}
+
+fn validate_codex_event(value: &serde_json::Value) -> Result<(), String> {
+    let response = value.get("response").unwrap_or(value);
+    let event_type = value
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let status = response
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let error = response.get("error").filter(|error| !error.is_null());
+    if error.is_some()
+        || matches!(
+            event_type,
+            "error" | "response.failed" | "response.incomplete"
+        )
+        || matches!(status, "failed" | "incomplete" | "cancelled")
+    {
+        return Err(chatgpt_response_error(200, response, &[]));
+    }
+    Ok(())
+}
+
+fn parse_codex_response_text(body: &str) -> Result<String, String> {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
+        validate_codex_event(&value)?;
+        return extract_response_text(&value)
+            .ok_or_else(|| "Le modele n'a renvoye aucun texte.".to_string());
+    }
+    let mut output_text = None;
 
     for line in body.lines() {
         let Some(data) = line.strip_prefix("data: ") else {
@@ -502,6 +635,7 @@ fn parse_codex_response(body: &str) -> Result<Vec<Bubble>, String> {
         let Ok(event) = serde_json::from_str::<serde_json::Value>(data) else {
             continue;
         };
+        validate_codex_event(&event)?;
         if event.get("type").and_then(serde_json::Value::as_str)
             == Some("response.output_text.done")
         {
@@ -515,7 +649,11 @@ fn parse_codex_response(body: &str) -> Result<Vec<Bubble>, String> {
         }
     }
 
-    let text = output_text.ok_or_else(|| "Le modele n'a renvoye aucun texte OCR.".to_string())?;
+    output_text.ok_or_else(|| "Le modele n'a renvoye aucun texte.".to_string())
+}
+
+fn parse_codex_response(body: &str) -> Result<Vec<Bubble>, String> {
+    let text = parse_codex_response_text(body)?;
     let trimmed = text.trim();
     let without_prefix = trimmed
         .strip_prefix("```json")
@@ -1939,7 +2077,7 @@ async fn chatgpt_logout(state: State<'_, ChatGptState>) -> Result<ChatGptAuthSta
     Ok(auth_status(None))
 }
 
-fn chatgpt_ocr_request_body(
+fn chatgpt_multimodal_request_body(
     image_bytes_base64: &str,
     mime_type: &str,
     model: &str,
@@ -1949,11 +2087,11 @@ fn chatgpt_ocr_request_body(
 ) -> serde_json::Value {
     let mut body = serde_json::json!({
         "model": model,
-        "service_tier": if fast_mode { "priority" } else { "default" },
+        "instructions": prompt,
         "input": [{
             "role": "user",
             "content": [
-                { "type": "input_text", "text": prompt },
+                { "type": "input_text", "text": "Analyse l'image jointe selon les instructions." },
                 { "type": "input_image", "image_url": format!("data:{mime_type};base64,{image_bytes_base64}") }
             ]
         }],
@@ -1963,7 +2101,119 @@ fn chatgpt_ocr_request_body(
     if reasoning_effort != "default" {
         body["reasoning"] = serde_json::json!({ "effort": reasoning_effort });
     }
+    if fast_mode {
+        body["service_tier"] = serde_json::json!("priority");
+    }
     body
+}
+
+fn chatgpt_response_request(
+    state: &ChatGptState,
+    session: &ChatGptSession,
+    body: &serde_json::Value,
+    timeout: Duration,
+) -> reqwest::RequestBuilder {
+    state
+        .client
+        .post(CHATGPT_CODEX_RESPONSES_URL)
+        .bearer_auth(&session.access_token)
+        .header("ChatGPT-Account-Id", &session.account_id)
+        .header("Originator", "codex_cli_rs")
+        .header("OpenAI-Beta", "responses=experimental")
+        .header("Accept", "text/event-stream")
+        .timeout(timeout)
+        .json(body)
+}
+
+fn validate_chatgpt_image_mime_type(mime_type: &str) -> Result<(), String> {
+    if matches!(
+        mime_type,
+        "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+    ) {
+        return Ok(());
+    }
+    Err("Format d'image ChatGPT non pris en charge. Convertissez l'original en PNG.".to_string())
+}
+
+async fn run_chatgpt_multimodal(
+    image_bytes_base64: &str,
+    mime_type: &str,
+    model: &str,
+    fast_mode: bool,
+    reasoning_effort: &str,
+    prompt: Option<String>,
+    state: &ChatGptState,
+    timeout: Duration,
+) -> Result<(String, u64), String> {
+    validate_ocr_image_payload(image_bytes_base64)?;
+    validate_chatgpt_image_mime_type(mime_type)?;
+    let model = model.trim();
+    if model.is_empty()
+        || model.len() > 100
+        || !model
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+    {
+        return Err("Modele OpenAI invalide.".to_string());
+    }
+    let reasoning_effort = reasoning_effort.trim();
+    if !matches!(
+        reasoning_effort,
+        "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+    ) {
+        return Err("Niveau de raisonnement OpenAI invalide.".to_string());
+    }
+    let prompt = prompt
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty() && value.len() <= 20000)
+        .ok_or_else(|| "Prompt manquant ou invalide.".to_string())?;
+    let session = refresh_chatgpt_session(state).await?;
+    let started = Instant::now();
+    let response = chatgpt_response_request(
+        state,
+        &session,
+        &chatgpt_multimodal_request_body(
+            image_bytes_base64,
+            mime_type,
+            model,
+            fast_mode,
+            reasoning_effort,
+            &prompt,
+        ),
+        timeout,
+    )
+    .send()
+    .await
+    .map_err(|_| {
+        format!(
+            "CHATGPT_SERVICE_UNAVAILABLE: Appel ChatGPT {model} impossible. Reprenez plus tard."
+        )
+    })?;
+    let status = response.status();
+    let body = response.text().await.map_err(|_| {
+        "CHATGPT_SERVICE_UNAVAILABLE: Reponse ChatGPT interrompue. Reprenez plus tard.".to_string()
+    })?;
+    if !status.is_success() {
+        if matches!(status.as_u16(), 401 | 403) {
+            *state
+                .session
+                .lock()
+                .map_err(|_| "Session ChatGPT indisponible.".to_string())? = None;
+        }
+        // Only bounded error fields reach the UI, never the response body, OAuth tokens or image.
+        let error_body =
+            serde_json::from_str::<serde_json::Value>(&body).unwrap_or(serde_json::Value::Null);
+        return Err(chatgpt_response_error(
+            status.as_u16(),
+            &error_body,
+            &[
+                &session.access_token,
+                session.refresh_token.as_deref().unwrap_or(""),
+                &session.account_id,
+            ],
+        ));
+    }
+    Ok((body, started.elapsed().as_millis() as u64))
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -1976,69 +2226,51 @@ async fn run_chatgpt_page_ocr(
     prompt: Option<String>,
     state: State<'_, ChatGptState>,
 ) -> Result<ChatGptOcrResponse, String> {
-    validate_ocr_image_payload(&image_bytes_base64)?;
-    if !matches!(
-        mime_type.as_str(),
-        "image/jpeg" | "image/png" | "image/webp"
-    ) {
-        return Err("Format d'image OCR non pris en charge.".to_string());
-    }
-    let model = model.trim();
-    if model.is_empty()
-        || model.len() > 100
-        || !model
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
-    {
-        return Err("Modele OCR OpenAI invalide.".to_string());
-    }
-    let reasoning_effort = reasoning_effort.trim();
-    if !matches!(
-        reasoning_effort,
-        "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
-    ) {
-        return Err("Niveau de raisonnement OpenAI invalide.".to_string());
-    }
-    let prompt = prompt
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty() && value.len() <= 20000)
-        .ok_or_else(|| "Prompt OCR manquant ou invalide.".to_string())?;
-    let session = refresh_chatgpt_session(&state).await?;
-    let started = Instant::now();
-    let response = state
-        .client
-        .post(CHATGPT_CODEX_RESPONSES_URL)
-        .bearer_auth(&session.access_token)
-        .header("ChatGPT-Account-Id", &session.account_id)
-        .header("Originator", "codex_cli_rs")
-        .header("OpenAI-Beta", "responses=experimental")
-        .json(&chatgpt_ocr_request_body(
-            &image_bytes_base64,
-            &mime_type,
-            model,
-            fast_mode,
-            reasoning_effort,
-            &prompt,
-        ))
-        .send()
-        .await
-        .map_err(|_| format!("Appel OCR {model} impossible."))?;
-    let status = response.status();
-    let body = response.text().await.unwrap_or_default();
-    if !status.is_success() {
-        if matches!(status.as_u16(), 401 | 403) {
-            *state
-                .session
-                .lock()
-                .map_err(|_| "Session ChatGPT indisponible.".to_string())? = None;
-            return Err("Session ChatGPT refusee. Reconnectez-vous.".to_string());
-        }
-        return Err(format!("Le service OCR {model} a repondu {status}."));
-    }
+    let (body, elapsed_ms) = run_chatgpt_multimodal(
+        &image_bytes_base64,
+        &mime_type,
+        &model,
+        fast_mode,
+        &reasoning_effort,
+        prompt,
+        &state,
+        Duration::from_secs(180),
+    )
+    .await?;
     Ok(ChatGptOcrResponse {
         bubbles: parse_codex_response(&body)?,
-        elapsed_ms: started.elapsed().as_millis() as u64,
-        model: model.to_string(),
+        elapsed_ms,
+        model,
+    })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn run_chatgpt_page_description(
+    image_bytes_base64: String,
+    mime_type: String,
+    model: String,
+    reasoning_effort: String,
+    prompt: Option<String>,
+    state: State<'_, ChatGptState>,
+) -> Result<ChatGptTextResponse, String> {
+    if model != CHATGPT_DESCRIPTION_MODEL || reasoning_effort != "high" {
+        return Err("La description exige gpt-6-astra et reasoning_effort=high.".to_string());
+    }
+    let (body, elapsed_ms) = run_chatgpt_multimodal(
+        &image_bytes_base64,
+        &mime_type,
+        &model,
+        false,
+        &reasoning_effort,
+        prompt,
+        &state,
+        Duration::from_secs(600),
+    )
+    .await?;
+    Ok(ChatGptTextResponse {
+        text: parse_codex_response_text(&body)?,
+        elapsed_ms,
+        model,
     })
 }
 
@@ -2080,7 +2312,8 @@ fn main() {
             chatgpt_login,
             get_chatgpt_auth_status,
             chatgpt_logout,
-            run_chatgpt_page_ocr
+            run_chatgpt_page_ocr,
+            run_chatgpt_page_description
         ])
         .build(tauri::generate_context!())
         .expect("error while building Tauri application");
@@ -2095,9 +2328,10 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        chatgpt_ocr_request_body, decode_response_json, ensure_model_parent_directories,
-        frontend_origin_for_target, jwt_claims, normalize_frontend_path, parse_codex_response,
-        query_parameter, validate_ocr_image_payload, MAX_OCR_IMAGE_BASE64_BYTES,
+        chatgpt_multimodal_request_body, chatgpt_service_error, decode_response_json,
+        ensure_model_parent_directories, frontend_origin_for_target, jwt_claims,
+        normalize_frontend_path, parse_codex_response, parse_codex_response_text, query_parameter,
+        validate_ocr_image_payload, CHATGPT_DESCRIPTION_MODEL, MAX_OCR_IMAGE_BASE64_BYTES,
     };
     use reqwest::StatusCode;
     use serde_json::Value;
@@ -2110,7 +2344,7 @@ mod tests {
 
     #[test]
     fn maps_openai_service_tier_and_reasoning_effort() {
-        let fast = chatgpt_ocr_request_body(
+        let fast = chatgpt_multimodal_request_body(
             "aGVsbG8=",
             "image/png",
             "gpt-5.6-terra",
@@ -2118,7 +2352,7 @@ mod tests {
             "high",
             "prompt",
         );
-        let standard = chatgpt_ocr_request_body(
+        let standard = chatgpt_multimodal_request_body(
             "aGVsbG8=",
             "image/png",
             "gpt-5.6-luna",
@@ -2126,7 +2360,7 @@ mod tests {
             "low",
             "prompt",
         );
-        let automatic = chatgpt_ocr_request_body(
+        let automatic = chatgpt_multimodal_request_body(
             "aGVsbG8=",
             "image/png",
             "gpt-5.6-sol",
@@ -2137,9 +2371,241 @@ mod tests {
         assert_eq!(fast["model"], "gpt-5.6-terra");
         assert_eq!(fast["service_tier"], "priority");
         assert_eq!(fast["reasoning"]["effort"], "high");
-        assert_eq!(standard["service_tier"], "default");
+        assert!(standard.get("service_tier").is_none());
+        assert!(automatic.get("service_tier").is_none());
         assert_eq!(standard["reasoning"]["effort"], "low");
         assert!(automatic.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn chatgpt_rejects_unconverted_avif_before_sending_a_request() {
+        for mime_type in ["image/jpeg", "image/png", "image/gif", "image/webp"] {
+            assert!(super::validate_chatgpt_image_mime_type(mime_type).is_ok());
+        }
+        assert!(super::validate_chatgpt_image_mime_type("image/avif").is_err());
+        assert!(super::validate_chatgpt_image_mime_type("application/octet-stream").is_err());
+    }
+
+    #[test]
+    fn astra_description_request_uses_high_reasoning_and_original_bytes() {
+        let body = chatgpt_multimodal_request_body(
+            "b3JpZ2luYWw=",
+            "image/png",
+            CHATGPT_DESCRIPTION_MODEL,
+            false,
+            "high",
+            "page_description",
+        );
+        assert_eq!(body["model"], "gpt-6-astra");
+        assert_eq!(body["instructions"], "page_description");
+        assert_eq!(body["reasoning"]["effort"], "high");
+        assert_eq!(
+            body["input"][0]["content"][1]["image_url"],
+            "data:image/png;base64,b3JpZ2luYWw="
+        );
+        assert_eq!(body["store"], false);
+        assert_eq!(body["stream"], true);
+        assert!(body.get("api_key").is_none());
+    }
+
+    #[test]
+    fn multimodal_request_uses_the_existing_chatgpt_oauth_session() {
+        let state = super::ChatGptState::default();
+        let session = super::ChatGptSession {
+            access_token: "test-oauth-token".to_string(),
+            refresh_token: Some("test-refresh-token".to_string()),
+            account_id: "test-account".to_string(),
+            email: None,
+            expires_at: std::time::Instant::now() + std::time::Duration::from_secs(600),
+        };
+        *state.session.lock().unwrap() = Some(session.clone());
+        let reused =
+            tauri::async_runtime::block_on(super::refresh_chatgpt_session(&state)).unwrap();
+        assert_eq!(reused.access_token, session.access_token);
+        let body = chatgpt_multimodal_request_body(
+            "aGVsbG8=",
+            "image/png",
+            CHATGPT_DESCRIPTION_MODEL,
+            false,
+            "high",
+            "prompt",
+        );
+        let request = super::chatgpt_response_request(
+            &state,
+            &reused,
+            &body,
+            std::time::Duration::from_secs(600),
+        )
+        .build()
+        .unwrap();
+        assert_eq!(
+            request.url().as_str(),
+            "https://chatgpt.com/backend-api/codex/responses"
+        );
+        assert_eq!(
+            request.headers()["authorization"],
+            "Bearer test-oauth-token"
+        );
+        assert_eq!(request.headers()["ChatGPT-Account-Id"], "test-account");
+        assert!(!request.headers().contains_key("api-key"));
+        assert_eq!(request.headers()["Accept"], "text/event-stream");
+    }
+
+    #[test]
+    fn parallel_pages_share_one_rotated_oauth_token() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::time::{Duration, Instant};
+
+        // This endpoint serves exactly one refresh. A second attempt cannot succeed.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let token_url = format!("http://{}/token", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "refresh request never arrived");
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("test server failed: {error}"),
+                }
+            };
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 2048];
+            loop {
+                let size = stream.read(&mut buffer).unwrap();
+                assert!(size > 0);
+                request.extend_from_slice(&buffer[..size]);
+                let headers = String::from_utf8_lossy(&request);
+                if let Some(end) = headers.find("\r\n\r\n") {
+                    let content_length = headers[..end]
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .and_then(|length| length.trim().parse::<usize>().ok())
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= end + 4 + content_length {
+                        break;
+                    }
+                }
+            }
+            assert!(String::from_utf8_lossy(&request).contains("original-refresh-token"));
+            let body = serde_json::json!({
+                "access_token": "e30.eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJ0ZXN0LWFjY291bnQifQ.signature",
+                "refresh_token": "rotated-refresh-token", "expires_in": 3600
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        });
+        let state = super::ChatGptState {
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(3))
+                .build()
+                .unwrap(),
+            ..super::ChatGptState::default()
+        };
+        *state.session.lock().unwrap() = Some(super::ChatGptSession {
+            access_token: "expired-token".to_string(),
+            refresh_token: Some("original-refresh-token".to_string()),
+            account_id: "test-account".to_string(),
+            email: None,
+            expires_at: Instant::now(),
+        });
+        tauri::async_runtime::block_on(async {
+            let calls: Vec<_> = (0..3)
+                .map(|_| {
+                    let state = state.clone();
+                    let token_url = token_url.clone();
+                    tauri::async_runtime::spawn(async move {
+                        super::refresh_chatgpt_session_at(&state, &token_url).await
+                    })
+                })
+                .collect();
+            for call in calls {
+                let session = call
+                    .await
+                    .unwrap()
+                    .expect("concurrent pages must reuse the first refresh");
+                assert_eq!(
+                    session.refresh_token.as_deref(),
+                    Some("rotated-refresh-token")
+                );
+                assert_eq!(session.account_id, "test-account");
+                assert!(session.expires_at > Instant::now() + Duration::from_secs(60));
+            }
+        });
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn returns_raw_description_text_from_codex_responses() {
+        let text = r#"{"content":"Luffy attaque.","metadata":{"arc":"","characters":["Luffy"]}}"#;
+        let event = serde_json::json!({"type": "response.completed", "response": {
+            "status": "completed", "output": [{"type": "message", "content": [{"type": "output_text", "text": text}]}]
+        }});
+        let body = format!("data: {event}\n\ndata: [DONE]\n");
+        assert_eq!(parse_codex_response_text(&body).unwrap(), text);
+    }
+
+    #[test]
+    fn rejects_failed_or_incomplete_streams_even_after_output_text_done() {
+        for status in ["failed", "incomplete", "cancelled"] {
+            let body = format!("data: {{\"type\":\"response.output_text.done\",\"text\":\"{{}}\"}}\n\ndata: {{\"type\":\"response.completed\",\"response\":{{\"status\":\"{status}\"}}}}\n");
+            assert!(parse_codex_response_text(&body).is_err());
+        }
+        let quota = r#"data: {"type":"response.failed","response":{"error":{"code":"usage_limit_reached"}}}"#;
+        assert!(parse_codex_response_text(quota)
+            .unwrap_err()
+            .starts_with("CHATGPT_QUOTA_EXCEEDED"));
+        assert!(chatgpt_service_error(429, "").starts_with("CHATGPT_QUOTA_EXCEEDED"));
+        assert!(chatgpt_service_error(403, "").starts_with("CHATGPT_AUTH_REQUIRED"));
+    }
+
+    #[test]
+    fn exposes_codex_bad_request_reason_and_parameter() {
+        let missing_instructions = serde_json::json!({ "detail": "Instructions are required" });
+        let message = super::chatgpt_response_error(400, &missing_instructions, &[]);
+        assert!(message.starts_with("CHATGPT_REQUEST_REJECTED"));
+        assert!(message.contains("HTTP 400"));
+        assert!(message.contains("Instructions are required"));
+        let unsupported = serde_json::json!({ "error": {
+            "message": "Unsupported parameter: service_tier", "code": "unsupported_parameter", "param": "service_tier"
+        }});
+        let message = super::chatgpt_response_error(400, &unsupported, &[]);
+        assert!(message.contains("Unsupported parameter: service_tier"));
+        assert!(message.contains("Parametre: service_tier"));
+    }
+
+    #[test]
+    fn codex_error_diagnostics_are_bounded_and_redact_secrets() {
+        let payload = serde_json::json!({ "error": { "message":
+            format!("Rejected token-secret refresh-secret account-secret Bearer unknown-token data:image/jpeg;base64,{} {}", "A".repeat(500), "x ".repeat(1000))
+        }});
+        let message = super::chatgpt_response_error(
+            400,
+            &payload,
+            &["token-secret", "refresh-secret", "account-secret"],
+        );
+        for forbidden in [
+            "token-secret",
+            "refresh-secret",
+            "account-secret",
+            "unknown-token",
+            "base64,",
+        ] {
+            assert!(!message.contains(forbidden));
+        }
+        assert!(message.len() < 800);
+        let message = super::chatgpt_response_error(400, &serde_json::Value::Null, &[]);
+        assert!(message.starts_with("CHATGPT_REQUEST_REJECTED"));
     }
 
     #[test]

@@ -264,7 +264,7 @@ export async function generatePageDescription(imageSource, apiKey) {
             w: imageSource.naturalWidth,
             h: imageSource.naturalHeight
         };
-        blob = await cropImage(imageSource, fullRect);
+        blob = imageSource instanceof Blob ? imageSource : await cropImage(imageSource, fullRect);
     } catch (e) {
         console.error("Image processing error:", e);
         throw new Error("Erreur lors du traitement de l'image.");
@@ -282,7 +282,7 @@ export async function generatePageDescription(imageSource, apiKey) {
     const imagePart = {
         inlineData: {
             data: base64Data,
-            mimeType: "image/jpeg",
+            mimeType: blob.type || "image/jpeg",
         },
     };
 
@@ -310,7 +310,7 @@ export async function generateGeminiEmbedding(text, imageSource, apiKey) {
             w: imageSource.naturalWidth,
             h: imageSource.naturalHeight
         };
-        blob = await cropImage(imageSource, fullRect);
+        blob = imageSource instanceof Blob ? imageSource : await cropImage(imageSource, fullRect);
     } catch (e) {
         console.error("Image processing error:", e);
         throw new Error("Erreur lors du traitement de l'image.");
@@ -328,7 +328,7 @@ export async function generateGeminiEmbedding(text, imageSource, apiKey) {
                         { text: text },
                         {
                             inlineData: {
-                                mimeType: "image/jpeg",
+                                mimeType: blob.type || "image/jpeg",
                                 data: base64Data
                             }
                         }
