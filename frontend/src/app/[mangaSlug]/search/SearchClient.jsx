@@ -9,7 +9,8 @@ import {
     isAbortError,
     throwIfAborted,
 } from '@/lib/searchRequestLifecycle';
-import { getProxiedImageUrl, cn } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import SearchPageImage from '@/components/SearchPageImage';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useDetection } from '@/context/DetectionContext';
 import { useWorker } from '@/context/WorkerContext';
@@ -154,9 +155,10 @@ const ResultImage = ({ url, pageId, coords, type }) => {
     if (type === 'semantic' || !coords) {
         return (
             <div className="w-full aspect-[2/3] bg-[#071625] overflow-hidden relative group">
-                <img
-                    src={getProxiedImageUrl(url, pageId)}
-                    crossOrigin="anonymous"
+                <SearchPageImage
+                    url={url}
+                    pageId={pageId}
+                    thumbnail
                     alt="Page preview"
                     className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
                     loading="lazy"
@@ -181,9 +183,9 @@ const ResultImage = ({ url, pageId, coords, type }) => {
                     maxHeight: '85%'
                 }}
             >
-                <img
-                    src={getProxiedImageUrl(url, pageId)}
-                    crossOrigin="anonymous"
+                <SearchPageImage
+                    url={url}
+                    pageId={pageId}
                     alt="Bubble crop"
                     className="max-w-none"
                     style={{
@@ -1186,9 +1188,9 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
                         <Card className="poneglyph-panel overflow-hidden rounded-3xl border-yellow-300/25 bg-yellow-950/10">
                             <div className="grid gap-0 lg:grid-cols-[minmax(280px,520px)_1fr]">
                                 <div className="min-h-[420px] bg-[#071625]">
-                                    <img
-                                        src={getProxiedImageUrl(topOcrResult.url_image, topOcrResult.page_id)}
-                                        crossOrigin="anonymous"
+                                    <SearchPageImage
+                                        url={topOcrResult.url_image}
+                                        pageId={topOcrResult.page_id}
                                         alt="Meilleur resultat OCR"
                                         className="h-full max-h-[680px] w-full object-contain object-top transition-transform duration-500 group-hover:scale-[1.015]"
                                     />
