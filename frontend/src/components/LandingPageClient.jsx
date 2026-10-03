@@ -3,20 +3,18 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import LandingArchitecture from "@/components/LandingArchitecture";
 import { getMangaCoverThumbnailUrl } from "@/lib/utils";
 import {
     ArrowRight,
     BookOpen,
     Github,
     Info,
-    Mail,
-    MessageCircle,
-    PlayCircle,
     Search,
-    ShieldCheck,
 } from "lucide-react";
 
 const PONEGLYPH_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const GITHUB_URL = "https://github.com/remidesbois1/projet-poneglyph";
 
 function generateSlots(count, seed = 0) {
     const slots = [];
@@ -39,6 +37,9 @@ function PoneglyphGlyphs({ count = 18, seed = 0 }) {
     const [glyphs, setGlyphs] = useState(() => generateSlots(count, seed));
 
     useEffect(() => {
+        const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+        if (motionPreference.matches) return;
+
         const timers = [];
 
         Array.from({ length: count }).forEach((_, i) => {
@@ -64,7 +65,7 @@ function PoneglyphGlyphs({ count = 18, seed = 0 }) {
     }, [count]);
 
     return (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none motion-reduce:hidden">
             {glyphs.map((g, i) => (
                 <span
                     key={i}
@@ -143,20 +144,20 @@ export default function LandingPageClient({ mangas = [] }) {
     const visibleMangas = Array.isArray(mangas) ? mangas.slice(0, 3) : [];
 
     return (
-        <main className="min-h-screen overflow-hidden bg-[#030a13] text-white">
+        <main id="top" className="min-h-screen overflow-x-clip bg-[#030a13] text-white [&_a:focus-visible]:outline-2 [&_a:focus-visible]:outline-offset-4 [&_a:focus-visible]:outline-[#8dbbff] [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-4 [&_button:focus-visible]:outline-[#8dbbff]">
             <header className="sticky top-0 z-50 border-b border-white/8 bg-[#040b14]/76 backdrop-blur-xl">
-                <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
-                    <a href="#" className="group flex items-center gap-3">
+                <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center justify-between gap-x-6 px-5 py-3 sm:px-8 md:py-0">
+                    <a href="#top" className="group flex min-h-10 items-center gap-3">
                         <Image src="/favicon-96x96.png" alt="Logo Projet Poneglyph" width={34} height={34} className="rounded-md transition duration-200 group-hover:scale-105" />
                         <span className="text-base font-semibold tracking-tight text-white sm:text-lg">Projet Poneglyph</span>
                     </a>
-                    <nav className="hidden items-center gap-8 text-sm font-medium text-slate-300 md:flex">
-                        <a href="#features" className="transition hover:text-white">Fonctionnalités</a>
-                        <a href="#mangas" className="transition hover:text-white">Mangas</a>
+                    <nav aria-label="Navigation principale" className="flex w-full items-center justify-between gap-2 whitespace-nowrap pt-2 text-[11px] font-medium text-slate-300 min-[380px]:text-xs sm:gap-3 sm:text-sm md:w-auto md:gap-8 md:pt-0">
+                        <a href="#features" className="inline-flex min-h-11 items-center transition hover:text-white">Fonctionnement</a>
+                        <a href="#mangas" className="inline-flex min-h-11 items-center transition hover:text-white">Mangas</a>
                         <Link href="/sandbox" className="rounded-full border border-[#6da7ff]/30 bg-[#6da7ff]/10 px-3 py-1.5 text-[#bdd6ff] transition hover:bg-[#6da7ff]/18">
                             Sandbox
                         </Link>
-                        <a href="#about" className="transition hover:text-white">À propos</a>
+                        <a href="#about" className="inline-flex min-h-11 items-center transition hover:text-white">À propos</a>
                     </nav>
                 </div>
             </header>
@@ -194,12 +195,12 @@ export default function LandingPageClient({ mangas = [] }) {
                                     placeholder="Décrivez une scène, une réplique, un personnage..."
                                     className="min-w-0 flex-1 !border-0 !bg-[#071625] text-sm text-white outline-none placeholder:text-slate-500 sm:text-base"
                                 />
-                                <button type="submit" className="hidden shrink-0 items-center gap-2 rounded-lg bg-[#3d86ff] px-4 py-2 text-xs font-semibold text-white shadow-[0_8px_24px_rgba(61,134,255,0.28)] transition hover:bg-[#2f73dc] sm:inline-flex">
-                                    Rechercher <ArrowRight size={14} />
+                                <button type="submit" aria-label="Rechercher dans One Piece" className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#3d86ff] px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_24px_rgba(61,134,255,0.28)] transition hover:bg-[#2f73dc] sm:px-4">
+                                    <span className="hidden sm:inline">Rechercher</span> <ArrowRight size={16} aria-hidden="true" />
                                 </button>
                             </div>
                             <div className="flex flex-wrap items-center justify-center gap-2 px-2 pb-1 pt-3 text-xs text-slate-400">
-                                <span className="mr-1 text-slate-500">Essayez avec :</span>
+                                <span className="mr-1 text-slate-400">Dans One Piece :</span>
                                 {[
                                     'Luffy rencontre Zoro attaché à un poteau',
                                     'le combat entre Zoro et Mihawk',
@@ -218,48 +219,17 @@ export default function LandingPageClient({ mangas = [] }) {
                                 Explorer la bibliothèque <ArrowRight size={16} />
                             </a>
                             <a href="#features" className="inline-flex h-12 items-center justify-center gap-3 rounded-lg border border-white/16 bg-[#071625]/58 px-7 text-sm font-semibold text-slate-200 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-white/28 hover:bg-white/8">
-                                <PlayCircle size={16} />
                                 Voir comment ça marche
+                                <ArrowRight size={16} aria-hidden="true" />
                             </a>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <section id="features" className="relative py-16 sm:py-20">
-                <Image
-                    src="/landing/poneglyph-section-bg.png"
-                    alt=""
-                    fill
-                    sizes="100vw"
-                    className="object-cover opacity-55"
-                />
-                <div className="absolute inset-0 bg-[linear-gradient(180deg,#030a13_0%,rgba(3,10,19,0.86)_22%,rgba(3,10,19,0.92)_100%)]" />
-                <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
-                    <div className="mx-auto max-w-3xl text-center">
-                        <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Architecture & Technologies</h2>
-                        <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                            Une partie de l&apos;OCR, de la détection et du tri s&apos;exécute directement dans le navigateur avec WebGPU et Transformers.js. Les modèles plus lourds tournent sur GPU local ou dans le cloud, avec Tauri pour l&apos;application desktop. Les pages et leurs contenus sont ensuite indexés pour permettre une recherche rapide en langage naturel.
-                        </p>
-                        <div className="mt-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-xs text-slate-400">
-                            <span>WebGPU</span>
-                            <span aria-hidden="true">·</span>
-                            <span>ONNX</span>
-                            <span aria-hidden="true">·</span>
-                            <span>Tauri</span>
-                            <span aria-hidden="true">·</span>
-                            <span>GPU local / cloud</span>
-                            <span aria-hidden="true">·</span>
-                            <span>pgvector</span>
-                        </div>
-                        <Link href="/sandbox" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#8dbbff] transition-colors hover:text-[#bdd6ff]">
-                            Tester la Sandbox <ArrowRight size={15} />
-                        </Link>
-                    </div>
-                </div>
-            </section>
+            <LandingArchitecture />
 
-            <section id="mangas" className="relative py-14 sm:py-18">
+            <section id="mangas" className="relative scroll-mt-28 py-14 md:scroll-mt-20 sm:py-18">
                 <div className="absolute inset-0 bg-[#030a13]" />
                 <Image
                     src="/landing/poneglyph-section-bg.png"
@@ -300,7 +270,7 @@ export default function LandingPageClient({ mangas = [] }) {
                 </div>
             </section>
 
-            <section id="about" className="relative px-5 py-8 sm:px-8 sm:py-12">
+            <section id="about" className="relative scroll-mt-28 px-5 py-8 md:scroll-mt-20 sm:px-8 sm:py-12">
                 <div className="mx-auto grid max-w-6xl gap-8 border-y border-white/10 py-8 md:grid-cols-[1fr_0.9fr]">
                     <div className="flex gap-5">
                         <div>
@@ -329,9 +299,6 @@ export default function LandingPageClient({ mangas = [] }) {
                             <Image src="/favicon-96x96.png" alt="Logo Projet Poneglyph" width={30} height={30} />
                             <span className="font-semibold text-white">Projet Poneglyph</span>
                         </div>
-                        <p className="mt-3 max-w-xs text-xs leading-relaxed">
-                            Votre passage vers les trésors cachés de chaque page de manga.
-                        </p>
                     </div>
                     <div>
                         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-300">Explorer</h3>
@@ -343,23 +310,21 @@ export default function LandingPageClient({ mangas = [] }) {
                     <div>
                         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-300">Ressources</h3>
                         <div className="flex flex-col gap-2">
-                            <a href="#features" className="transition hover:text-white">Fonctionnalités</a>
+                            <a href="#features" className="transition hover:text-white">Fonctionnement</a>
                             <a href="#about" className="transition hover:text-white">À propos</a>
                         </div>
                     </div>
                     <div>
                         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-300">Suivez le projet</h3>
-                        <div className="flex gap-3">
-                            {[Github, MessageCircle, ShieldCheck, Mail].map((Icon, i) => (
-                                <span key={i} className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.055] text-slate-300">
-                                    <Icon size={16} />
-                                </span>
-                            ))}
-                        </div>
+                        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-300 transition hover:border-[#8dbbff]/40 hover:text-white">
+                            <Github size={18} aria-hidden="true" />
+                            GitHub <span className="sr-only">(nouvel onglet)</span>
+                            <ArrowRight size={14} className="-rotate-45" aria-hidden="true" />
+                        </a>
                     </div>
                 </div>
                 <div className="mx-auto mt-8 flex max-w-6xl flex-col gap-2 border-t border-white/8 pt-5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                    <span>© 2024 Projet Poneglyph - Licence MIT</span>
+                    <span>© Projet Poneglyph · <a href={`${GITHUB_URL}/blob/master/LICENSE`} target="_blank" rel="noopener noreferrer" className="underline decoration-slate-600 underline-offset-4 transition hover:text-white">Code sous licence MIT<span className="sr-only"> (nouvel onglet)</span></a></span>
                     <span className="max-w-xl leading-relaxed sm:text-right">
                         Merci à <em>Chip Huyen</em> pour <em>AI Engineering</em> (O&apos;Reilly, 2025), source d&apos;inspiration majeure pour l&apos;orchestration et l&apos;infrastructure hybride de ce projet.
                     </span>

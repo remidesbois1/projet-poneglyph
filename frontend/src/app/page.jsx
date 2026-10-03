@@ -3,7 +3,7 @@ import LandingPageClient from "@/components/LandingPageClient";
 
 export const metadata = {
     title: {
-        absolute: "Projet Poneglyph | Indexer de Mangas"
+        absolute: "Projet Poneglyph | Recherche de scènes de manga"
     },
     description: "Retrouvez la page que vous cherchez. Une citation ? Un combat ? Décrivez ce que vous cherchez pour tomber pile sur la bonne page de manga.",
     alternates: {
