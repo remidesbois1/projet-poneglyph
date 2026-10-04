@@ -29,6 +29,12 @@ export function getPageImageThumbnailUrl(url, pageId = null, width = 640) {
     return `${imageUrl}/thumbnail?width=${encodeURIComponent(width)}`;
 }
 
+export function getPageMiniatureUrl(pageId) {
+    if (pageId == null || pageId === '') return null;
+    const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001/api').replace(/\/$/, '');
+    return `${backendUrl}/pages/${encodeURIComponent(pageId)}/image/miniature`;
+}
+
 export function getMangaCoverThumbnailUrl(slug, width = 600) {
     if (!slug) return null;
     const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001/api').replace(/\/$/, '');
@@ -51,9 +57,9 @@ export function getCoverThumbnailUrl(url, width = 512) {
     return `${backendUrl}/covers/thumbnail?path=${encodeURIComponent(coverPath)}&width=${encodeURIComponent(width)}`;
 }
 
-export function getPageDisplayStatus(status, isPublicViewer = false) {
+export function getPageDisplayStatus(status) {
     if (typeof status === 'string' && status.trim()) return status;
-    return isPublicViewer ? 'completed' : 'not_started';
+    return 'unknown';
 }
 
 export const cropImage = (imageElement, rect) => {

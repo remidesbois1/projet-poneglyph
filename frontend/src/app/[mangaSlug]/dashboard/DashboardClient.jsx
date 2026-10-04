@@ -2,7 +2,6 @@
 
 import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { useManga } from '@/context/MangaContext';
-import { useAuth } from '@/context/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useRouter } from 'next/navigation';
 import { deleteBubblesForChapter, deleteBubblesForPage, getTomes, getChapitres, getPages } from '@/lib/api';
@@ -40,7 +39,6 @@ export default function DashboardPage() {
 
 function MangaDashboard({ mangaSlug, currentManga }) {
     const { profile } = useUserProfile();
-    const { session } = useAuth();
     const router = useRouter();
 
     const [tomes, setTomes] = useState([]);
@@ -379,7 +377,6 @@ function MangaDashboard({ mangaSlug, currentManga }) {
                         chapters={chapters}
                         pages={pages}
                         state={drawerState}
-                        isPublicViewer={!session}
                         isAdmin={isAdmin}
                         deletingTarget={deletingTarget}
                         onOpenChapter={openChapter}

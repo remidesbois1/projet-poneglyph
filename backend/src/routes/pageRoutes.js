@@ -10,7 +10,7 @@ const {
     toPublicBubbleDto,
 } = require('../utils/publicMedia');
 const { openPageImage, readPageImage } = require('../utils/pageStorage');
-const { createImageThumbnail, getThumbnailWidth } = require('../utils/imageThumbnail');
+const { createImageThumbnail, createPageMiniature, getThumbnailWidth } = require('../utils/imageThumbnail');
 const { mapBubbleMutationError } = require('../utils/bubblePermissions');
 const {
     UnsupportedPageImageError,
@@ -82,6 +82,7 @@ function createPageRouter({
     thumbnailImage = createImageThumbnail,
 } = {}) {
 const router = express.Router();
+const pendingMiniatures = new Map();
 
 router.get('/', optionalAuth, async (req, res) => {
     const { id_chapitre } = req.query;
@@ -241,6 +242,47 @@ router.get('/:id/image/thumbnail', async (req, res) => {
     } catch (error) {
         console.error("Erreur thumbnail image:", error);
         res.status(500).json({ error: "Erreur lors du traitement de l'image" });
+    }
+});
+
+router.get('/:id/image/miniature', async (req, res) => {
+    try {
+        const { data: page, error } = await supabaseClient
+            .from('pages')
+            .select('url_image')
+            .eq('id', req.params.id)
+            .single();
+
+        if (error || !page) return res.status(404).json({ error: "Page non trouvée" });
+
+        const key = cacheKey.pageMiniature({ pageId: req.params.id, source: page.url_image });
+        let miniatureBuffer = imageCache.get(key);
+        if (!miniatureBuffer) {
+            let pending = pendingMiniatures.get(key);
+            if (!pending) {
+                pending = (async () => {
+                    const { buffer } = await readImage(page.url_image);
+                    requirePageImageContentType(buffer);
+                    // No client-controlled size: this is the only unblurred public rendition.
+                    const miniature = await createPageMiniature(buffer);
+                    imageCache.set(key, miniature);
+                    return miniature;
+                })().finally(() => pendingMiniatures.delete(key));
+                pendingMiniatures.set(key, pending);
+            }
+            miniatureBuffer = await pending;
+        }
+
+        res.set('Content-Type', 'image/avif');
+        res.set('Cache-Control', 'public, max-age=86400');
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.set('X-Content-Type-Options', 'nosniff');
+        res.send(miniatureBuffer);
+    } catch (error) {
+        if (!isUnsupportedPageImageError(error) && !isExpectedPageStorageError(error)) {
+            console.error("Erreur miniature image:", error);
+        }
+        sendPrivateImageError(res, error, "Erreur lors du traitement de la miniature");
     }
 });
 

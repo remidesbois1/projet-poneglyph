@@ -51,14 +51,14 @@ function createQuery(resolveRows, calls, table) {
   return query;
 }
 
-function createFakeSupabase() {
+function createFakeSupabase(pageStatus = 'in_progress') {
   const calls = [];
   const page = {
     id: 42,
     id_chapitre: 9,
     numero_page: 3,
     url_image: RAW_PAGE_URL,
-    statut: 'in_progress',
+    statut: pageStatus,
     description: { content: 'secret draft' },
     commentaire_moderation: 'internal note',
     chapitres: { numero: 1, tomes: { numero: 1 } },
@@ -142,7 +142,7 @@ test('page image paths are application-owned and page DTOs never serialize the s
   assertNoRawStorageUrl(dto);
 });
 
-test('public page endpoints hide raw media, workflow fields, creators, and draft bubbles', async () => {
+test('public page endpoints expose progress but hide raw media, private annotations, creators, and draft bubbles', async () => {
   const fake = createFakeSupabase();
   const rawImage = Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -175,11 +175,12 @@ test('public page endpoints hide raw media, workflow fields, creators, and draft
 
   await withServer(router, async (baseUrl) => {
     const list = await (await fetch(`${baseUrl}/api/pages?id_chapitre=9`)).json();
-    assert.deepEqual(list, [{ id: 42, numero_page: 3, url_image: '/api/pages/42/image' }]);
+    assert.deepEqual(list, [{ id: 42, numero_page: 3, url_image: '/api/pages/42/image', statut: 'in_progress' }]);
     assertNoRawStorageUrl(list);
 
     const detail = await (await fetch(`${baseUrl}/api/pages/42`)).json();
     assert.equal(detail.url_image, '/api/pages/42/image');
+    assert.equal(detail.statut, 'in_progress');
     assert.equal(detail.id_chapitre, undefined);
     assert.equal(detail.description, undefined);
     assert.equal(detail.commentaire_moderation, undefined);
@@ -228,6 +229,37 @@ test('public page endpoints hide raw media, workflow fields, creators, and draft
     .filter((filter) => filter.field === 'statut' && filter.operator === 'eq');
   assert.ok(validatedFilters.length >= 2);
   assert.ok(validatedFilters.every((filter) => filter.value === VALIDATED_BUBBLE_STATUS));
+});
+
+test('page lists and details return the stored status both with and without authentication', async () => {
+  for (const status of ['not_started', 'in_progress', 'pending_review', 'completed']) {
+    const fake = createFakeSupabase(status);
+    const router = createPageRouter({
+      supabaseClient: fake.client,
+      optionalAuth: (req, _res, next) => {
+        if (req.headers.authorization === 'Bearer test-user') req.user = { id: 'test-user' };
+        next();
+      },
+    });
+
+    await withServer(router, async (baseUrl) => {
+      for (const authenticated of [false, true]) {
+        const headers = authenticated ? { Authorization: 'Bearer test-user' } : {};
+        for (const endpoint of ['/api/pages?id_chapitre=9', '/api/pages/42']) {
+          const response = await fetch(`${baseUrl}${endpoint}`, { headers });
+          assert.equal(response.status, 200);
+          const body = await response.json();
+          const page = Array.isArray(body) ? body[0] : body;
+          assert.equal(page.statut, status, `${endpoint}, authenticated=${authenticated}`);
+          if (!authenticated) {
+            assert.equal(page.description, undefined);
+            assert.equal(page.commentaire_moderation, undefined);
+          }
+          assertNoRawStorageUrl(page);
+        }
+      }
+    });
+  }
 });
 
 test('private image routes reject unsupported stored content without caching it', async () => {

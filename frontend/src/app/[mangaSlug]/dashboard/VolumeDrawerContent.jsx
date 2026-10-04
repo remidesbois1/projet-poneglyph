@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Loader2, MoreHorizontal, RefreshCcw, Trash2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, BookOpen, Check, ChevronLeft, ChevronRight, FileText, Loader2, MoreHorizontal, RefreshCcw, Trash2 } from 'lucide-react';
 import CoverThumbnailImage from '@/components/CoverThumbnailImage';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -9,9 +9,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn, getCoverThumbnailUrl, getPageDisplayStatus } from '@/lib/utils';
+import { cn, getCoverThumbnailUrl, getPageDisplayStatus, getPageMiniatureUrl } from '@/lib/utils';
 
-const PAGE_GRID = 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8';
+const PAGE_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3';
 const CHAPTER_GRID = 'grid gap-x-8 lg:grid-cols-2 xl:gap-x-12';
 const FOCUS_STYLE = 'outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8dbbff]/60';
 const STATUS = {
@@ -20,10 +20,11 @@ const STATUS = {
     pending_review: { label: 'À valider', dot: 'bg-yellow-400' },
     completed: { label: 'Terminé', dot: 'bg-green-400' },
     rejected: { label: 'Rejeté', dot: 'bg-red-400' },
+    unknown: { label: 'Statut indisponible', dot: 'bg-slate-400' },
 };
 
 function getStatus(status) {
-    return STATUS[status === 'empty' ? 'not_started' : status] || STATUS.not_started;
+    return STATUS[status === 'empty' ? 'not_started' : status] || STATUS.unknown;
 }
 
 function StatusLabel({ status }) {
@@ -36,13 +37,13 @@ function StatusLabel({ status }) {
     );
 }
 
-function DrawerCover({ tome }) {
+function DrawerCover({ tome, hero = false }) {
     const src = tome.cover_url ? getCoverThumbnailUrl(tome.cover_url, 256) : null;
     const [failedSource, setFailedSource] = useState(null);
     return (
-        <div className="relative aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-md border border-white/10 bg-[#071625] sm:w-20">
+        <div className={cn('relative aspect-[2/3] shrink-0 overflow-hidden rounded-md border border-white/10 bg-[#071625]', hero ? 'w-16 shadow-[0_12px_28px_#0005] sm:w-24' : 'w-14 sm:w-20')}>
             {src && failedSource !== src ? (
-                <CoverThumbnailImage src={src} crossOrigin="anonymous" alt={`Couverture du tome ${tome.numero}`} sizes="(max-width: 639px) 56px, 80px" className="h-full w-full object-contain" onError={() => setFailedSource(src)} />
+                <CoverThumbnailImage src={src} crossOrigin="anonymous" alt={`Couverture du tome ${tome.numero}`} sizes={hero ? '(max-width: 639px) 64px, 96px' : '(max-width: 639px) 56px, 80px'} className="h-full w-full object-contain" onError={() => setFailedSource(src)} />
             ) : (
                 <div role="img" aria-label="Couverture indisponible" className="flex h-full items-center justify-center text-slate-400">
                     <BookOpen aria-hidden="true" className="size-6" strokeWidth={1.25} />
@@ -59,7 +60,7 @@ function ContentState({ loading, error, empty, pages = false, onRetry }) {
                 <span className="sr-only">{pages ? 'Chargement des pages…' : 'Chargement des chapitres…'}</span>
                 <div aria-hidden="true" className={pages ? PAGE_GRID : CHAPTER_GRID}>
                     {Array.from({ length: pages ? 16 : 8 }, (_, index) => (
-                        pages ? <Skeleton key={index} className="h-28 rounded-lg bg-white/5 motion-reduce:animate-none" /> : (
+                        pages ? <Skeleton key={index} className="h-52 rounded-xl bg-white/5 motion-reduce:animate-none" /> : (
                             <div key={index} className="flex min-h-24 items-center gap-4 border-b border-white/8 py-4">
                                 <Skeleton className="h-7 w-9 shrink-0 bg-white/8 motion-reduce:animate-none" />
                                 <div className="flex-1 space-y-3">
@@ -111,23 +112,63 @@ function DeleteMenu({ label, actionLabel, disabled, onRequest, className }) {
     );
 }
 
-function PageCollection({ chapter, pages, isPublicViewer, isAdmin, deletingTarget, onOpenPage, onRequestDelete }) {
+function ChapterProgress({ pages }) {
+    const completed = pages.filter(page => page.statut === 'completed').length;
+    const percentage = Math.round(completed / pages.length * 100);
+    const finished = completed === pages.length;
+
+    return (
+        <div className="w-full min-w-0 border-t border-white/10 pt-4 lg:ml-auto lg:w-60 lg:shrink-0 lg:border-t-0 lg:border-l lg:pl-6 lg:pt-0">
+            <div className="flex items-center justify-between gap-4 text-xs">
+                <span className="text-slate-300">Progression du chapitre</span>
+                <span className={cn('font-semibold tabular-nums', finished ? 'text-emerald-300' : 'text-[#bdd6ff]')}>{percentage} %</span>
+            </div>
+            <div role="progressbar" aria-label="Pages terminées" aria-valuemin={0} aria-valuemax={pages.length} aria-valuenow={completed} aria-valuetext={`${completed} sur ${pages.length} pages terminées`} className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div className={cn('h-full rounded-full', finished ? 'bg-emerald-400' : 'bg-[#8dbbff]')} style={{ width: `${percentage}%` }} />
+            </div>
+            <p className="mt-2 flex items-center gap-1.5 text-xs leading-5 text-slate-400">
+                {finished && <Check aria-hidden="true" className="size-3.5 text-emerald-300" />}
+                {completed} / {pages.length} {completed === 1 ? 'page terminée' : 'pages terminées'}
+            </p>
+        </div>
+    );
+}
+
+function PageMiniature({ page }) {
+    const src = getPageMiniatureUrl(page.id);
+    const [failedSource, setFailedSource] = useState(null);
+    return (
+        <span className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-t-xl border-b border-white/6 bg-[#030c16]/65 p-2">
+            {src && failedSource !== src ? (
+                // Already bounded to 192 × 128 by the API; never request a larger rendition here.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={src} alt="" loading="lazy" decoding="async" crossOrigin="anonymous" className="max-h-32 max-w-full rounded-[2px] object-contain shadow-[0_3px_12px_#0006]" onError={() => setFailedSource(src)} />
+            ) : (
+                <span className="flex flex-col items-center gap-2 px-2 text-center text-slate-500">
+                    <FileText aria-hidden="true" className="size-6" strokeWidth={1.25} />
+                    <span className="text-[11px]">Aperçu indisponible</span>
+                </span>
+            )}
+        </span>
+    );
+}
+
+function PageCollection({ chapter, pages, isAdmin, deletingTarget, onOpenPage, onRequestDelete }) {
     const [filter, setFilter] = useState('all');
-    const items = [...pages].sort((a, b) => Number(a.numero_page) - Number(b.numero_page)).map(page => ({ page, status: getPageDisplayStatus(page.statut, isPublicViewer) }));
+    const items = [...pages].sort((a, b) => Number(a.numero_page) - Number(b.numero_page)).map(page => ({ page, status: getPageDisplayStatus(page.statut) }));
     const counts = items.reduce((acc, { status }) => {
-        const key = Object.hasOwn(STATUS, status) ? status : 'not_started';
+        const key = Object.hasOwn(STATUS, status) ? status : 'unknown';
         acc[key] = (acc[key] || 0) + 1;
         return acc;
     }, {});
-    const visible = filter === 'all' ? items : items.filter(({ status }) => (Object.hasOwn(STATUS, status) ? status : 'not_started') === filter);
+    const visible = filter === 'all' ? items : items.filter(({ status }) => (Object.hasOwn(STATUS, status) ? status : 'unknown') === filter);
 
     return (
         <>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-                <h3 className="text-sm font-semibold text-slate-100">Pages <span className="ml-2 font-normal tabular-nums text-slate-400">{pages.length}</span></h3>
+            <div className="mb-5 flex justify-end">
                 <div className="ml-auto flex min-w-0 items-center gap-1">
                     <Select value={filter} onValueChange={setFilter}>
-                        <SelectTrigger aria-label="Filtrer les pages par statut" className="w-40 rounded-lg border-white/12 text-slate-300 shadow-none data-[size=default]:h-11 sm:w-44"><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label="Filtrer les pages par statut" className="w-48 rounded-lg border-white/12 text-slate-300 shadow-none data-[size=default]:h-11 sm:w-52"><SelectValue /></SelectTrigger>
                         <SelectContent position="popper" align="end" className="z-[60]">
                             <SelectItem value="all">Tous les statuts</SelectItem>
                             {Object.entries(STATUS).filter(([key]) => counts[key] || filter === key).map(([key, value]) => (
@@ -142,15 +183,17 @@ function PageCollection({ chapter, pages, isPublicViewer, isAdmin, deletingTarge
             {visible.length ? (
                 <ul aria-label="Pages du chapitre" className={PAGE_GRID}>
                     {visible.map(({ page, status }) => (
-                        <li key={page.id} className="relative min-w-0 rounded-lg border border-white/10 bg-white/[0.025]">
-                            <button type="button" title={`Page ${page.numero_page} - ${status}`} aria-label={`Ouvrir la page ${page.numero_page} — ${getStatus(status).label}`} onClick={() => onOpenPage(page)} className={cn('flex min-h-28 w-full cursor-pointer flex-col justify-between gap-3 rounded-lg p-3 text-left transition-colors hover:bg-white/[0.045] motion-reduce:transition-none sm:p-4', FOCUS_STYLE)}>
-                                <span className={cn('block min-w-0', isAdmin && 'pr-8')}>
-                                    <span className="block text-xs text-slate-400">Page</span>
-                                    <span className="mt-1 block break-words font-serif text-2xl font-black leading-none tabular-nums text-white">{page.numero_page}</span>
+                        <li key={page.id} className="relative min-w-0 rounded-xl border border-white/10 bg-white/[0.025] transition-colors hover:border-[#8dbbff]/35 motion-reduce:transition-none">
+                            <button type="button" title={`Page ${page.numero_page} - ${status}`} aria-label={`Ouvrir la page ${page.numero_page} — ${getStatus(status).label}`} onClick={() => onOpenPage(page)} className={cn('flex h-full w-full cursor-pointer flex-col rounded-xl text-left transition-colors hover:bg-white/[0.045] motion-reduce:transition-none', FOCUS_STYLE)}>
+                                <PageMiniature page={page} />
+                                <span className="block w-full min-w-0 px-3 pb-3 pt-2.5">
+                                    <span className="mb-1 block">
+                                        <span className="text-xs font-medium text-slate-200">Page <span className="ml-0.5 text-sm font-semibold tabular-nums text-white">{String(page.numero_page).padStart(2, '0')}</span></span>
+                                    </span>
+                                    <StatusLabel status={status} />
                                 </span>
-                                <StatusLabel status={status} />
                             </button>
-                            {isAdmin && <DeleteMenu label={`Actions de la page ${page.numero_page}`} actionLabel="Supprimer les bulles" disabled={Boolean(deletingTarget)} onRequest={trigger => onRequestDelete({ kind: 'page', item: page }, trigger)} className="absolute right-0 top-0" />}
+                            {isAdmin && <DeleteMenu label={`Actions de la page ${page.numero_page}`} actionLabel="Supprimer les bulles" disabled={Boolean(deletingTarget)} onRequest={trigger => onRequestDelete({ kind: 'page', item: page }, trigger)} className="absolute right-1 top-1 border border-white/10 bg-[#071625]/95" />}
                         </li>
                     ))}
                 </ul>
@@ -191,7 +234,7 @@ function DeleteConfirmation({ target, open, busy, onClose, onConfirm, onRestoreF
 }
 
 /** Drawer body only: the existing Sheet and its drag/open animations belong to DashboardClient. */
-export default function VolumeDrawerContent({ tome, mangaTitle, chapter, chapters, pages, state, isPublicViewer, isAdmin, deletingTarget, onOpenChapter, onReturnToChapters, onRetry, onOpenPage, onDeletePage, onDeleteChapter }) {
+export default function VolumeDrawerContent({ tome, mangaTitle, chapter, chapters, pages, state, isAdmin, deletingTarget, onOpenChapter, onReturnToChapters, onRetry, onOpenPage, onDeletePage, onDeleteChapter }) {
     const scrollRef = useRef(null);
     const titleRef = useRef(null);
     const chapterButtonsRef = useRef(new Map());
@@ -257,16 +300,17 @@ export default function VolumeDrawerContent({ tome, mangaTitle, chapter, chapter
                 )}
 
                 <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 lg:px-10">
-                    <SheetHeader className="flex-row items-start gap-4 px-0 pb-6 pt-3 text-left sm:items-center sm:gap-5 sm:pb-7 sm:pt-4">
-                        <DrawerCover tome={tome} />
+                    <SheetHeader className={cn('flex-row items-start gap-4 px-0 text-left sm:items-center sm:gap-5', chapter ? 'my-5 flex-wrap py-3 sm:py-4 lg:gap-7' : 'pb-6 pt-3 sm:pb-7 sm:pt-4')}>
+                        <DrawerCover tome={tome} hero={Boolean(chapter)} />
                         <div className="min-w-0 flex-1">
-                            <p className="mb-1.5 break-words text-xs leading-5 text-slate-400">{mangaTitle}{chapter ? ` · Tome ${tome.numero}` : ''}</p>
-                            <SheetTitle ref={titleRef} tabIndex={-1} data-drawer-title className="w-fit max-w-full rounded-sm font-serif text-2xl font-black leading-tight text-white outline-none sm:text-3xl">{chapter ? `Chapitre ${chapter.numero}` : `Tome ${tome.numero}`}</SheetTitle>
+                            <p className={cn('mb-1.5 break-words text-xs leading-5', chapter ? 'text-[#a8c4e5]' : 'text-slate-400')}>{mangaTitle}{chapter ? ` · Tome ${tome.numero}` : ''}</p>
+                            <SheetTitle ref={titleRef} tabIndex={-1} data-drawer-title className={cn('w-fit max-w-full rounded-sm font-serif text-2xl font-black leading-tight text-white outline-none', chapter ? 'sm:text-4xl' : 'sm:text-3xl')}>{chapter ? `Chapitre ${chapter.numero}` : `Tome ${tome.numero}`}</SheetTitle>
                             <SheetDescription className="mt-2 max-w-3xl break-words text-sm leading-6 text-slate-300 [overflow-wrap:anywhere]">{title || (chapter ? 'Sélectionnez une page pour l’ouvrir.' : 'Sommaire et pages du tome.')}</SheetDescription>
                         </div>
+                        {chapter && ready && pages.length > 0 && <ChapterProgress pages={pages} />}
                     </SheetHeader>
 
-                    <section aria-label={chapter ? 'Pages' : 'Sommaire'} aria-busy={loading} className="border-t border-white/10 pt-4">
+                    <section aria-label={chapter ? 'Pages' : 'Sommaire'} aria-busy={loading} className={chapter ? 'pb-2 pt-1' : 'border-t border-white/10 pt-4'}>
                         {!chapter && (
                             <div className="mb-2 flex items-center justify-between gap-4">
                                 <h3 className="text-sm font-semibold text-slate-100">Sommaire</h3>
@@ -276,7 +320,7 @@ export default function VolumeDrawerContent({ tome, mangaTitle, chapter, chapter
                         {loading || error || !ready ? (
                             <ContentState loading={loading} error={error ? state.error || 'Veuillez réessayer dans quelques instants.' : null} pages={Boolean(chapter)} empty={chapter ? 'Aucune page dans ce chapitre' : 'Aucun chapitre dans ce volume'} onRetry={onRetry} />
                         ) : chapter ? (
-                            <PageCollection key={chapter.id} chapter={chapter} pages={pages} isPublicViewer={isPublicViewer} isAdmin={isAdmin} deletingTarget={deletingTarget} onOpenPage={onOpenPage} onRequestDelete={requestDelete} />
+                            <PageCollection key={chapter.id} chapter={chapter} pages={pages} isAdmin={isAdmin} deletingTarget={deletingTarget} onOpenPage={onOpenPage} onRequestDelete={requestDelete} />
                         ) : (
                             <ol aria-label="Chapitres du tome" className={CHAPTER_GRID}>
                                 {sortedChapters.map(item => (

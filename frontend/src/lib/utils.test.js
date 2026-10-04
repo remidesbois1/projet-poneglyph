@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cn, getCoverThumbnailUrl, getMangaCoverThumbnailUrl, getPageDisplayStatus, getPageImageThumbnailUrl, getProxiedImageUrl, cropImage } from './utils';
+import { cn, getCoverThumbnailUrl, getMangaCoverThumbnailUrl, getPageDisplayStatus, getPageImageThumbnailUrl, getPageMiniatureUrl, getProxiedImageUrl, cropImage } from './utils';
 
 describe('Utils', () => {
     describe('cn (Tailwind class merger)', () => {
@@ -64,6 +64,13 @@ describe('Utils', () => {
             .toBe('https://api.test/api/pages/page123/image/thumbnail?width=640');
     });
 
+    it('builds only the fixed public miniature endpoint from a page ID', () => {
+        process.env.NEXT_PUBLIC_BACKEND_URL = 'https://api.test/api/';
+        expect(getPageMiniatureUrl(42)).toBe('https://api.test/api/pages/42/image/miniature');
+        expect(getPageMiniatureUrl('a/b')).toBe('https://api.test/api/pages/a%2Fb/image/miniature');
+        expect(getPageMiniatureUrl(null)).toBeNull();
+    });
+
     it('builds a server-side manga cover thumbnail URL', () => {
         process.env.NEXT_PUBLIC_BACKEND_URL = 'https://api.test/api';
         expect(getMangaCoverThumbnailUrl('one-piece', 600))
@@ -76,10 +83,12 @@ describe('Utils', () => {
             .toBe('https://api.test/api/covers/thumbnail?path=tome-22-123.jpg&width=360');
     });
 
-    it('shows public chapter pages as available when private status metadata is absent', () => {
-        expect(getPageDisplayStatus(undefined, true)).toBe('completed');
-        expect(getPageDisplayStatus('in_progress', true)).toBe('in_progress');
-        expect(getPageDisplayStatus(undefined, false)).toBe('not_started');
+    it('does not infer completion or empty content when page status is missing', () => {
+        for (const status of [undefined, null, '', '   ']) {
+            expect(getPageDisplayStatus(status)).toBe('unknown');
+        }
+        expect(getPageDisplayStatus('in_progress')).toBe('in_progress');
+        expect(getPageDisplayStatus('completed')).toBe('completed');
     });
 
     describe('cropImage', () => {

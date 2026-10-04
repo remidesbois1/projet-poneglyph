@@ -14,6 +14,7 @@ const cacheKey = {
     cover: ({ path, width }) => `cover:${path}:${width}`,
     pagePreview: ({ pageId, revision }) => `page-preview:${pageId}:${revision}`,
     pageThumbnail: ({ pageId, revision, width }) => `page-thumbnail:${pageId}:${revision}:${width}`,
+    pageMiniature: ({ pageId, source }) => `page-miniature:v1:${pageId}:${crypto.createHash('sha256').update(source).digest('hex')}`,
 };
 
 function getPageRevision(bubbles) {

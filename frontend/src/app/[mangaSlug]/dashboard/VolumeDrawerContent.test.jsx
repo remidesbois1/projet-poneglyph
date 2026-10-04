@@ -29,7 +29,7 @@ function Drawer(props) {
 function setup(overrides = {}) {
     const props = {
         tome, mangaTitle: 'One Piece', chapter: null, chapters, pages: [],
-        state: { status: 'chapters-ready', error: null }, isPublicViewer: false, isAdmin: false,
+        state: { status: 'chapters-ready', error: null }, isAdmin: false,
         deletingTarget: null, onOpenChapter: vi.fn(), onReturnToChapters: vi.fn(),
         onRetry: vi.fn(), onOpenPage: vi.fn(), onDeletePage: vi.fn(), onDeleteChapter: vi.fn(), ...overrides,
     };
@@ -128,6 +128,43 @@ describe('VolumeDrawerContent', () => {
         expect(pages[0].numero_page).toBe(10);
     });
 
+    it('loads lazy, unblurred miniatures from the bounded endpoint, including for signed-in viewers', () => {
+        setup(pageProps);
+        const list = screen.getByRole('list', { name: 'Pages du chapitre' });
+        const images = list.querySelectorAll('img');
+        expect(images).toHaveLength(pages.length);
+        expect(images[0].src).toMatch(/\/pages\/101\/image\/miniature$/);
+        for (const image of images) {
+            expect(image).toHaveAttribute('loading', 'lazy');
+            expect(image).toHaveAttribute('decoding', 'async');
+            expect(image).toHaveAttribute('alt', '');
+            expect(image.src).not.toMatch(/original|width=|token=/);
+        }
+        fireEvent.error(images[0]);
+        expect(pageButtons()[0]).toHaveTextContent('Aperçu indisponible');
+        expect(pageButtons()[0].querySelector('img')).toBeNull();
+    });
+
+    it('calculates progress over the entire chapter independently of the page filter', async () => {
+        setup(pageProps);
+        expect(screen.getByRole('progressbar', { name: 'Pages terminées' })).toHaveAttribute('aria-valuenow', '1');
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '5');
+        expect(screen.getByText('20 %')).toBeInTheDocument();
+        fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' });
+        fireEvent.click(await screen.findByRole('option', { name: /Rejeté/ }));
+        expect(pageButtons()).toHaveLength(1);
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '5');
+        expect(screen.getByText('20 %')).toBeInTheDocument();
+    });
+
+    it('shows completed progress and avoids showing stale progress while loading', () => {
+        const completed = pages.map(page => ({ ...page, statut: 'completed' }));
+        const { props, rerender } = setup({ ...pageProps, pages: completed });
+        expect(screen.getByText('100 %')).toBeInTheDocument();
+        rerender(<Drawer {...props} state={{ status: 'loading-pages' }} />);
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
+
     it('filters pages with the real shadcn select and resets when that filtered status disappears', async () => {
         const { props, rerender } = setup(pageProps);
         fireEvent.keyDown(screen.getByRole('combobox', { name: 'Filtrer les pages par statut' }), { key: 'ArrowDown' });
@@ -150,9 +187,17 @@ describe('VolumeDrawerContent', () => {
         expect(screen.getByRole('combobox')).toHaveTextContent('Tous les statuts');
     });
 
-    it.each([[true, 'Terminé'], [false, 'Vide']])('preserves the public/authenticated fallback for absent page metadata (%s)', (isPublicViewer, status) => {
-        setup({ ...pageProps, isPublicViewer, pages: [{ id: 100, numero_page: 1 }] });
-        expect(screen.getByRole('button', { name: `Ouvrir la page 1 — ${status}` })).toBeInTheDocument();
+    it('keeps unavailable statuses distinct from completed and empty pages, including in filters', async () => {
+        setup({ ...pageProps, pages: [...pages, { id: 100, numero_page: 11 }, { id: 111, numero_page: 12, statut: 'unrecognized' }] });
+        expect(screen.getByRole('button', { name: 'Ouvrir la page 11 — Statut indisponible' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Ouvrir la page 12 — Statut indisponible' })).toBeInTheDocument();
+        fireEvent.keyDown(screen.getByRole('combobox', { name: 'Filtrer les pages par statut' }), { key: 'ArrowDown' });
+        expect(await screen.findByRole('option', { name: /Statut indisponible/ })).toHaveTextContent('2');
+        expect(screen.getByRole('option', { name: /Terminé/ })).toHaveTextContent('1');
+        expect(screen.getByRole('option', { name: /Vide/ })).toHaveTextContent('1');
+        fireEvent.click(screen.getByRole('option', { name: /Statut indisponible/ }));
+        expect(pageButtons()).toHaveLength(2);
+        expect(screen.getByRole('status')).toHaveTextContent('2 pages affichées');
     });
 
     it('places visible admin action buttons outside of page navigation buttons', () => {

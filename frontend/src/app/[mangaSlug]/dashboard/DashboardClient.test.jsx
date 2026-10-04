@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useManga } from '@/context/MangaContext';
-import { useAuth } from '@/context/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useRouter } from 'next/navigation';
 import { getTomes, getChapitres, getPages, deleteBubblesForPage, deleteBubblesForChapter } from '@/lib/api';
@@ -9,7 +8,6 @@ import { toast } from 'sonner';
 import DashboardClient from './DashboardClient';
 
 vi.mock('@/context/MangaContext', () => ({ useManga: vi.fn() }));
-vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/hooks/useUserProfile', () => ({ useUserProfile: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -61,7 +59,6 @@ describe('DashboardClient async states', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         useManga.mockReturnValue({ mangaSlug: 'one-piece', currentManga: { titre: 'One Piece' } });
-        useAuth.mockReturnValue({ session: null });
         useUserProfile.mockReturnValue({ profile: null, loading: true });
         useRouter.mockReturnValue({ push: vi.fn() });
         getChapitres.mockResolvedValue({ data: [] });
@@ -183,14 +180,14 @@ describe('DashboardClient async states', () => {
         expect(getPages).toHaveBeenCalledTimes(2);
     });
 
-    it('opens the correct annotation page and keeps public pages without private status readable', async () => {
+    it('opens public pages even when their status is unavailable', async () => {
         getTomes.mockResolvedValue({ data: [volumes[0]] });
         getChapitres.mockResolvedValue({ data: [{ id: 11, numero: 11, titre: 'Départ' }] });
         getPages.mockResolvedValue({ data: [{ id: 101, numero_page: 1 }] });
         render(<DashboardClient />);
         fireEvent.click(await screen.findByRole('button', { name: /^Ouvrir le tome 1/ }));
         fireEvent.click(await screen.findByRole('button', { name: /^Ouvrir le chapitre 11/ }));
-        fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir la page 1 — Terminé' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir la page 1 — Statut indisponible' }));
         expect(useRouter().push).toHaveBeenCalledWith('/one-piece/annotate/101');
         expect(screen.queryByRole('button', { name: /^Actions/ })).not.toBeInTheDocument();
     });
@@ -229,7 +226,6 @@ describe('DashboardClient async states', () => {
     });
 
     async function openAdminPages() {
-        useAuth.mockReturnValue({ session: { user: { id: 'admin' } } });
         useUserProfile.mockReturnValue({ profile: { role: 'Admin' }, loading: false });
         getTomes.mockResolvedValue({ data: volumes });
         getChapitres.mockResolvedValue({ data: [{ id: 11, numero: 11, global_status: 'completed' }, { id: 12, numero: 12 }] });

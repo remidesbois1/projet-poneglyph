@@ -13,11 +13,11 @@ function toPageDto(page, { authenticated = false } = {}) {
   };
 
   if (page.chapitres !== undefined) dto.chapitres = page.chapitres;
+  if (page.statut !== undefined) dto.statut = page.statut;
 
   if (authenticated) {
     for (const field of [
       'id_chapitre',
-      'statut',
       'description',
       'commentaire_moderation',
     ]) {
