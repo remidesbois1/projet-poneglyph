@@ -48,7 +48,12 @@
   flex-shrink: 0;
   align-items: center;
   gap: 28px;
+  overflow-x: auto;
+  scrollbar-width: none;
   border-bottom: 1px solid var(--review-line);
+}
+.tabBar::-webkit-scrollbar {
+  display: none;
 }
 .tab {
   display: inline-flex;
@@ -75,7 +80,7 @@
   content: "";
   position: absolute;
   height: 3px;
-  bottom: -1px;
+  bottom: 0;
   left: 0;
   right: 0;
   background: #99bdf0;
@@ -583,10 +588,16 @@
     min-height: 62px;
   }
   .tabBar {
-    gap: 22px;
+    gap: 0;
   }
   .tab {
-    padding-bottom: 13px;
+    flex: 1;
+    justify-content: center;
+    padding: 0 4px 13px;
+    font-size: 12px;
+  }
+  .tab svg {
+    display: none;
   }
   .bubbleCard {
     grid-template-columns: 1fr;

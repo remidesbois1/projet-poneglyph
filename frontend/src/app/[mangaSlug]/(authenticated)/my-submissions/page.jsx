@@ -1,4 +1,4 @@
-import SubmissionsClient from './SubmissionsClient';
+import { redirect } from 'next/navigation';
 
 export async function generateMetadata({ params }) {
     const { mangaSlug } = await params;
@@ -10,6 +10,7 @@ export async function generateMetadata({ params }) {
     };
 }
 
-export default function Page() {
-    return <SubmissionsClient />;
+export default async function Page({ params }) {
+    const { mangaSlug } = await params;
+    redirect(`/${mangaSlug}/moderation?view=submissions`);
 }

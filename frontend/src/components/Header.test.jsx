@@ -69,12 +69,23 @@ describe('Header Links Access Roles', () => {
         expect(screen.queryAllByText('Recherche').length).toBeGreaterThan(0);
 
         
-        expect(screen.queryAllByText('Mes Soumissions').length).toBeGreaterThan(0);
+        expect(screen.queryByText('Mes Soumissions')).not.toBeInTheDocument();
 
         
         expect(screen.queryByText('Modération')).not.toBeInTheDocument();
         expect(screen.queryByText('Admin')).not.toBeInTheDocument();
         expect(screen.queryByText('Explorateur')).not.toBeInTheDocument();
+    });
+
+    it('preserves the selected moderation tab in the login return URL', () => {
+        useAuth.mockReturnValue({ user: null, isGuest: true });
+        useUserProfile.mockReturnValue({ profile: null });
+        usePathname.mockReturnValue('/test-manga/moderation');
+        useSearchParams.mockReturnValue(new URLSearchParams('view=submissions'));
+
+        render(<Header onOpenApiKeyModal={vi.fn()} />);
+
+        expect(screen.getByRole('link', { name: 'Connexion' })).toHaveAttribute('href', '/login?next=%2Ftest-manga%2Fmoderation%3Fview%3Dsubmissions');
     });
 
     it('shows Modo links for Moderators', () => {
@@ -83,7 +94,7 @@ describe('Header Links Access Roles', () => {
 
         render(<Header onOpenApiKeyModal={vi.fn()} />);
 
-        expect(screen.queryAllByText('Mes Soumissions').length).toBeGreaterThan(0);
+        expect(screen.queryByText('Mes Soumissions')).not.toBeInTheDocument();
         expect(screen.queryAllByText('Modération').length).toBeGreaterThan(0);
 
         
@@ -97,7 +108,7 @@ describe('Header Links Access Roles', () => {
 
         render(<Header onOpenApiKeyModal={vi.fn()} />);
 
-        expect(screen.queryAllByText('Mes Soumissions').length).toBeGreaterThan(0);
+        expect(screen.queryByText('Mes Soumissions')).not.toBeInTheDocument();
         expect(screen.queryAllByText('Modération').length).toBeGreaterThan(0);
         expect(screen.queryAllByText('Admin').length).toBeGreaterThan(0);
         expect(screen.queryAllByText('Explorateur').length).toBeGreaterThan(0);

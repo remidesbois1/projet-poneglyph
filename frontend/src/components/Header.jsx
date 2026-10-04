@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import LocalOcrStatusIndicator from '@/components/LocalOcrStatusIndicator';
 
 
-import { LogOut, User, Shield, ShieldAlert, Book, Sparkles, Menu, Search, FileText, Image as ImageIcon, Languages, Settings2, Library, Cpu } from "lucide-react";
+import { LogOut, User, Shield, ShieldAlert, Book, Sparkles, Menu, Search, Image as ImageIcon, Languages, Settings2, Library, Cpu } from "lucide-react";
 
 const Header = ({ onOpenApiKeyModal }) => {
     const { user, signOut, isGuest } = useAuth();
@@ -38,12 +38,10 @@ const Header = ({ onOpenApiKeyModal }) => {
     const { mangaSlug } = useManga(); 
     const searchParams = useSearchParams();
 
-    const [loginUrl, setLoginUrl] = React.useState('/login');
-    React.useEffect(() => {
-        if (typeof window !== 'undefined') {
-            setLoginUrl(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-        }
-    }, [pathname, searchParams]);
+    const queryString = searchParams.toString();
+    const loginUrl = pathname
+        ? `/login?next=${encodeURIComponent(pathname + (queryString ? `?${queryString}` : ''))}`
+        : '/login';
 
     const handleLogout = async () => {
         await signOut();
@@ -94,11 +92,6 @@ const Header = ({ onOpenApiKeyModal }) => {
                     <Link href={getHref('/search')} prefetch={false} className={getLinkStyle('/search')}>
                         Recherche
                     </Link>
-                    {!isGuest && (
-                        <Link href={getHref('/my-submissions')} prefetch={false} className={getLinkStyle('/my-submissions')}>
-                            Mes Soumissions
-                        </Link>
-                    )}
                     {!isGuest && (isAdmin || isModo) && (
                         <Link href={getHref('/moderation')} prefetch={false} className={getLinkStyle('/moderation')}>
                             Modération
@@ -147,12 +140,6 @@ const Header = ({ onOpenApiKeyModal }) => {
                                         </div>
                                     </DropdownMenuLabel>
                                     <DropdownMenuSeparator />
-                                    {(isAdmin || isModo) && (
-                                        <DropdownMenuItem onClick={() => router.push(getHref('/my-submissions'))}>
-                                            <Book className="mr-2 h-4 w-4" />
-                                            <span>Mes Soumissions</span>
-                                        </DropdownMenuItem>
-                                    )}
                                     {(isAdmin || isModo) && (
                                         <DropdownMenuItem onClick={() => router.push(getHref('/moderation'))}>
                                             <Shield className="mr-2 h-4 w-4" />
@@ -244,14 +231,6 @@ const Header = ({ onOpenApiKeyModal }) => {
                                         {!isGuest && (
                                             <>
                                                 <p className="px-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 mt-6">Espace Travail</p>
-                                                {(isAdmin || isModo) && (
-                                                    <Link href={getHref('/my-submissions')} prefetch={false} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50 text-slate-700 font-medium transition-all group">
-                                                        <div className="p-1.5 bg-[#2F7AAF]/10 rounded border border-[#2F7AAF]/20 shadow-sm text-[#2F7AAF]">
-                                                            <FileText size={18} />
-                                                        </div>
-                                                        Mes Soumissions
-                                                    </Link>
-                                                )}
                                                 {(isAdmin || isModo) && (
                                                     <Link href={getHref('/moderation')} prefetch={false} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50 text-slate-700 font-medium transition-all group">
                                                         <div className="p-1.5 bg-amber-50 rounded border border-amber-100 shadow-sm text-amber-600 ">

@@ -2,18 +2,22 @@
 import React, { Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import * as Tabs from "@radix-ui/react-tabs";
-import { MessageSquareText, Layers } from "lucide-react";
+import { MessageSquareText, Layers, Send } from "lucide-react";
 import { useManga } from "@/context/MangaContext";
 import styles from "@/components/moderation/Review.module.css";
 const BubbleReviewList = React.lazy(
   () => import("@/components/BubbleReviewList"),
 );
 const PageReviewList = React.lazy(() => import("@/components/PageReviewList"));
+const SubmissionsList = React.lazy(
+  () => import("@/components/moderation/SubmissionsList"),
+);
 function ModerationContent() {
   const { currentManga, mangaSlug } = useManga();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const activeTab = searchParams.get("view") === "pages" ? "pages" : "bubbles";
+  const view = searchParams.get("view");
+  const activeTab = ["pages", "submissions"].includes(view) ? view : "bubbles";
   return (
     <div className={styles.overview}>
       <title>Modération</title>
@@ -30,7 +34,7 @@ function ModerationContent() {
             "/" +
               mangaSlug +
               "/moderation" +
-              (value === "pages" ? "?view=pages" : ""),
+              (value === "bubbles" ? "" : "?view=" + value),
             { scroll: false },
           )
         }
@@ -38,7 +42,7 @@ function ModerationContent() {
       >
         <Tabs.List
           className={styles.tabBar}
-          aria-label="Contributions à vérifier"
+          aria-label="Modération et suivi des contributions"
         >
           <Tabs.Trigger value="bubbles" className={styles.tab}>
             <MessageSquareText />
@@ -47,6 +51,10 @@ function ModerationContent() {
           <Tabs.Trigger value="pages" className={styles.tab}>
             <Layers />
             Pages complètes
+          </Tabs.Trigger>
+          <Tabs.Trigger value="submissions" className={styles.tab}>
+            <Send />
+            Mes Soumissions
           </Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="bubbles" className={styles.tabPanel}>
@@ -58,6 +66,17 @@ function ModerationContent() {
             }
           >
             <BubbleReviewList />
+          </Suspense>
+        </Tabs.Content>
+        <Tabs.Content value="submissions" className={styles.tabPanel}>
+          <Suspense
+            fallback={
+              <p className={styles.empty} role="status">
+                Chargement des soumissions…
+              </p>
+            }
+          >
+            <SubmissionsList />
           </Suspense>
         </Tabs.Content>
         <Tabs.Content value="pages" className={styles.tabPanel}>
