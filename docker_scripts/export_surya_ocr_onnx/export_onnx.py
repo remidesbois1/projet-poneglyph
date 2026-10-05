@@ -325,7 +325,12 @@ def export(source, out):
     (out / "browser_manifest.json").write_text(json.dumps(manifest, indent=2))
     for name in ["tokenizer.json", "tokenizer_config.json"]:
         shutil.copy2(source / name, out / name)
-    print(json.dumps(manifest["files"]), flush=True)
+    from export_decode_weights import export as export_decode_index
+    from export_prefill import export as export_state_prefill
+    export_decode_index(source, out)
+    export_state_prefill(out)
+    export_state_prefill(out, fused_norms=True)
+    print(json.dumps(json.loads((out / "browser_manifest.json").read_text())["files"]), flush=True)
 
 
 if __name__ == "__main__":

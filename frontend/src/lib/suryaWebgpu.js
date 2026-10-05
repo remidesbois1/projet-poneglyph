@@ -3,12 +3,13 @@ import { PreTrainedTokenizer } from '@huggingface/transformers';
 import { half } from './falconPreprocessing';
 import { prepareSuryaImage, suryaRotary, cleanSuryaText } from './suryaPreprocessing';
 import { downloadModel } from './modelDownload';
+import { SuryaFusedDecoder } from './suryaFusedDecoder';
 
 export const SURYA_MODEL_BASE = process.env.NEXT_PUBLIC_SURYA_MODEL_BASE ||
-    'https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/resolve/16efe756422b73054b97ea1fe082a0724627eadb/onnx';
+    'https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/resolve/1d3698b88de708cc7b7cb8d349b4255715b70bc5/onnx';
 
 export class SuryaWebGPU {
-    async load(onProgress = () => {}) {
+    async load(onProgress = () => {}, options = {}) {
         if (this.decoder) return;
         if (!navigator.gpu) throw new Error('WebGPU est indisponible dans ce navigateur.');
         const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
@@ -17,6 +18,7 @@ export class SuryaWebGPU {
         ort.env.wasm.wasmPaths = new URL('/onnx/', self.location.origin).href;
         ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false;
         ort.env.webgpu.powerPreference = 'high-performance';
+        this.options = { tokenBatch: 8, ...options };
         let base = SURYA_MODEL_BASE;
         if (!process.env.NEXT_PUBLIC_SURYA_MODEL_BASE && process.env.NODE_ENV === 'development') {
             const local = new URL('/models/surya-ocr', self.location.origin).href;
@@ -31,6 +33,10 @@ export class SuryaWebGPU {
         const [manifest, tokenizer, tokenizerConfig] = await Promise.all([
             getJson('browser_manifest.json'), getJson('tokenizer.json'), getJson('tokenizer_config.json')]);
         this.manifest = manifest;
+        const useFused = options.mode !== 'onnx' && !!manifest.files['decode_weights.json'];
+        if (options.mode === 'fused' && !useFused) throw new Error('Index des poids fusionnés absent du modèle.');
+        this.options.mode = useFused ? 'fused' : 'onnx';
+        this.stateOnly = useFused && options.prefill !== 'classic';
         this.tokenizer = new PreTrainedTokenizer(tokenizer, tokenizerConfig);
         this.cacheSpec = [];
         manifest.config.text_config.layer_types.forEach((type, i) => {
@@ -40,7 +46,8 @@ export class SuryaWebGPU {
         });
         try {
             for (const name of ['vision', 'decoder']) {
-                const graph = await downloadModel(`${base}/${name}.onnx`, manifest.files[`${name}.onnx`]);
+                const graphName = name === 'decoder' && this.stateOnly ? 'prefill-fast.onnx' : `${name}.onnx`;
+                const graph = await downloadModel(`${base}/${graphName}`, manifest.files[graphName]);
                 const data = await downloadModel(`${base}/${name}.onnx.data`, {
                     ...manifest.files[`${name}.onnx.data`],
                     onProgress: progress => onProgress({ file: name === 'vision' ? 'Encodeur d’image Surya' : 'Décodeur Surya', progress }),
@@ -51,17 +58,28 @@ export class SuryaWebGPU {
                     next_token: 'cpu', logits: 'cpu',
                 };
                 this[name] = await ort.InferenceSession.create(graph, {
-                    executionProviders: ['webgpu'], externalData: [{ path: `${name}.onnx.data`, data }],
+                    executionProviders: [{ name: 'webgpu', validationMode: 'wgpuOnly' }], externalData: [{ path: `${name}.onnx.data`, data }],
                     preferredOutputLocation: locations, graphOptimizationLevel: 'all',
                     extra: { session: { disable_cpu_ep_fallback: '1' } },
                 });
                 if (name === 'decoder') {
-                    const decodeGraph = await downloadModel(`${base}/decode.onnx`, manifest.files['decode.onnx']);
-                    this.decode = await ort.InferenceSession.create(decodeGraph, {
-                        executionProviders: ['webgpu'], externalData: [{ path: 'decoder.onnx.data', data }],
-                        preferredOutputLocation: locations, graphOptimizationLevel: 'all',
-                        extra: { session: { disable_cpu_ep_fallback: '1' } },
-                    });
+                    if (useFused) {
+                        if (!manifest.files['decode_weights.json']) throw new Error('Index des poids fusionnés absent du modèle.');
+                        const indexBytes = await downloadModel(`${base}/decode_weights.json`, manifest.files['decode_weights.json']);
+                        const index = JSON.parse(new TextDecoder().decode(indexBytes));
+                        if (index.schema !== 1 || index.source_sha256 !== manifest.source_sha256 || index.data_sha256 !== manifest.files['decoder.onnx.data'].sha256) {
+                            throw new Error('L’index GPU ne correspond pas aux poids ONNX.');
+                        }
+                        this.fused = new SuryaFusedDecoder(await ort.env.webgpu.device, this.options);
+                        await this.fused.load(index, data);
+                    } else {
+                        const decodeGraph = await downloadModel(`${base}/decode.onnx`, manifest.files['decode.onnx']);
+                        this.decode = await ort.InferenceSession.create(decodeGraph, {
+                            executionProviders: ['webgpu'], externalData: [{ path: 'decoder.onnx.data', data }],
+                            preferredOutputLocation: locations, graphOptimizationLevel: 'all',
+                            extra: { session: { disable_cpu_ep_fallback: '1' } },
+                        });
+                    }
                 }
             }
         } catch (error) { await this.dispose(); throw error; }
@@ -93,7 +111,7 @@ export class SuryaWebGPU {
                 const count = shape.reduce((a, b) => a * b, 1);
                 cache[key] = new ort.Tensor(dtype, dtype === 'float32' ? new Float32Array(count) : new Uint16Array(count), shape);
             }
-            const outputNames = [...this.cacheSpec.map(([key]) => `present_${key}`), 'next_token'];
+            const outputNames = [...this.cacheSpec.map(([key]) => `present_${key}`), ...(this.stateOnly ? [] : ['next_token'])];
             const run = async (ids, positions, start) => {
                 const size = ids.length, total = start + size;
                 const rotation = suryaRotary(positions);
@@ -115,7 +133,7 @@ export class SuryaWebGPU {
                     lower: new ort.Tensor('float32', lower, [1, size, size]),
                     strict_lower: new ort.Tensor('float32', strict, [1, size, size]),
                 };
-                const session = size === 1 ? this.decode : this.decoder;
+                const session = size === 1 && this.decode ? this.decode : this.decoder;
                 const sessionInputs = Object.fromEntries(Object.entries({ ...inputs, ...cache, image_features: imageFeatures })
                     .filter(([name]) => session.inputNames.includes(name)));
                 let outputs;
@@ -123,32 +141,61 @@ export class SuryaWebGPU {
                 finally { Object.values(inputs).forEach(t => t.dispose()); }
                 Object.values(cache).forEach(t => t.dispose());
                 cache = Object.fromEntries(this.cacheSpec.map(([key]) => [key, outputs[`present_${key}`]]));
+                if (this.stateOnly) return;
                 const token = Number(outputs.next_token.data[0]); outputs.next_token.dispose();
                 return token;
             };
             const chunk = this.manifest.chunk_size;
-            for (let start = 0; start < p.ids.length; start += chunk) {
-                next = await run(p.ids.slice(start, start + chunk), p.positions.slice(start, start + chunk), start);
+            const promptEnd = p.ids.length - (this.stateOnly ? 1 : 0);
+            for (let start = 0; start < promptEnd; start += chunk) {
+                const end = Math.min(start + chunk, promptEnd);
+                next = await run(p.ids.slice(start, end), p.positions.slice(start, end), start);
+            }
+            let setupMs = 0;
+            if (this.stateOnly) {
+                const setupStart = performance.now();
+                await this.fused.begin(cache, promptEnd, p.positions[promptEnd][0], p.ids[promptEnd], this.manifest.max_new_tokens + 1);
+                setupMs = performance.now() - setupStart;
+                [next] = await this.fused.step();
+            } else if (this.fused && !this.manifest.stop_ids.includes(next)) {
+                const setupStart = performance.now();
+                await this.fused.begin(cache, p.ids.length, p.nextPosition, next, this.manifest.max_new_tokens);
+                setupMs = performance.now() - setupStart;
             }
             prefillMs = performance.now() - started;
+            const pendingTokens = [];
+            let lastStream = 0;
             for (let step = 0; step < this.manifest.max_new_tokens; step++) {
                 if (this.manifest.stop_ids.includes(next)) break;
                 generated.push(next);
-                onToken(this.tokenizer.decode(generated, { skip_special_tokens: true, clean_up_tokenization_spaces: false }));
+                if (performance.now() - lastStream >= 32 || step === 0) {
+                    onToken(this.tokenizer.decode(generated, { skip_special_tokens: true, clean_up_tokenization_spaces: false }));
+                    lastStream = performance.now();
+                }
                 if (step + 1 < this.manifest.max_new_tokens) {
                     const pos = p.nextPosition + step;
-                    next = await run([next], [[pos, pos, pos]], p.ids.length + step);
+                    if (this.fused) {
+                        if (!pendingTokens.length) {
+                            const batch = this.options.profile || step < 4 ? 1 : Math.min(8, Math.max(1, Number(this.options.tokenBatch) || 8));
+                            pendingTokens.push(...await this.fused.step(Math.min(batch, this.manifest.max_new_tokens - step - 1)));
+                        }
+                        next = pendingTokens.shift();
+                    } else next = await run([next], [[pos, pos, pos]], p.ids.length + step);
                 }
             }
             return { text: cleanSuryaText(this.tokenizer.decode(generated, { skip_special_tokens: true, clean_up_tokenization_spaces: false })),
                 provider: 'webgpu', gpu: this.gpuName, tokens: generated.length,
                 tokenLimit: !this.manifest.stop_ids.includes(next),
-                timings: { totalMs: Math.round(performance.now() - started), visionMs: Math.round(visionMs), prefillMs: Math.round(prefillMs) } };
-        } finally { imageFeatures?.dispose(); Object.values(cache).forEach(t => t.dispose()); }
+                implementation: this.fused ? 'wgsl-fused' : 'onnx',
+                diagnostics: this.fused?.stats(),
+                profile: this.options.profile ? this.fused?.profile : undefined,
+                timings: { totalMs: Math.round(performance.now() - started), visionMs: Math.round(visionMs), prefillMs: Math.round(prefillMs), setupMs: Math.round(setupMs) } };
+        } finally { imageFeatures?.dispose(); Object.values(cache).forEach(t => t.dispose()); this.fused?.end(); }
     }
 
     async dispose() {
         await this.vision?.release(); await this.decoder?.release(); await this.decode?.release();
+        this.fused?.dispose(); this.fused = null;
         this.vision = null; this.decoder = null; this.decode = null; this.tokenizer = null;
     }
 }

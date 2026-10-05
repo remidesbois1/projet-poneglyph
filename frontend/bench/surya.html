@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="fr"><meta charset="utf-8"><title>Surya · Banc de mesure WebGPU</title>
+<style>body{background:#101827;color:#e2e8f0;font:16px system-ui;max-width:1100px;margin:50px auto;padding:20px}button,input,select{font:inherit;padding:10px;margin:6px;background:#21324d;color:inherit;border:1px solid #54708f;border-radius:6px}pre{white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:10px;border-bottom:1px solid #345}#status{color:#75e7dc}details{margin-top:30px}</style>
+<h1>Surya · Banc de mesure WebGPU</h1>
+<p>Mesures locales reproductibles sur les mêmes images et transcriptions de référence.</p>
+<label>Moteur <select id="mode"><option value="onnx">ONNX</option><option value="fused">Fusion GPU</option></select></label>
+<label><input type="checkbox" id="profile">Profil GPU</label>
+<label>GEMV <select id="gemv"><option value="subgroup">Sous-groupes</option><option value="shared">Mémoire partagée</option></select></label>
+<label>Tokens par soumission <select id="batch"><option>1</option><option>2</option><option>4</option><option selected>8</option></select></label>
+<label>Prompt <select id="prefill"><option value="fast">Optimisé</option><option value="classic">Classique</option></select></label>
+<button id="load">Charger</button><p id="status" role="status">Non chargé</p>
+<label>Corpus <select id="corpus"><option value="all">26 bulles</option><option value="short">Bulle courte</option><option value="long">Bulle longue</option><option value="test128">128 bulles de test</option><option value="full1612">Test complet · 1 612 bulles</option></select></label>
+<label>Répétitions <input id="repeats" type="number" value="1" min="1" max="10" size="3"></label>
+<label>IDs ciblés <input id="ids" placeholder="Tous" size="12"></label>
+<button id="run" disabled>Mesurer</button>
+<button id="sweep" disabled>Balayer 8 réglages · bulle longue</button>
+<table><thead><tr><th>Bulle</th><th>Temps</th><th>Premier token</th><th>Tokens/s</th><th>Validation</th></tr></thead><tbody id="rows"></tbody></table>
+<pre id="error" role="alert"></pre><details><summary>Données JSON</summary><pre data-testid="benchmark-results" id="results">[]</pre></details>
+<script type="module" src="./surya.js"></script></html>

@@ -1,0 +1,90 @@
+{
+  "hardware": "RTX 5090 / Chromium / WebGPU",
+  "model_loaded": true,
+  "download_excluded": true,
+  "production_runs": 78,
+  "measured_runs": 72,
+  "unique_crops": 24,
+  "latency_ms": {
+    "min": 250.0,
+    "p50": 350.0,
+    "p90": 461.8,
+    "p95": 528.8000000000001,
+    "p99": 706.2800000000002,
+    "max": 729.0
+  },
+  "first_token_ms": {
+    "min": 214.0,
+    "p50": 237.0,
+    "p90": 265.0,
+    "p95": 277.05,
+    "p99": 416.45000000000005,
+    "max": 420.0
+  },
+  "decode_tokens_per_second": 285.4079674980251,
+  "native_conformity": 78,
+  "test": {
+    "samples": 1612,
+    "characters": 52064,
+    "words": 10145,
+    "character_errors": 256,
+    "word_errors": 192,
+    "cer": 0.004917025199754148,
+    "wer": 0.018925579103006407,
+    "exact": 1468,
+    "exact_rate": 0.9106699751861043,
+    "blank": 0,
+    "truncated": 0,
+    "native_conformity": 1600
+  },
+  "configuration": {
+    "gemv": "subgroups",
+    "token_batch": 8,
+    "weights": "FP16",
+    "accumulation_and_recurrent_state": "FP32",
+    "max_new_tokens": 256
+  },
+  "method": "24 fixed validation crops and two stress cases, three production worker passes after warm-up; separate complete 1612-crop test evaluation.",
+  "decode_rate_definition": "Sum of output text tokens / sum of time after first token; includes EOS detection and unused steps in a GPU submission.",
+  "custom_decoder_memory_bytes": {
+    "weights": 1131214080,
+    "example_sequence": 26284568,
+    "scope": "Custom decoder buffers only, not total browser or ONNX Runtime VRAM."
+  },
+  "artifact_revision": "1d3698b88de708cc7b7cb8d349b4255715b70bc5",
+  "source_sha256": "67fa1733d2541d6305cffef1e5202e47930a5f5393d1901adda52e7daab05629",
+  "artifacts": {
+    "vision.onnx": {
+      "bytes": 274372,
+      "sha256": "9f54a1f816f54ebb215ab5c6b19eef8365da619e8753ba753c8e11ba93dbb6f5"
+    },
+    "vision.onnx.data": {
+      "bytes": 201068544,
+      "sha256": "96e636d6f70052a94e63c5ac3194f1b4feec4c19943dd11c137cbce45b8ce69f"
+    },
+    "decoder.onnx": {
+      "bytes": 495364,
+      "sha256": "cc5e6f2de2bf5166408d9498ccafcc7f0f8a82131da412cc2d73cf29f5226c8d"
+    },
+    "decode.onnx": {
+      "bytes": 455120,
+      "sha256": "3be16987ed9924baca7caca17afbfd2e4583e3cab4a46c351e52ac50e61f4fe6"
+    },
+    "decoder.onnx.data": {
+      "bytes": 1130989568,
+      "sha256": "ed552dd181e985aefc36018231d616b1de40c5104df6e758b49e2178b0619a24"
+    },
+    "decode_weights.json": {
+      "bytes": 7951916,
+      "sha256": "d2a79387b84fb8dcb65aa83ea32b658bf3eb446e62eadb9cf97390068e56e208"
+    },
+    "prefill.onnx": {
+      "bytes": 479723,
+      "sha256": "56e85c26be6920071f316681d814a41c93cdab12cecbc5a093ce7e85ca591de0"
+    },
+    "prefill-fast.onnx": {
+      "bytes": 610262,
+      "sha256": "283d53ea70b7d4d086a846645a823c90f13885da63f7b60a25ebb49565b2fa4b"
+    }
+  }
+}

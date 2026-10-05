@@ -95,7 +95,7 @@ export default function SuryaSandbox() {
                 <p className="text-2xl whitespace-pre-wrap min-h-24" aria-live="polite">{result?.text || stream || 'La transcription apparaîtra ici.'}</p>
                 {result && <div className="text-sm text-slate-400 space-y-1">
                     <p>Exécution : {result.provider} · {result.timings.totalMs} ms · {result.tokens} tokens{result.tokenLimit ? ' · Limite de génération atteinte' : ''}</p>
-                    <p>Image : {result.timings.visionMs} ms · Préparation du texte : {result.timings.prefillMs} ms</p>
+                    <p>Premier token : {result.timings.prefillMs} ms · Génération : {(result.tokens * 1000 / Math.max(1, result.timings.totalMs - result.timings.prefillMs)).toFixed(0)} tokens/s</p>
                 </div>}
             </section>
         </div>

@@ -6,9 +6,14 @@ self.addEventListener('message', ({ data }) => {
     queue = queue.catch(() => undefined).then(async () => {
         try {
             if (data.type === 'init') {
-                await engine.load(info => self.postMessage({ status: 'download_progress', ...info }));
+                await engine.load(info => self.postMessage({ status: 'download_progress', ...info }), data.options);
                 self.postMessage({ status: 'ready', modelKey: 'suryaWebgpu', gpu: engine.gpuName });
             } else if (data.type === 'run') {
+                if (data.options) {
+                    // These knobs do not change the loaded model or precision.
+                    if (data.options.tokenBatch !== undefined) engine.options.tokenBatch = data.options.tokenBatch;
+                    if (data.options.gemv !== undefined) engine.options.gemv = data.options.gemv;
+                }
                 const result = await engine.recognize(data.imageBitmap || data.imageBlob,
                     text => self.postMessage({ status: 'stream', text, requestId: data.requestId }));
                 self.postMessage({ status: 'complete', requestId: data.requestId, ...result });

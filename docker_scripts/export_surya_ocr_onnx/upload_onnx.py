@@ -27,7 +27,7 @@ def publish(directory, repo_id):
     operations = [CommitOperationAdd(path_in_repo=f"onnx/{name}", path_or_fileobj=str(directory / name)) for name in files]
     operations.append(CommitOperationAdd(path_in_repo="onnx/README.md", path_or_fileobj=str(Path(__file__).with_name("README.md"))))
     result = api.create_commit(repo_id, operations=operations,
-        commit_message="Add verified Surya ONNX WebGPU: vision, chunk prefill, recurrent decode")
+        commit_message="Update verified Surya WebGPU artifacts and optimized prompt graphs")
     info = api.model_info(repo_id, revision=result.oid, files_metadata=True)
     remote = {s.rfilename: s for s in info.siblings}
     for name, expected in manifest["files"].items():
