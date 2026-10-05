@@ -1,17 +1,13 @@
-import io
 import json
 import os
 import re
 import shutil
 import sys
-import threading
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import requests
 from dotenv import load_dotenv
-from PIL import Image, ImageOps
+from PIL import Image
 from sklearn.model_selection import train_test_split
 from supabase import Client, create_client
 from tqdm import tqdm
@@ -30,10 +26,12 @@ PROJECT_ROOT = DOCKER_SCRIPTS_DIR.parent
 import sys
 sys.path.insert(0, str(DOCKER_SCRIPTS_DIR))
 from common_training.prompts import get_prompt
+from common_training.page_images import download_pages as load_source_pages
 
 load_dotenv(SCRIPT_DIR / ".env")
 load_dotenv(DOCKER_SCRIPTS_DIR / ".env")
 load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(PROJECT_ROOT / "backend" / ".env")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -242,31 +240,7 @@ def split_pages(page_ids):
 
 
 def download_pages(pages):
-    print(f"Downloading {len(pages)} unique source pages...", flush=True)
-    page_cache = {}
-    page_cache_lock = threading.Lock()
-
-    def download_page(page_id, url):
-        try:
-            response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
-            response.raise_for_status()
-            with Image.open(io.BytesIO(response.content)) as img:
-                page_img = ImageOps.exif_transpose(img).convert("RGB")
-            with page_cache_lock:
-                page_cache[page_id] = page_img
-        except Exception as exc:
-            print(f"  failed to download page {page_id}: {exc}", flush=True)
-
-    with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as executor:
-        futures = [
-            executor.submit(download_page, page_id, data["url_image"])
-            for page_id, data in pages.items()
-        ]
-        for _ in tqdm(as_completed(futures), total=len(futures), desc="Downloading pages"):
-            pass
-
-    print(f"Cached pages: {len(page_cache)}/{len(pages)}", flush=True)
-    return page_cache
+    return load_source_pages(pages, DOWNLOAD_WORKERS, REQUEST_TIMEOUT_SECONDS)
 
 
 def entry_messages(image_file: str, text: str):
@@ -365,6 +339,8 @@ def verify_dataset(splits):
             entries = [json.loads(line) for line in f if line.strip()]
 
         split_counts[split_name] = len(entries)
+        if not entries:
+            errors.append(f"Empty split: {split_name}")
         for entry in entries:
             page_id = str(entry.get("page_id"))
             previous = page_to_split.get(page_id)

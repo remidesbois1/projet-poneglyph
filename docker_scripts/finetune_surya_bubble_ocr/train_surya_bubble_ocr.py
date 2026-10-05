@@ -3,6 +3,8 @@ import glob
 import importlib.metadata
 import json
 import math
+import hashlib
+import multiprocessing
 import os
 import random
 import re
@@ -13,7 +15,6 @@ from pathlib import Path
 import jiwer
 import numpy as np
 import torch
-import torch.nn.functional as F
 from datasets import load_dataset
 from dotenv import load_dotenv
 from Levenshtein import distance as levenshtein_distance
@@ -24,9 +25,11 @@ from transformers import (
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
     Trainer,
-    TrainerCallback,
 )
 from transformers.trainer_utils import get_last_checkpoint
+from transformers.trainer_callback import PrinterCallback
+from training_acceleration import add_packed_targets, install_training_acceleration
+from training_monitor import TrainingMonitorCallback, atomic_json, write_final_report
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -89,10 +92,21 @@ def parse_args():
         help="Run this many real Trainer steps, then exit without saving or benchmarking.",
     )
     parser.add_argument("--model-path", default=None, help="Model path for merge-only or benchmark-only.")
+    parser.add_argument("--smoke-eval-samples", type=int, default=8,
+                        help="Also validate loss and generation on this many validation crops after smoke steps.")
     return parser.parse_args()
 
 
 def configure_torch_runtime() -> None:
+    profile = os.getenv("SURYA_PROFILE", "auto")
+    if profile == "auto":
+        profile = "rtx5090" if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 12 else "generic"
+    os.environ["SURYA_RESOLVED_PROFILE"] = profile
+    for key, value in {"TRAIN_BATCH": "32" if profile == "rtx5090" else "16",
+                       "GRAD_ACCUM": "1" if profile == "rtx5090" else "2",
+                       "EVAL_BATCH": "32" if profile == "rtx5090" else "16",
+                       "DATALOADER_WORKERS": "0"}.items():
+        os.environ.setdefault(f"SURYA_{key}", value)
     torch.set_num_threads(int(os.getenv("SURYA_TORCH_THREADS", "8")))
     if torch.cuda.is_available():
         for flag_name in ("enable_flash_sdp", "enable_mem_efficient_sdp", "enable_math_sdp"):
@@ -106,10 +120,8 @@ def configure_torch_runtime() -> None:
             torch.set_float32_matmul_precision("high")
         except Exception:
             pass
-    if hasattr(torch, "_dynamo"):
-        torch._dynamo.config.suppress_errors = True
-        if hasattr(torch._dynamo.config, "dynamic_shapes"):
-            torch._dynamo.config.dynamic_shapes = True
+    if int(os.getenv("SURYA_DATALOADER_WORKERS", "0")) > 0:
+        multiprocessing.set_start_method("spawn", force=True)
 
 
 def set_seed(seed: int) -> None:
@@ -125,6 +137,8 @@ def prepare_dataset(file_path: Path, split_name: str, processor=None):
         raise FileNotFoundError(f"Missing dataset file: {file_path}")
     print(f"Loading {split_name} dataset from {file_path}", flush=True)
     dataset = load_dataset("json", data_files=str(file_path), split="train")
+    if not len(dataset):
+        raise ValueError(f"The {split_name} split is empty.")
     if "split" not in dataset.column_names:
         dataset = dataset.map(lambda _: {"split": split_name})
     if processor is not None:
@@ -387,7 +401,6 @@ def process_batch(examples, processor, image_cache=None, augmenter=None):
     tokenizer = getattr(processor, "tokenizer", None)
     if tokenizer is None:
         raise RuntimeError("Surya processor has no tokenizer; assistant-only labels cannot be built.")
-    pad_token_id = getattr(tokenizer, "pad_token_id", None)
     padding_side = getattr(tokenizer, "padding_side", "right")
     rendered_token_ids = tokenizer(
         batch_texts + prompt_texts,
@@ -400,28 +413,26 @@ def process_batch(examples, processor, image_cache=None, augmenter=None):
     prompt_text_token_ids = rendered_token_ids[batch_size:]
 
     for idx, (full_ids, prompt_ids) in enumerate(zip(full_text_token_ids, prompt_text_token_ids)):
-        assistant_len = max(len(full_ids) - len(prompt_ids), 0)
-        if assistant_len <= 0:
-            raise RuntimeError(
-                f"Empty assistant span for sample {ids[idx]}; refusing to train on prompt tokens."
-            )
-
-        if padding_side == "left":
-            mask_until = labels.shape[1] - assistant_len
-            labels[idx, :mask_until] = -100
-        else:
-            multimodal_length = int(model_inputs["attention_mask"][idx].sum().item())
-            labels[idx, : multimodal_length - assistant_len] = -100
-
-        if pad_token_id is not None:
-            labels[idx, model_inputs["input_ids"][idx] == pad_token_id] = -100
+        if full_ids[:len(prompt_ids)] != prompt_ids:
+            raise ValueError(f"Template prefix mismatch for sample {ids[idx]}.")
+        answer_ids = full_ids[len(prompt_ids):]
+        full_len = int(model_inputs["attention_mask"][idx].sum())
+        if not 0 < len(answer_ids) < full_len:
+            raise ValueError(f"Invalid assistant span for sample {ids[idx]}.")
+        end = labels.shape[1] if padding_side == "left" else full_len
+        start = end - len(answer_ids)
+        if labels[idx, start:end].tolist() != answer_ids:
+            raise ValueError(f"Multimodal assistant suffix mismatch for sample {ids[idx]}.")
+        labels[idx, :start] = -100
+        labels[idx, end:] = -100
+    # PAD can share EOS: mask padding positions, never token values.
+    labels.masked_fill_(model_inputs["attention_mask"].eq(0), -100)
 
     model_inputs["labels"] = labels
     weights = examples.get("sample_weight")
     if weights is None or any(weight is None for weight in weights):
         weights = [sample_training_weight(reference) for reference in references]
-    model_inputs["sample_weights"] = torch.tensor(weights, dtype=torch.float32)
-    return model_inputs
+    return add_packed_targets(model_inputs, torch.tensor(weights, dtype=torch.float32))
 
 
 class SuryaBubbleCollator:
@@ -591,6 +602,39 @@ def compute_slice_metrics(samples):
     return metrics
 
 
+def dataset_manifest(datasets):
+    seen_pages, seen_ids, result = {}, set(), {}
+    for name, dataset in datasets.items():
+        pages = set()
+        for row in dataset:
+            page = str(row["page_id"])
+            if page in seen_pages and seen_pages[page] != name:
+                raise ValueError(f"Page {page} leaks between {name} and {seen_pages[page]}.")
+            if str(row["id"]) in seen_ids:
+                raise ValueError(f"Duplicate bubble id: {row['id']}")
+            seen_ids.add(str(row["id"]))
+            seen_pages[page] = name
+            pages.add(page)
+        path = DATASET_DIR / name / "metadata.jsonl"
+        result[name] = {"samples": len(dataset), "pages": len(pages),
+                        "metadata_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    return result
+
+
+def bootstrap_test_metrics(samples, iterations=1000):
+    # Page-cluster bootstrap: bubbles on one page are not independent trials.
+    pages = {}
+    for s in samples:
+        values = pages.setdefault(str(s["page_id"]), np.zeros(4))
+        values += (s["levenshtein"], len(s["reference"]), int(s["prediction"] == s["reference"]), 1)
+    matrix = np.array(list(pages.values()))
+    rng = np.random.default_rng(RANDOM_SEED)
+    draws = matrix[rng.integers(0, len(matrix), size=(iterations, len(matrix)))].sum(axis=1)
+    return {"method": "page-cluster bootstrap", "iterations": iterations, "page_count": len(matrix),
+            "cer_95": np.percentile(draws[:, 0] / np.maximum(draws[:, 1], 1), [2.5, 97.5]).tolist(),
+            "exact_match_95": np.percentile(draws[:, 2] / draws[:, 3], [2.5, 97.5]).tolist()}
+
+
 def model_dtype(model):
     for param in model.parameters():
         if param.is_floating_point():
@@ -749,7 +793,19 @@ def benchmark_indices(dataset, max_samples):
     return sorted(selected[:max_samples])
 
 
-def run_generation_benchmark(
+def run_generation_benchmark(model, *args, **kwargs):
+    was_training = model.training
+    old_use_cache = getattr(model.config, "use_cache", None)
+    model.config.use_cache = True
+    model.eval()
+    try:
+        return _run_generation_benchmark(model, *args, **kwargs)
+    finally:
+        model.config.use_cache = old_use_cache
+        model.train(was_training)
+
+
+def _run_generation_benchmark(
     model,
     processor,
     dataset,
@@ -764,7 +820,10 @@ def run_generation_benchmark(
         model.config.use_cache = True
     model.eval()
 
+    started = time.perf_counter()
     indices = benchmark_indices(dataset, max_samples)
+    # Group similar prompt/answer lengths to reduce padded decode work.
+    indices.sort(key=lambda idx: dataset[idx].get("length", len(extract_reference_text(dataset[idx]))))
     samples = []
     print("", flush=True)
     print("=" * 72, flush=True)
@@ -773,6 +832,7 @@ def run_generation_benchmark(
 
     generation_batch_size = max(1, GEN_EVAL_BATCH_SIZE)
     for batch_start in range(0, len(indices), generation_batch_size):
+        batch_started = time.perf_counter()
         batch_indices = indices[batch_start : batch_start + generation_batch_size]
         entries = [dataset[index] for index in batch_indices]
         raw_predictions, generation_metadata = generate_predictions(
@@ -781,6 +841,7 @@ def run_generation_benchmark(
             entries,
             return_metadata=True,
         )
+        batch_seconds = time.perf_counter() - batch_started
         for dataset_index, entry, raw_prediction, generation_info in zip(
             batch_indices,
             entries,
@@ -797,6 +858,8 @@ def run_generation_benchmark(
                     "reference": reference,
                     "prediction": prediction,
                     "raw_prediction": raw_prediction,
+                    "batch_seconds": batch_seconds,
+                    "amortized_seconds": batch_seconds / len(entries),
                     **generation_info,
                     "cer": sample_cer(prediction, reference),
                     "levenshtein": levenshtein_distance(prediction, reference),
@@ -807,6 +870,12 @@ def run_generation_benchmark(
             print(f"  generated {generated_count}/{len(indices)}", flush=True)
 
     metrics = compute_text_metrics(samples)
+    elapsed = time.perf_counter() - started
+    metrics.update(generation_seconds=elapsed, bubbles_per_second=len(samples) / max(elapsed, 1e-9),
+                   generated_tokens_per_second=sum(s["generated_tokens"] for s in samples) / max(elapsed, 1e-9),
+                   generation_batch_size=generation_batch_size,
+                   cer_p50=float(np.percentile([s["cer"] for s in samples], 50)),
+                   cer_p95=float(np.percentile([s["cer"] for s in samples], 95)))
     ranked = sorted(samples, key=lambda sample: (sample["cer"], sample["levenshtein"]), reverse=True)
     print("-" * 72, flush=True)
     print(f"CER:             {metrics['cer']:.6f} ({metrics['cer'] * 100:.3f}%)", flush=True)
@@ -863,7 +932,17 @@ class SuryaOCRTrainer(Seq2SeqTrainer):
         )
         self._best_generation_cer = None
         self._generation_bad_eval_count = 0
-        self.model_accepts_loss_kwargs = False
+        self.model_accepts_loss_kwargs = True
+        self._loss_shifts_labels = True
+
+    def _get_num_items_in_batch(self, batch_samples, device):
+        # Denominator over the COMPLETE accumulation window, including its last
+        # uneven microbatch. The loss is a weighted per-bubble mean, not per-token.
+        total = sum(batch["sample_weight_sum"] for batch in batch_samples)
+        return torch.tensor(total, device=device) if batch_samples else None
+
+    def _get_eval_sampler(self, eval_dataset):
+        return torch.utils.data.SequentialSampler(eval_dataset)
 
     def update_generation_early_stopping(self, cer):
         if self.generation_early_stopping_patience <= 0:
@@ -906,38 +985,14 @@ class SuryaOCRTrainer(Seq2SeqTrainer):
         return_outputs=False,
         num_items_in_batch=None,
     ):
-        del num_items_in_batch
         inputs = dict(inputs)
-        labels = inputs.pop("labels")
-        sample_weights = inputs.pop("sample_weights", None)
-
-        # The OCR answer is a short suffix. Computing the 65k-vocabulary LM head
-        # over image and prompt tokens wastes a large amount of GEMM work and VRAM.
-        assistant_lengths = labels.ne(-100).sum(dim=1)
-        if int(assistant_lengths.min().item()) <= 0:
-            raise RuntimeError("A training sample contains no supervised assistant token.")
-        logits_to_keep = min(labels.shape[1], int(assistant_lengths.max().item()) + 1)
-        outputs = model(**inputs, logits_to_keep=logits_to_keep)
-
-        shift_logits = outputs.logits[:, :-1, :].contiguous()
-        shift_labels = labels[:, -(logits_to_keep - 1) :].contiguous()
-        valid_tokens = shift_labels.ne(-100)
-        token_losses = F.cross_entropy(
-            shift_logits.float().view(-1, shift_logits.shape[-1]),
-            shift_labels.view(-1),
-            ignore_index=-100,
-            reduction="none",
-        ).view_as(shift_labels)
-        per_sample_loss = token_losses.sum(dim=1) / valid_tokens.sum(dim=1).clamp_min(1)
-
-        if sample_weights is None:
-            loss = per_sample_loss.mean()
-        else:
-            sample_weights = sample_weights.to(
-                device=per_sample_loss.device,
-                dtype=per_sample_loss.dtype,
-            )
-            loss = (per_sample_loss * sample_weights).sum() / sample_weights.sum().clamp_min(1e-6)
+        inputs.pop("labels")
+        inputs.pop("sample_weights")
+        denominator = inputs.pop("sample_weight_sum")
+        outputs = model(**inputs, use_cache=False)
+        if num_items_in_batch is not None:
+            denominator = num_items_in_batch
+        loss = outputs.loss / denominator
         return (loss, outputs) if return_outputs else loss
 
     def create_optimizer(self, model=None):
@@ -992,15 +1047,14 @@ class SuryaOCRTrainer(Seq2SeqTrainer):
         print("Optimizer parameter groups: " + json.dumps(summary), flush=True)
         return self.optimizer
 
-    def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix="eval"):
-        metrics = super().evaluate(
-            eval_dataset=eval_dataset,
-            ignore_keys=ignore_keys,
-            metric_key_prefix=metric_key_prefix,
-        )
-        dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+    def evaluation_loop(self, dataloader, description, prediction_loss_only=None,
+                        ignore_keys=None, metric_key_prefix="eval"):
+        output = super().evaluation_loop(dataloader, description, prediction_loss_only=True,
+                                         ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
+        metrics = output.metrics
+        dataset = dataloader.dataset
         if dataset is None or self.gen_eval_max_samples == 0:
-            return metrics
+            return output
         split_name = "val"
         try:
             split_name = dataset[0].get("split") or split_name
@@ -1021,33 +1075,10 @@ class SuryaOCRTrainer(Seq2SeqTrainer):
             if isinstance(value, (int, float))
         }
         metrics.update(prefixed)
-        self.log(prefixed)
+        save_benchmark(Path(self.args.output_dir) / f"validation_step_{self.state.global_step}.json",
+                       gen_metrics, _samples)
         self.update_generation_early_stopping(gen_metrics["cer"])
-        return metrics
-
-
-class LiveMetricsCallback(TrainerCallback):
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        if not logs:
-            return
-        keys = (
-            "loss",
-            "learning_rate",
-            "eval_loss",
-            "eval_cer",
-            "eval_wer",
-            "eval_exact_match",
-            "eval_blank_rate",
-            "eval_multiline_rate",
-            "eval_hallucination_rate",
-            "eval_token_limit_rate",
-        )
-        parts = [f"step={state.global_step}"]
-        for key in keys:
-            if key in logs:
-                value = logs[key]
-                parts.append(f"{key}={value:.6f}" if isinstance(value, float) else f"{key}={value}")
-        print("[LIVE] " + " | ".join(parts), flush=True)
+        return output
 
 
 def find_best_checkpoint(output_dir):
@@ -1076,89 +1107,6 @@ def find_best_checkpoint(output_dir):
     return checkpoints[-1] if checkpoints else None
 
 
-def load_benchmark_samples(path: Path):
-    with open(path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
-    samples = payload.get("samples") or payload.get("errors") or []
-    normalized = []
-    for sample in samples:
-        reference = sample.get("reference") or sample.get("text") or sample.get("expected") or ""
-        prediction = sample.get("prediction") or sample.get("pred") or sample.get("output") or ""
-        normalized.append(
-            {
-                "id": str(sample.get("id") or sample.get("bubble_id") or ""),
-                "page_id": sample.get("page_id"),
-                "reference": str(reference),
-                "prediction": postprocess_prediction(prediction),
-                "raw_prediction": str(sample.get("raw_prediction") or prediction),
-            }
-        )
-    return payload.get("metrics") or {}, normalized
-
-
-def default_baseline_paths():
-    candidates = []
-    for env_name in ("SURYA_LIGHTON_BENCHMARK_PATH",):
-        value = os.getenv(env_name)
-        if value:
-            candidates.append(Path(value))
-    candidates.extend(
-        [
-            DOCKER_SCRIPTS_DIR
-            / "finetune_lighton_ocr"
-            / "outputs_lighton_manga"
-            / "final_lora_merged"
-            / "benchmark_test.json",
-        ]
-    )
-    seen = set()
-    unique = []
-    for path in candidates:
-        key = str(path.resolve()) if path.exists() else str(path)
-        if key not in seen:
-            unique.append(path)
-            seen.add(key)
-    return unique
-
-
-def compare_with_baselines(current_samples):
-    comparisons = []
-    current_by_id = {str(sample.get("id")): sample for sample in current_samples if sample.get("id")}
-    for path in default_baseline_paths():
-        if not path.exists():
-            continue
-        try:
-            metrics, baseline_samples = load_benchmark_samples(path)
-            comparison = {
-                "path": str(path),
-                "metrics": metrics,
-            }
-            baseline_by_id = {
-                str(sample.get("id")): sample for sample in baseline_samples if sample.get("id")
-            }
-            shared_ids = sorted(set(current_by_id) & set(baseline_by_id))
-            if shared_ids:
-                aligned = []
-                for sample_id in shared_ids:
-                    baseline = baseline_by_id[sample_id]
-                    aligned.append(
-                        {
-                            "id": sample_id,
-                            "page_id": current_by_id[sample_id].get("page_id"),
-                            "reference": current_by_id[sample_id]["reference"],
-                            "prediction": baseline["prediction"],
-                            "raw_prediction": baseline.get("raw_prediction", baseline["prediction"]),
-                        }
-                    )
-                comparison["shared_sample_count"] = len(aligned)
-                comparison["shared_sample_metrics"] = compute_text_metrics(aligned)
-                comparison["shared_slice_metrics"] = compute_slice_metrics(aligned)
-            comparisons.append(comparison)
-        except Exception as exc:
-            comparisons.append({"path": str(path), "error": str(exc)})
-    return comparisons
-
-
 def save_benchmark(path, metrics, samples):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1169,16 +1117,16 @@ def save_benchmark(path, metrics, samples):
         "max_new_tokens": MAX_NEW_TOKENS,
         "postprocess": {
             "collapse_whitespace": COLLAPSE_WHITESPACE,
+            "strip_outer_quote_pair": True,
         },
         "metrics": metrics,
         "slice_metrics": compute_slice_metrics(samples),
-        "baseline_comparisons": compare_with_baselines(samples),
         "top_20_worst_errors": ranked[:20],
         "samples": samples,
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+    atomic_json(path, payload)
     print(f"Benchmark saved to {path}", flush=True)
+    return payload
 
 
 def configure_processor(model_id_or_path=MODEL_ID):
@@ -1250,10 +1198,12 @@ def configure_generation(model, processor=None):
         model.generation_config.eos_token_id = eos_token_id
         if hasattr(model.config, "eos_token_id"):
             model.config.eos_token_id = eos_token_id
+        model.config.get_text_config().eos_token_id = eos_token_id
     if valid_token_id(pad_token_id, tokenizer):
         model.generation_config.pad_token_id = pad_token_id
         if hasattr(model.config, "pad_token_id"):
             model.config.pad_token_id = pad_token_id
+        model.config.get_text_config().pad_token_id = pad_token_id
 
 
 def load_model(model_id_or_path=MODEL_ID):
@@ -1274,6 +1224,7 @@ def load_model(model_id_or_path=MODEL_ID):
     if device != "cuda":
         model.to(device)
     configure_generation(model)
+    print("Training acceleration: " + json.dumps(install_training_acceleration(model)), flush=True)
     return model
 
 
@@ -1312,6 +1263,7 @@ def validate_training_runtime(require_fast_path=None):
         "peft": package_version("peft"),
         "flash_linear_attention": package_version("flash-linear-attention"),
         "causal_conv1d": package_version("causal-conv1d"),
+        "liger_kernel": package_version("liger-kernel"),
         "cuda_available": cuda_available,
     }
     fast_path_available = False
@@ -1359,7 +1311,7 @@ def validate_training_runtime(require_fast_path=None):
         raise RuntimeError(
             f"This image was compiled for compute capability {expected_capability}, "
             f"but the selected GPU reports {profile.get('compute_capability')}. "
-            "Use the RTX 3090 image on an Ampere SM86 GPU."
+            "Rebuild causal-conv1d and TORCH_CUDA_ARCH_LIST for the selected GPU."
         )
     if require_fast_path and not fast_path_available:
         raise RuntimeError(
@@ -1370,7 +1322,7 @@ def validate_training_runtime(require_fast_path=None):
     if torch.cuda.is_available() and not fast_path_available:
         print(
             "WARNING: Qwen3.5 is using the slow Gated DeltaNet reference path. "
-            "This is acceptable for CPU-oriented validation, not for the RTX 3090 training image.",
+            "The GPU training image requires the fast kernels.",
             flush=True,
         )
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1494,6 +1446,11 @@ def make_training_args(smoke_steps: int = 0):
         "metric_for_best_model": "eval_cer",
         "greater_is_better": False,
         "remove_unused_columns": False,
+        "label_names": ["labels"],
+        "prediction_loss_only": True,
+        "logging_first_step": True,
+        "logging_nan_inf_filter": False,
+        "disable_tqdm": True,
         "report_to": os.getenv("SURYA_REPORT_TO", "none"),
         "predict_with_generate": False,
         "dataloader_num_workers": dataloader_workers,
@@ -1597,7 +1554,7 @@ def main():
         return
 
     processor = configure_processor()
-    validate_training_runtime()
+    runtime = validate_training_runtime()
     model = load_model()
     configure_generation(model, processor)
 
@@ -1615,6 +1572,7 @@ def main():
     train_dataset = prepare_dataset(TRAIN_FILE, "train", processor)
     val_dataset = prepare_dataset(VAL_FILE, "val", processor)
     test_dataset = prepare_dataset(TEST_FILE, "test", processor)
+    manifest = dataset_manifest({"train": train_dataset, "val": val_dataset, "test": test_dataset})
 
     model, train_mode = configure_trainable_model(model)
     if hasattr(model.config, "use_cache"):
@@ -1622,6 +1580,14 @@ def main():
 
     data_collator = SuryaBubbleCollator(processor, training=True)
     training_args = make_training_args(args.train_smoke_steps)
+    atomic_json(OUTPUT_DIR / "run_config.json", {
+        "runtime": runtime, "dataset": manifest, "model_id": MODEL_ID,
+        "train_mode": train_mode, "seed": RANDOM_SEED, "prompt": USER_PROMPT,
+        "training_args": training_args.to_dict(),
+        "acceleration": model._surya_training_acceleration,
+        "comparisons": False, "publication": False,
+        "trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
+    })
     if args.validate_setup:
         sample_count = min(training_args.per_device_train_batch_size, len(train_dataset))
         if sample_count <= 0:
@@ -1650,7 +1616,8 @@ def main():
         )
         return
 
-    callbacks = [LiveMetricsCallback()]
+    monitor = TrainingMonitorCallback(OUTPUT_DIR, run_name="Surya OCR / RTX 5090")
+    callbacks = [monitor]
     patience = int(os.getenv("SURYA_EARLY_STOPPING_PATIENCE", "2"))
 
     trainer = SuryaOCRTrainer(
@@ -1666,6 +1633,7 @@ def main():
             patience if args.train_smoke_steps <= 0 else 0
         ),
     )
+    trainer.remove_callback(PrinterCallback)
 
     print(
         "Starting Surya bubble OCR fine-tuning...\n"
@@ -1674,9 +1642,8 @@ def main():
         f"persistent_workers={training_args.dataloader_persistent_workers}, "
         f"prefetch_factor={training_args.dataloader_prefetch_factor}, "
         f"eval_on_start={training_args.eval_on_start}\n"
-        "Cold start: the first optimizer step compiles CUDA/Triton kernels once "
-        "(about 60 seconds with an empty cache, about 5 seconds after a restart); "
-        "later steps are expected around 2.5 seconds.",
+        "The first step warms the persistent CUDA/Triton kernel cache. "
+        "Measured throughput is written to metrics.jsonl and training_dashboard.html.",
         flush=True,
     )
     resume_checkpoint = (
@@ -1684,15 +1651,28 @@ def main():
     )
     if resume_checkpoint:
         print(f"Resuming training from checkpoint: {resume_checkpoint}", flush=True)
-    trainer.train(resume_from_checkpoint=resume_checkpoint)
+    try:
+        result = trainer.train(resume_from_checkpoint=resume_checkpoint)
+    except BaseException:
+        monitor.close("failed", trainer.state)
+        raise
+    trainer.save_state()
+    trainer.save_metrics("train", result.metrics)
     if args.train_smoke_steps > 0:
+        if args.smoke_eval_samples > 0:
+            count = min(args.smoke_eval_samples, len(val_dataset))
+            trainer.eval_dataset = val_dataset.select(range(count))
+            trainer.gen_eval_max_samples = count
+            trainer.evaluate()
         print(
             f"Training smoke test passed: {trainer.state.global_step} real step(s) completed.",
             flush=True,
         )
+        monitor.close("smoke_complete", trainer.state)
         return
     print(f"Best checkpoint: {trainer.state.best_model_checkpoint or find_best_checkpoint(OUTPUT_DIR)}", flush=True)
 
+    monitor.close("exporting", trainer.state)
     final_model = merge_and_save(trainer.model, processor, train_mode)
     print("Running held-out test benchmark...", flush=True)
     metrics, samples = run_generation_benchmark(
@@ -1704,8 +1684,20 @@ def main():
         title="FINAL TEST BENCHMARK",
         worst_count=20,
     )
-    save_benchmark(FINAL_DIR / "benchmark_test.json", metrics, samples)
+    metrics["confidence_intervals"] = bootstrap_test_metrics(samples)
+    payload = save_benchmark(FINAL_DIR / "benchmark_test.json", metrics, samples)
+    monitor.summary.update(test_metrics=metrics, dataset=manifest, final_model=str(FINAL_DIR))
+    artifacts = write_final_report(OUTPUT_DIR, payload, monitor.summary)
+    monitor.summary["artifacts"] = artifacts
+    monitor.close("complete", trainer.state)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (Exception, KeyboardInterrupt) as exc:
+        summary_path = OUTPUT_DIR / "training_summary.json"
+        summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {}
+        summary.update(status="interrupted" if isinstance(exc, KeyboardInterrupt) else "failed", error_type=type(exc).__name__)
+        atomic_json(summary_path, summary)
+        raise

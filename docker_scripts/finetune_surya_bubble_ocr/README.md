@@ -1,202 +1,162 @@
-# Fine-tuning Surya OCR 2 classique — profil RTX 3090
+# Surya OCR sur crops de bulles — RTX 5090
 
-Ce package entraîne `datalab-to/surya-ocr-2` sur des crops de bulles validées.
-Il ne concerne pas le modèle BBox pleine page.
+Fine-tuning de `datalab-to/surya-ocr-2` avec la transcription seule comme cible.
+Le prompt partagé `ocr_surya_bubble` reste celui de l'inférence desktop.
 
-Le pipeline complet conserve le contrat existant :
+## Entraînement
 
-1. export Supabase avec split strict par page ;
-2. fine-tuning Surya ;
-3. benchmark génération sur le test held-out ;
-4. fusion éventuelle de l'adapter ;
-5. upload Hugging Face et artefacts fournisseur.
+- Langage complet, merger multimodal et quatre derniers blocs vision entraînables :
+  606 048 576 paramètres sur 665 701 440.
+- BF16, TF32, AdamW fusionné, sans quantification ni gradient checkpointing.
+- Profil `auto` : batch physique 32 / accumulation 1 sur SM120, sinon 16 / 2.
+- LR langage `1.2e-5`, merger `6e-6`, vision `3e-6` ; warmup 80 étapes,
+  cosine jusqu'à 10 % du LR initial, cinq époques, patience 2 sur le CER.
+- Loss par bulle, pondérations légères des textes courts et onomatopées,
+  augmentations manga conservatrices. Normalisation exacte sur la fenêtre
+  d'accumulation, y compris si le dernier microbatch est incomplet.
+- Validation loss sur toutes les bulles de validation, génération sur un sous-ensemble
+  stratifié fixe (512 dans le profil Docker). Checkpoint retenu sur son CER.
+- Test réservé complet après sélection du checkpoint. Aucune comparaison avec
+  d'autres modèles n'est exécutée ou ajoutée au rapport.
 
-## Profil 3090 par défaut
+## Accélérations et lien avec l'inférence
 
-Le profil par défaut est un fine-tuning hybride :
+Les modules desktop `surya_mlp_kernels.py` et `surya_hybrid_flash_kvcache.py`
+spécialisent le décodage mono-token / batch 1, sans backward. Leur réutilisation
+brute casserait l'entraînement. `training_acceleration.py` reprend les fusions
+SwiGLU et RMSNorm avec les kernels autograd de Liger 0.8.0 ; les grandes
+projections restent des GEMM cuBLAS.
 
-- backbone langage complet entraînable ;
-- merger multimodal entraînable ;
-- 4 derniers blocs vision entraînables ;
-- reste du backbone vision gelé ;
-- BF16, TF32 et `adamw_torch_fused` ;
-- batch physique 16, accumulation 2, soit le même batch effectif de 32 ;
-- gradient checkpointing désactivé pour privilégier le débit ;
-- LR langage `1.2e-5`, LR merger `0.5x`, LR vision `0.25x` ;
-- 5 époques, cosine avec plancher à 10 %, early stopping de patience 2 ;
-- évaluation CER générative à chaque époque, avec baseline initiale optionnelle ;
+La tête vocabulaire reçoit **uniquement les états cachés qui prédisent un token
+supervisé**. Les positions décalées, les cibles et leurs poids sont calculés sur
+CPU dans le collator : pas de `.item()` CUDA dans la loss, ni de logits sur le
+prompt, l'image ou le padding. Cross-entropy fusionnée, conservation d'EOS même
+si PAD partage son identifiant, vérification exacte du suffixe assistant.
 
-Le modèle fait environ 666 M de paramètres. Le profil conserve le fine-tuning
-hybride complet sur les 24 Go de la RTX 3090, sans quantification.
+Les 18 couches DeltaNet utilisent FLA + causal-conv1d avec backward ; les couches
+d'attention complète utilisent SDPA. Le regroupement par longueur réduit le
+padding. La validation génère par lots regroupés ; le cache KV est activé puis
+l'état entraînement est restauré même en cas d'erreur. Les kernels desktop de
+cache Flash/CUDA Graphs ne sont pas installés dans le modèle entraînable.
 
-## Résultat publié — 30 juillet 2026
+`torch.compile` global reste opt-in : les formes image variables et les kernels
+DeltaNet provoquent des coûts de compilation qui doivent être mesurés avant de
+l'activer. Aucun fallback silencieux de compilation.
 
-Le run final RTX 3090 a évalué les 1 423 bulles du test held-out :
+Références : [Liger 0.8.0](https://github.com/linkedin/Liger-Kernel/tree/v0.8.0),
+[SDPA PyTorch](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html).
 
-| Métrique | Résultat |
+## Données
+
+L'export lit les annotations validées de Supabase et les pages HTTP ou privées
+R2. Il conserve un split strict par page, refuse les téléchargements incomplets
+et les splits vides. Les hashes SHA-256 des métadonnées sont dans `run_config.json`.
+Les credentials sont chargés depuis les fichiers `.env` locaux ; ils ne sont
+pas copiés dans l'image.
+
+Variables nécessaires : `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` et, pour R2,
+`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PAGES_BUCKET_NAME`.
+
+## Lancement local
+
+Depuis ce dossier, sous Windows :
+
+```bat
+build_image.bat
+run_pipeline.bat
+```
+
+Le build prend **la racine du dépôt** comme contexte. PyTorch 2.8 / CUDA 12.8,
+Transformers 5.14.1, FLA 0.5.2, causal-conv1d 1.6.2.post1 compilé SM120,
+Liger 0.8.0. Les caches Triton/Inductor restent sur un volume Linux natif.
+L'image désactive l'upload (`SURYA_SKIP_UPLOAD=1`). Pour le demander explicitement,
+passer `SURYA_SKIP_UPLOAD=0` et configurer `HF_TOKEN` / `HF_REPO`.
+
+Lancement direct dans l'environnement CUDA déjà préparé :
+
+```bash
+python export_dataset.py
+python -m unittest test_training -v
+SURYA_RUN_GPU_TESTS=1 python -m unittest test_training.KernelTests -v
+SURYA_OUTPUT_DIR=/workspace/smoke python train_surya_bubble_ocr.py --train-smoke-steps 3 --smoke-eval-samples 16
+SURYA_GEN_EVAL_BATCH=32 SURYA_GEN_EVAL_MAX_SAMPLES=512 SURYA_IMAGE_CACHE_ITEMS=8192 python train_surya_bubble_ocr.py
+```
+
+Le smoke consomme de vrais batches, exécute forward/backward/AdamW puis loss et
+génération sur validation. Utiliser un dossier distinct du run principal.
+`SURYA_RESUME_FROM_CHECKPOINT=auto` reprend le dernier checkpoint ; `0` repart du
+modèle de base. Choisir un nouveau `SURYA_OUTPUT_DIR` pour préserver un ancien run.
+Les poids exportés gardent le format Transformers standard.
+
+Pour une 3090, compiler avec `--build-arg TORCH_CUDA_ARCH_LIST=8.6
+--build-arg CAUSAL_CONV_CUDA_ARCH=86`, puis ajuster le batch de génération.
+
+## Rapport et mesures
+
+- `training_dashboard.html` : 12 graphiques, rafraîchissement pendant le run.
+- `report.html` : rapport autonome avec figures intégrées et erreurs à examiner.
+- `plots/` : figures d'apprentissage, ressources GPU, qualité, erreurs ; PNG et SVG.
+- `metrics.jsonl`, `metrics.csv` : historique exploitable, loss, CER, WER, exact match,
+  LR, gradients, débit, temps/étape, VRAM allouée/réservée/pic, utilisation,
+  puissance et température GPU.
+- `validation_step_*.json` : métriques et prédictions de chaque validation.
+- `final_merged/benchmark_test.json`, `predictions_test.csv`, `error_analysis.json` :
+  détail du test, CER par longueur/catégorie, caractères insérés/supprimés/substitués,
+  confusions fréquentes, sorties vides et limite de génération, débit de génération,
+  intervalles de confiance à 95 % par bootstrap de pages.
+- `training_summary.json`, `run_config.json`, `trainer_state.json` : état, recette,
+  empreintes des données et checkpoint sélectionné. TensorBoard via `SURYA_REPORT_TO=tensorboard`.
+
+Le `learning_rate` standard du Trainer correspond au **premier groupe (vision)** ;
+les autres groupes suivent le même multiplicateur cosine. La VRAM instantanée est
+mesurée après l'étape, le pic couvre aussi les activations. Le débit par étape
+utilise le batch nominal et exclut validation/sauvegarde ; le dernier batch peut
+être incomplet. Les mesures GPU sont échantillonnées, pas intégrées en continu.
+Les catégories OCR se recoupent et le bootstrap est groupé par page.
+
+Pour ouvrir le rapport sans dépendance web :
+
+```powershell
+node serve_report.cjs outputs_surya_bubble_ocr/rtx5090-20261005 8765
+```
+
+Le serveur écoute uniquement `127.0.0.1`. Ouvrir `http://127.0.0.1:8765`.
+Les fichiers HTML fonctionnent aussi hors ligne.
+
+## Mesure réelle du chemin GPU — 5 octobre 2026
+
+Sur le batch de 32 bulles les plus coûteuses du nouvel export (séquence 352),
+forward + backward + clipping + AdamW : **0,701 s** sur le dernier pas chaud,
+**23,70 Gio** alloués au pic et **24,27 Gio** réservés. Le premier pas a pris
+42,93 s pour compiler les kernels. Cette mesure utilise trois répétitions du même
+batch ; ce n'est pas le débit de tout le pipeline.
+
+Les tests vérifient les cibles/EOS sur les deux côtés de padding, l'égalité
+loss/gradients avec la formulation dense, l'accumulation inégale, la restauration
+d'état après échec de génération et l'absence de comparaisons dans les exports.
+Les deux tests CUDA vérifient le forward/backward de SwiGLU, RMSNorm Qwen et de la
+cross-entropy pondérée. Le smoke réel couvre l'intégration Transformers.
+
+## Run terminé le 5 octobre 2026
+
+Sortie : `outputs_surya_bubble_ocr/rtx5090-20261005/`.
+7 496 bulles / 860 pages d'entraînement, 1 648 / 184 de validation,
+1 612 / 185 de test. Cinq époques, 1 175 mises à jour ; meilleur checkpoint
+`checkpoint-705` (époque 3). Durée Trainer, validations comprises : 15 min 44 s ;
+cycle complet avec export final, test et rapport : 17 min 03 s (hors préparation).
+Pic VRAM allouée pendant le run : 23,54 Gio.
+
+| Test réservé | Résultat |
 | --- | ---: |
-| CER | **0,451 %** |
-| WER | **1,656 %** |
-| Exact match | **90,65 %** |
-| Levenshtein moyen | **0,1595** |
-| Sorties vides | **0 %** |
-| Limite de génération atteinte | **0 / 1 423** |
+| CER | 0,471 % |
+| WER | 1,843 % |
+| Exact match | 91,32 % |
+| Distance de Levenshtein moyenne | 0,1520 |
+| Sorties vides / tronquées | 0 / 0 |
+| IC 95 % du CER, bootstrap par page | 0,350–0,602 % |
 
-Modèle : [`Remidesbois/surya-bubble-ocr-poneglyph`](https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph).
-Le benchmark détaillé est publié avec le modèle dans `benchmark_test.json`.
-
-## Optimisations spécifiques
-
-- Un seul passage multimodal du processor par batch, contre un passage groupé
-  plus deux passages supplémentaires par image auparavant.
-- La tête de vocabulaire ne calcule les logits que sur le suffixe OCR supervisé,
-  pas sur les tokens de l'image et du prompt.
-- Regroupement des exemples par coût token estimé pour réduire le padding.
-- Cache LRU des crops dans le processus principal et mémoire épinglée ; les
-  workers DataLoader sont désactivés pour éviter le verrou CUDA/Triton observé.
-- Fast Gated DeltaNet via `flash-linear-attention` et `causal-conv1d`.
-  L'image Docker refuse de démarrer l'entraînement si ce chemin manque.
-- Le wheel `causal-conv1d` est compilé uniquement pour SM 8.6 afin d'éviter
-  neuf architectures inutiles dans une image dédiée à la RTX 3090.
-- SDPA PyTorch pour les 6 couches d'attention complète. FlashAttention 2 n'est
-  pas imposé : il reste sélectionnable avec `SURYA_ATTN_IMPLEMENTATION`.
-- Évaluation génération batchée et échantillon de validation stratifié.
-
-Les kernels d'inférence locaux `surya_hybrid_flash_kvcache.py` et
-`surya_mlp_kernels.py` ne sont pas réutilisés directement : ils sont conçus
-pour le décodage mono-token et n'ont pas de backward. Les principes transférables
-(BF16, kernels fusionnés, formes regroupées et travail limité aux logits utiles)
-sont appliqués ici.
-
-## Améliorations qualité
-
-- Loss moyenne par bulle plutôt que moyenne globale par token : les longs
-  dialogues ne dominent plus les textes très courts.
-- Pondération légère des textes de 1–8 caractères et des onomatopées.
-- Augmentations manga conservatrices : contraste, luminosité, netteté, léger
-  flou et rotation maximale de 1 degré.
-- Budget image borné entre 65 536 et 1 048 576 pixels pour conserver les détails
-  sans laisser un crop aberrant provoquer un OOM.
-- Sélection du meilleur checkpoint sur le CER et test final complet.
-- Le benchmark initial reste disponible avec `SURYA_EVAL_ON_START=1`, mais il
-  est désactivé par défaut : il ne change pas l'entraînement et gardait la barre
-  principale à 0 % pendant toute la génération de référence.
-
-## Lancement
-
-Validation rapide du contrat :
-
-```bash
-python run_pipeline.py --dry-run --check-remote
-python train_surya_bubble_ocr.py --validate-setup
-python train_surya_bubble_ocr.py --train-smoke-steps 1
-```
-
-Pipeline complet :
-
-```bash
-python run_pipeline.py
-```
-
-Dans le conteneur RunPod, les chemins par défaut sont :
-
-```text
-/workspace/surya_bubble_dataset
-/workspace/outputs_surya_bubble_ocr
-/workspace/hf-cache
-```
-
-## Réglages principaux
-
-```bash
-SURYA_TRAIN_MODE=hybrid          # hybrid, full ou lora
-SURYA_TRAIN_BATCH=16
-SURYA_EVAL_BATCH=16
-SURYA_GRAD_ACCUM=2
-SURYA_LR=1.2e-5
-SURYA_EPOCHS=5
-SURYA_VISION_TRAIN_LAST_BLOCKS=4
-SURYA_VISION_LR_MULTIPLIER=0.25
-SURYA_MERGER_LR_MULTIPLIER=0.50
-SURYA_GRADIENT_CHECKPOINTING=0
-SURYA_TORCH_COMPILE=0
-SURYA_DATALOADER_WORKERS=0
-SURYA_EVAL_ON_START=0
-SURYA_GEN_EVAL_BATCH=8
-SURYA_GEN_EVAL_MAX_SAMPLES=256
-SURYA_MAX_NEW_TOKENS=256
-SURYA_RESUME_FROM_CHECKPOINT=auto
-SURYA_HF_UPLOAD_WORKERS=4
-```
-
-`SURYA_TORCH_COMPILE=1` reste expérimental avec les kernels Triton DeltaNet.
-Il faut le comparer localement après le premier epoch chaud avant de le garder.
-
-Le collator peut être rebenchmarké sur le dataset exporté :
-
-```bash
-python benchmark_training_hotpath.py \
-  --metadata /workspace/surya_bubble_dataset/train/metadata.jsonl \
-  --output /workspace/outputs_surya_bubble_ocr/collator_benchmark.json
-```
-
-Sur la validation locale RTX 3090, batch 16 sur des crops réels, la médiane est
-passée de 167,7 ms à 18,3 ms, soit 9,18x, avec égalité exacte de tous les tokens
-supervisés. Ce nombre mesure le pipeline CPU/processor, pas le débit final GPU.
-À ce coût-là, des workers DataLoader n'apportent pas de débit utile face à un
-pas GPU de 1,111 s. Ils sont donc désactivés : après l'initialisation CUDA/Triton,
-leur création par `fork` peut hériter d'un verrou et bloquer avant le premier
-batch. `--validate-setup` consomme maintenant un vrai batch via le DataLoader
-configuré afin de détecter cette régression avant un entraînement complet.
-
-Le premier pas `Trainer` compile les kernels CUDA/Triton et prend environ
-60 secondes avec un cache vide sur la 3090. La barre reste à 0 % pendant ce seul
-pas, mais la GPU travaille. Les pas suivants prennent environ 2,5 secondes avec
-l'accumulation 2×16 (cohérent avec ~1,11 s par micro-batch). Les caches
-TorchInductor et Triton sont persistés dans le volume Hugging Face : un nouveau
-conteneur a validé le même premier pas en 5,25 secondes une fois le cache chaud.
-
-La génération réserve jusqu'à 256 nouveaux tokens. Le tokenizer Surya OCR 2
-utilisé ici est presque caractère par caractère : sur les 9 527 bulles validées,
-le p99 est à environ 115 tokens et le maximum à 186 tokens avec le suffixe de
-conversation. L'ancienne limite
-de 96 tronquait 244 références valides. Le chargement du dataset refuse
-maintenant de démarrer si une cible dépasse le budget, et le benchmark publie
-`token_limit_rate` pour rendre toute sortie arrêtée par la limite visible.
-
-Un lancement interrompu reprend automatiquement le dernier `checkpoint-*`
-présent dans le dossier d'outputs. Utiliser
-`SURYA_RESUME_FROM_CHECKPOINT=0` pour repartir volontairement de zéro.
-
-L'early stopping est calculé après le benchmark génératif, directement sur son
-CER. Cela évite l'ordre d'appel de `EarlyStoppingCallback`, qui recevait
-`eval_loss` avant la disponibilité de `eval_cer` et se désactivait.
-
-La publication utilise l'uploader Hugging Face `upload_large_folder`, résumable
-et adapté au fichier `model.safetensors` d'environ 1,33 Go.
-
-Le benchmark complet forward + backward + AdamW sur le groupe de crops le plus
-coûteux confirme le batch physique 16 : 18,00 Gio alloués, 18,45 Gio réservés
-et 1,111 s par pas chaud. Le batch 8 atteint 10,77 Gio et 0,653 s, soit environ
-18 % de débit par bulle en moins. Le batch 32 provoque un OOM dans DeltaNet.
-
-Repli si d'autres applications occupent la VRAM :
-
-```bash
-SURYA_TRAIN_BATCH=8
-SURYA_EVAL_BATCH=8
-SURYA_GRAD_ACCUM=4
-SURYA_GEN_EVAL_BATCH=4
-```
-
-Mode rsLoRA de secours :
-
-```bash
-SURYA_TRAIN_MODE=lora
-SURYA_LORA_R=64
-SURYA_USE_RSLORA=1
-SURYA_USE_DORA=0
-```
-
-Ce mode cible également `in_proj_qkv`, `in_proj_z`, `in_proj_a`,
-`in_proj_b` et `out_proj`, absents de l'ancienne configuration LoRA.
+Les poids `final_merged/model.safetensors` ont été rechargés avec Transformers
+standard, sans patch Liger : aucune clé manquante/inattendue/incompatible et
+transcriptions de contrôle générées (`reload_check.json`).
+Le rapport contient 18 graphiques répartis en quatre planches PNG/SVG, plus le
+tableau de bord, toutes les prédictions CSV et l'analyse d'erreurs.

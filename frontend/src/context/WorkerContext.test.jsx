@@ -6,6 +6,7 @@ import { WorkerProvider, useWorker } from './WorkerContext';
 function Controls() {
     const { switchModel, loadModel, modelStates, runOcr } = useWorker();
     return <><button onClick={() => { switchModel('falconWebgpu'); loadModel('falconWebgpu'); }}>Falcon</button>
+        <button onClick={() => { switchModel('suryaWebgpu'); loadModel('suryaWebgpu'); }}>Surya</button>
         <button onClick={() => { switchModel('ppocrv6Line'); loadModel('ppocrv6Line'); }}>Paddle</button>
         <button onClick={() => { runOcr('crop-f', 'f', 'falconWebgpu'); runOcr('crop-p', 'p', 'ppocrv6Line'); }}>Run both</button>
         <span>{JSON.stringify(modelStates)}</span></>;
@@ -43,8 +44,17 @@ describe('OCR worker switching', () => {
         expect(falcon.postMessage).toHaveBeenLastCalledWith({ type: 'run', imageBlob: 'crop-f', requestId: 'f' }, []);
         expect(paddle.postMessage).toHaveBeenLastCalledWith({ type: 'run', imageBlob: 'crop-p', requestId: 'p' }, []);
         expect(paddle.terminate).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByText('Surya'));
+        const surya = workers[2];
+        expect(surya.url).toContain('surya.worker.js');
+        act(() => surya.listener({ data: { status: 'ready', modelKey: 'suryaWebgpu' } }));
+        fireEvent.click(screen.getByText('Surya'));
+        expect(workers).toHaveLength(3);
+        expect(surya.postMessage).toHaveBeenCalledOnce();
+        expect(falcon.terminate).not.toHaveBeenCalled();
         view.unmount();
         expect(falcon.terminate).toHaveBeenCalledOnce();
         expect(paddle.terminate).toHaveBeenCalledOnce();
+        expect(surya.terminate).toHaveBeenCalledOnce();
     });
 });

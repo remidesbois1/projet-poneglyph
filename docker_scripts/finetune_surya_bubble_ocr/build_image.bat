@@ -9,7 +9,7 @@ echo Building Docker image %IMAGE_NAME%:%TAG%
 echo ==========================================================
 echo.
 
-docker build --pull -f Dockerfile -t %IMAGE_NAME%:%TAG% ..
+docker build -f "%~dp0Dockerfile" -t %IMAGE_NAME%:%TAG% "%~dp0..\.."
 
 if %ERRORLEVEL% NEQ 0 (
     echo.

@@ -1,8 +1,8 @@
-# PyTorch 2.8 / CUDA 12.8 keeps the fast Qwen3.5 path and supports Ampere.
+# Build with the repository root as context. Default: RTX 5090 / SM120.
 FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-devel
 
-ARG TORCH_CUDA_ARCH_LIST=8.6
-ARG CAUSAL_CONV_CUDA_ARCH=86
+ARG TORCH_CUDA_ARCH_LIST=12.0
+ARG CAUSAL_CONV_CUDA_ARCH=120
 
 ENV CUDA_HOME=/usr/local/cuda
 ENV VIRTUAL_ENV=/opt/surya-venv
@@ -31,9 +31,9 @@ ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
 RUN python -m pip install --no-cache-dir --upgrade pip "setuptools<82" wheel
 
-COPY finetune_surya_bubble_ocr/requirements.txt .
+COPY docker_scripts/finetune_surya_bubble_ocr/requirements.txt .
 RUN python -m pip install --no-cache-dir -r requirements.txt
-COPY finetune_surya_bubble_ocr/patch_causal_conv1d_arch.py /tmp/patch_causal_conv1d_arch.py
+COPY docker_scripts/finetune_surya_bubble_ocr/patch_causal_conv1d_arch.py /tmp/patch_causal_conv1d_arch.py
 RUN mkdir -p /tmp/causal-conv1d-src \
     && curl -fsSLo /tmp/causal-conv1d.tar.gz \
        https://files.pythonhosted.org/packages/source/c/causal-conv1d/causal_conv1d-1.6.2.post1.tar.gz \
@@ -53,11 +53,13 @@ ENV HF_XET_HIGH_PERFORMANCE=1
 ENV SURYA_DATASET_DIR=/workspace/surya_bubble_dataset
 ENV SURYA_OUTPUT_DIR=/workspace/outputs_surya_bubble_ocr
 ENV SURYA_REQUIRE_FAST_LINEAR_ATTENTION=1
-ENV SURYA_EXPECTED_COMPUTE_CAPABILITY=8.6
-ENV SURYA_TRAIN_BATCH=16
-ENV SURYA_EVAL_BATCH=16
-ENV SURYA_GRAD_ACCUM=2
-ENV SURYA_GEN_EVAL_BATCH=8
+ENV SURYA_EXPECTED_COMPUTE_CAPABILITY=${TORCH_CUDA_ARCH_LIST}
+ENV SURYA_PROFILE=auto
+ENV SURYA_GEN_EVAL_BATCH=32
+ENV SURYA_GEN_EVAL_MAX_SAMPLES=512
+ENV SURYA_LIGER=1
+ENV SURYA_IMAGE_CACHE_ITEMS=8192
+ENV SURYA_SKIP_UPLOAD=1
 ENV SURYA_MAX_NEW_TOKENS=256
 ENV SURYA_AUTO_FIND_BATCH_SIZE=0
 ENV SURYA_DATALOADER_WORKERS=0
@@ -69,8 +71,10 @@ ENV TORCHINDUCTOR_CACHE_DIR=/workspace/hf-cache/torchinductor
 ENV TRITON_CACHE_DIR=/workspace/hf-cache/triton
 ENV CUDA_MODULE_LOADING=LAZY
 
-COPY common_training /app/common_training
-COPY finetune_surya_bubble_ocr /app/finetune_surya_bubble_ocr
+COPY docker_scripts/common_training /app/common_training
+COPY packages/shared/src/llm-prompts.json /app/packages/shared/src/llm-prompts.json
+ENV PONEGLYPH_PROMPTS_FILE=/app/packages/shared/src/llm-prompts.json
+COPY docker_scripts/finetune_surya_bubble_ocr /app/finetune_surya_bubble_ocr
 
 WORKDIR /app/finetune_surya_bubble_ocr
 

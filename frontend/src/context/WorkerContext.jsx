@@ -10,6 +10,16 @@ export const useWorker = () => useContext(WorkerContext);
 const DEFAULT_OCR_MODEL_KEY = 'ppocrv6Line';
 
 export const OCR_MODELS = {
+    suryaWebgpu: {
+        key: 'suryaWebgpu',
+        label: 'Surya · WebGPU',
+        description: 'Bulles entières · GPU dans le navigateur',
+        cer: 'ONNX · précision mixte',
+        benchmark: 'Fine-tuning du 5 octobre 2026 ; métriques navigateur évaluées séparément',
+        size: '~1,33 Go',
+        type: 'local',
+        runtime: 'onnx'
+    },
     falconWebgpu: {
         key: 'falconWebgpu',
         label: 'Falcon-OCR',
@@ -106,6 +116,8 @@ export const WorkerProvider = ({ children }) => {
         if (!entry) {
             const worker = key === 'falconWebgpu'
                 ? new Worker(new URL('../workers/falcon.worker.js', import.meta.url), { type: 'module' })
+                : key === 'suryaWebgpu'
+                ? new Worker(new URL('../workers/surya.worker.js', import.meta.url), { type: 'module' })
                 : new Worker(new URL('../workers/ocr.worker.js', import.meta.url), { type: 'module' });
             entry = { worker, status: 'idle' };
             entries.current.set(key, entry);

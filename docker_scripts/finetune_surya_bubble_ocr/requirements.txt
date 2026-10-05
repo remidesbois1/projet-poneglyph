@@ -1,4 +1,11 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
 accelerate>=1.13,<2
+torch==2.8.0+cu128; sys_platform == "linux"
+torchvision==0.23.0+cu128; sys_platform == "linux"
+boto3==1.43.89
+liger-kernel==0.8.0; sys_platform == "linux"
+rich>=13.9,<15
+tensorboard>=2.18,<3
 datasets>=4.3,<5
 einops>=0.8
 flash-linear-attention==0.5.2
