@@ -44,6 +44,22 @@ describe('sandbox OCR selection', () => {
 
 
 describe('simultaneous browser OCR', () => {
+    it('offers LightOnOCR 3 bubbles and keeps its transcript intact through the annotation flow', async () => {
+        localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['lighton3BubbleWebgpu', 'lighton3Webgpu']));
+        const worker = new EventTarget();
+        const runOcr = vi.fn(async (_bitmap, requestId) => {
+            queueMicrotask(() => worker.dispatchEvent(new MessageEvent('message', {
+                data: { status: 'complete', requestId, text: '"BOUM !" ... oui ?' }
+            })));
+        });
+        workerContext.value = { workers: { lighton3BubbleWebgpu: worker },
+            modelStates: { lighton3BubbleWebgpu: { status: 'ready' } }, activeModelKey: 'ppocrv6Line', runOcr };
+        const { result } = renderHook(() => useAnnotationOCR({ isSandbox: true, imageRef: { current: {} }, setDebugImageUrl: vi.fn() }));
+        expect(result.current.selectedOcrModelKeys).toEqual(['lighton3BubbleWebgpu']);
+        await act(async () => result.current.runBackgroundOcr({ x: 0, y: 0, w: 10, h: 10 }, 'bubble3'));
+        expect(runOcr.mock.calls[0][2]).toBe('lighton3BubbleWebgpu');
+        expect(result.current.ocrResults.bubble3[0].text).toBe('"BOUM !" ... oui ?');
+    });
     it('collects replies from both loaded workers even when Falcon is not active', async () => {
         localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['falconWebgpu', 'ppocrv6Line']));
         const workers = { falconWebgpu: new EventTarget(), ppocrv6Line: new EventTarget() };

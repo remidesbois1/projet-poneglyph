@@ -7,6 +7,8 @@ function Controls() {
     const { switchModel, loadModel, modelStates, runOcr } = useWorker();
     return <><button onClick={() => { switchModel('falconWebgpu'); loadModel('falconWebgpu'); }}>Falcon</button>
         <button onClick={() => { switchModel('suryaWebgpu'); loadModel('suryaWebgpu'); }}>Surya</button>
+        <button onClick={() => { switchModel('lighton3BubbleWebgpu'); loadModel('lighton3BubbleWebgpu'); }}>LightOn bulles</button>
+        <button onClick={() => { switchModel('lighton3Webgpu'); loadModel('lighton3Webgpu'); }}>LightOn page</button>
         <button onClick={() => { switchModel('ppocrv6Line'); loadModel('ppocrv6Line'); }}>Paddle</button>
         <button onClick={() => { runOcr('crop-f', 'f', 'falconWebgpu'); runOcr('crop-p', 'p', 'ppocrv6Line'); }}>Run both</button>
         <span>{JSON.stringify(modelStates)}</span></>;
@@ -14,6 +16,27 @@ function Controls() {
 
 describe('OCR worker switching', () => {
     afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+    it('loads distinct bubble and bbox workers and reuses each after switching', async () => {
+        const workers = [];
+        class MockWorker {
+            constructor(url) { this.url = String(url); workers.push(this); }
+            postMessage = vi.fn(); terminate = vi.fn();
+            addEventListener(type, listener) { if (type === 'message') this.listener = listener; }
+        }
+        vi.stubGlobal('Worker', MockWorker);
+        const view = render(<WorkerProvider><Controls /></WorkerProvider>);
+        fireEvent.click(screen.getByText('LightOn bulles'));
+        expect(workers[0].url).toContain('lighton3Bubble.worker.js');
+        act(() => workers[0].listener({ data: { status: 'ready' } }));
+        fireEvent.click(screen.getByText('LightOn page'));
+        expect(workers[1].url).toContain('lighton3.worker.js');
+        act(() => workers[1].listener({ data: { status: 'ready' } }));
+        fireEvent.click(screen.getByText('LightOn bulles'));
+        expect(workers).toHaveLength(2);
+        expect(workers[0].postMessage).toHaveBeenCalledOnce();
+        view.unmount();
+        expect(workers.every(w => w.terminate.mock.calls.length === 1)).toBe(true);
+    });
     it('keeps both models ready and routes each request to its own worker', async () => {
         localStorage.clear();
         const workers = [];

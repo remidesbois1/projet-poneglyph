@@ -26,7 +26,7 @@ describe('AnnotateLeftSidebar', () => {
         expect(screen.queryByRole('checkbox', { name: /LightOn OCR/ })).not.toBeInTheDocument();
         expect(screen.getByRole('combobox', { name: 'Moteur pour la page entière' })).toHaveTextContent('Poneglyph-BBox · local');
         expect(screen.getByRole('checkbox', { name: /PP-OCRv6/ })).toBeInTheDocument();
-        expect(screen.getByRole('checkbox', { name: /Surya/ })).toBeInTheDocument();
+        expect(screen.getByRole('checkbox', { name: /Surya · WebGPU/ })).toBeInTheDocument();
     });
 
     it('renders the public reader when private workflow metadata is absent', () => {

@@ -12,6 +12,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { useAnnotationInteractions } from '@/hooks/useAnnotationInteractions';
 import { useAnnotationOCR } from '@/hooks/useAnnotationOCR';
 import { useDeepSeekPageOcr } from '@/hooks/useDeepSeekPageOcr';
+import { useLighton3PageOcr } from '@/hooks/useLighton3PageOcr';
 import { useAnnotationDetection } from '@/hooks/useAnnotationDetection';
 import { useAnnotationMetadata } from '@/hooks/useAnnotationMetadata';
 import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
@@ -447,11 +448,34 @@ export default function AnnotatePage() {
         });
     }, [cacheBubblesForPage]);
 
+    const { handleLighton3OneShot, isLighton3Loading, lighton3State, cancelLighton3 } = useLighton3PageOcr({
+        imageRef, contextKey: `${pageId}:${user?.id || ''}:${originalImageUrl || ''}`,
+        canRun: !isGuest && role === 'Admin' && canEdit && imageLoadStatus === RESOURCE_STATUS.READY,
+        busy: isSubmitting || isAutoDetecting || isOneShotLoading || isChatGptLoading || isPoneglyphLoading,
+        onApply: async (bubbles, { isCurrent }) => {
+            const targetPageId = pageId, targetGeneration = navGenerationRef.current;
+            const isTargetCurrent = () => isCurrent() && targetGeneration === navGenerationRef.current && String(pageIdRef.current) === String(targetPageId);
+            const created = [];
+            for (const bubble of bubbles) {
+                if (!isTargetCurrent()) break;
+                try {
+                    const response = await createBubble({ id_page: Number(targetPageId),
+                        x: bubble.x, y: bubble.y, w: bubble.w, h: bubble.h, texte_propose: bubble.texte_propose });
+                    created.push(response.data);
+                } catch { /* Successful imports remain visible when a later save fails. */ }
+            }
+            if (!isTargetCurrent()) { bubbleCacheRef.current.delete(normalizePageId(targetPageId)); return; }
+            if (created.length) setExistingBubblesAndCache(previous => sortBubblesForAnnotation([...previous, ...created]));
+            if (created.length === bubbles.length) toast.success(`${created.length} zones créées avec LightOnOCR 3.`);
+            else toast.warning(`LightOnOCR 3 : ${created.length} zones enregistrées sur ${bubbles.length}. Vérifiez les annotations avant de relancer.`);
+        },
+    });
+
     const { handleDeepSeekOneShot, isDeepSeekLoading } = useDeepSeekPageOcr({
         imageRef,
         contextKey: `${pageId}:${user?.id || ''}:${originalImageUrl || ''}`,
         canRun: !isGuest && role === 'Admin' && canEdit && imageLoadStatus === RESOURCE_STATUS.READY,
-        busy: isSubmitting || isAutoDetecting || isOneShotLoading || isChatGptLoading || isPoneglyphLoading,
+        busy: isSubmitting || isAutoDetecting || isOneShotLoading || isChatGptLoading || isPoneglyphLoading || isLighton3Loading,
         detectionStatus,
         detectBubbles: runDebuggableDetection,
         onConfigure: () => setShowApiKeyModal(true),
@@ -489,7 +513,7 @@ export default function AnnotatePage() {
     } = useAnnotationInteractions({
         containerRef, imageRef, imageDimensions, existingBubbles, setExistingBubbles: setExistingBubblesAndCache,
         pendingAnnotation, setPendingAnnotation, setRectangle, canEdit, canEditBubble: canEditExistingBubble, isMobile,
-        pageStatus: page?.statut, isSubmitting: isSubmitting || isDeepSeekLoading, showApiKeyModal, showDescModal
+        pageStatus: page?.statut, isSubmitting: isSubmitting || isDeepSeekLoading || isLighton3Loading, showApiKeyModal, showDescModal
     });
 
     const fetchBubbles = useCallback(({ force = false } = {}) => {
@@ -1205,6 +1229,10 @@ export default function AnnotatePage() {
                 poneglyphRunMode={poneglyphRunMode}
                 handleOneShotLocalPoneglyph={handleOneShotLocalPoneglyph}
                 handleOneShotLocalSuryaBbox={handleOneShotLocalSuryaBbox}
+                handleLighton3OneShot={handleLighton3OneShot}
+                isLighton3Loading={isLighton3Loading}
+                lighton3State={lighton3State}
+                cancelLighton3={cancelLighton3}
                 isTauri={tauriLocalOcr.isTauri}
                 isCheckingLocalConnection={tauriLocalOcr.isCheckingLocalConnection}
                 localModelStatus={tauriLocalOcr.localModelStatus}

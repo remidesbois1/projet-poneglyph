@@ -8,6 +8,7 @@ vi.mock('@/context/TauriLocalOcrContext', () => ({ useTauriLocalOcrContext: () =
 vi.mock('@/hooks/useAiModelConfig', () => ({ useAiModelConfig: () => ({}) }));
 vi.mock('@/hooks/useAnnotationInteractions', () => ({ useAnnotationInteractions: vi.fn(() => ({})) }));
 vi.mock('@/hooks/useAnnotationOCR', () => ({ useAnnotationOCR: () => ({}) }));
+vi.mock('@/hooks/useLighton3PageOcr', () => ({ useLighton3PageOcr: () => ({}) }));
 vi.mock('@/hooks/useAnnotationDetection', () => ({ useAnnotationDetection: () => ({}) }));
 vi.mock('@/hooks/useAnnotationMetadata', () => ({ useAnnotationMetadata: () => ({}) }));
 vi.mock('@/lib/chatGptDesktop', () => ({ getChatGptStatus: async () => ({ available: false }), runChatGptPageOcr: vi.fn() }));

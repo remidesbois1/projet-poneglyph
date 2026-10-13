@@ -27,6 +27,7 @@ describe('model registry', () => {
 
     it('formats the exact published values used by the UI', () => {
         expect(formatRegistryMetric('lighton-bubble')).toBe('CER 0,424 %');
+        expect(formatRegistryMetric('lighton3-bubble')).toBe('CER WebGPU 0,394 %');
         expect(formatRegistryMetric('surya-bubble')).toBe('CER 0,451 %');
         expect(formatRegistryMetric('ppocrv6-line')).toBe('CER 1,451 %');
         expect(formatRegistryMetric('readernet-reading-order')).toBe('Exact panel 95,65 %');

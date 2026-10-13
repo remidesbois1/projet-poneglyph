@@ -80,6 +80,10 @@ export default function AnnotateLeftSidebar({
     isOneShotLoading,
     handleDeepSeekOneShot,
     isDeepSeekLoading = false,
+    handleLighton3OneShot,
+    isLighton3Loading = false,
+    lighton3State,
+    cancelLighton3,
     geminiFullPageModel = 'gemini-2.5-flash-lite',
     handleChatGptOneShot,
     isChatGptLoading = false,
@@ -143,6 +147,7 @@ export default function AnnotateLeftSidebar({
             isAutoDetecting ||
             isOneShotLoading ||
             isDeepSeekLoading ||
+            isLighton3Loading ||
             isChatGptLoading ||
             isPoneglyphLoading ||
             isLocalInferencing ||
@@ -202,6 +207,17 @@ export default function AnnotateLeftSidebar({
         };
     };
     const engines = [
+        {
+            key: 'lighton3-webgpu', label: 'LightOnOCR 3 · WebGPU',
+            available: Boolean(handleLighton3OneShot), handler: handleLighton3OneShot,
+            action: lighton3State?.status === 'ready' ? 'run' : 'load',
+            preparing: lighton3State?.status === 'loading',
+            disabled: lighton3State?.status === 'loading',
+            progress: lighton3State?.status === 'loading' ? lighton3State.progress || 0 : null,
+            message: lighton3State?.status === 'loading' ? lighton3State.file || 'Préparation du modèle…'
+                : lighton3State?.status === 'error' ? lighton3State.error
+                : lighton3State?.status === 'ready' ? 'Texte et bbox · calcul sur votre GPU.' : 'Environ 1,72 Go · conservés dans le cache du navigateur.',
+        },
         localEngine({
             key: 'poneglyph-local',
             label: 'Poneglyph-BBox · local',
@@ -260,6 +276,7 @@ export default function AnnotateLeftSidebar({
     const engine =
         engines.find((item) => item.key === selectedEngine) || engines[0];
     const running =
+        isLighton3Loading ||
         isDeepSeekLoading ||
         isOneShotLoading ||
         isChatGptLoading ||
@@ -438,6 +455,7 @@ export default function AnnotateLeftSidebar({
                                     )}
                                     {actionLabel}
                                 </Button>
+                                {isLighton3Loading && cancelLighton3 && <Button variant="outline" className="mt-2 w-full" onClick={cancelLighton3}>Annuler la lecture</Button>}
                                 {engine.message && (
                                     <div
                                         role="status"

@@ -7,6 +7,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { useAnnotationInteractions } from '@/hooks/useAnnotationInteractions';
 import { useAnnotationOCR } from '@/hooks/useAnnotationOCR';
 import { useDeepSeekPageOcr } from '@/hooks/useDeepSeekPageOcr';
+import { useLighton3PageOcr } from '@/hooks/useLighton3PageOcr';
 import { useAnnotationDetection } from '@/hooks/useAnnotationDetection';
 import { useAnnotationMetadata } from '@/hooks/useAnnotationMetadata';
 import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
@@ -509,9 +510,23 @@ export default function SandboxClient() {
         runLocalOcr, runBackgroundOcr, setIsSubmitting, setLoadingText
     });
 
-    const { handleDeepSeekOneShot, isDeepSeekLoading } = useDeepSeekPageOcr({
+    const { handleLighton3OneShot, isLighton3Loading, lighton3State, cancelLighton3 } = useLighton3PageOcr({
         imageRef, contextKey: imageUrl, canRun: Boolean(page && imageUrl),
         busy: isSubmitting || isAutoDetecting || isPoneglyphLoading || isChatGptLoading,
+        onApply: (bubbles, { isCurrent }) => {
+            if (!isCurrent()) return;
+            const runId = crypto.randomUUID();
+            setExistingBubbles(previous => [...previous, ...bubbles.map((bubble, index) => ({
+                ...bubble, id: `sandbox-lighton3-${runId}-${index}`, id_page: 'sandbox',
+                statut: 'Proposé', id_user_createur: 'sandbox-user', order: previous.length + index + 1,
+            }))]);
+            toast.success(`${bubbles.length} zones LightOnOCR 3 ajoutées à la sandbox.`);
+        },
+    });
+
+    const { handleDeepSeekOneShot, isDeepSeekLoading } = useDeepSeekPageOcr({
+        imageRef, contextKey: imageUrl, canRun: Boolean(page && imageUrl),
+        busy: isSubmitting || isAutoDetecting || isPoneglyphLoading || isChatGptLoading || isLighton3Loading,
         detectionStatus, detectBubbles,
         onConfigure: () => setShowApiKeyModal(true),
         onApply: (bubbles, { isCurrent }) => {
@@ -988,6 +1003,10 @@ export default function SandboxClient() {
                     poneglyphRunMode={poneglyphRunMode}
                     handleOneShotLocalPoneglyph={handleOneShotLocalPoneglyph}
                     handleOneShotLocalSuryaBbox={handleOneShotLocalSuryaBbox}
+                    handleLighton3OneShot={handleLighton3OneShot}
+                    isLighton3Loading={isLighton3Loading}
+                    lighton3State={lighton3State}
+                    cancelLighton3={cancelLighton3}
                     isTauri={tauriLocalOcr.isTauri}
                     localModelStatus={tauriLocalOcr.localModelStatus}
                     localTextModelStatus={tauriLocalOcr.localTextModelStatus}

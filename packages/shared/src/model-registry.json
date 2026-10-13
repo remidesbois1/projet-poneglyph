@@ -1,8 +1,33 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-09-09",
+  "updated_at": "2026-10-13",
   "provenance_policy": "Published values must come from a pinned artifact and carry the dataset, split, date, hardware, model revision and evaluation protocol.",
   "models": {
+    "lighton3-bubble": {
+      "display_name": "LightOnOCR 3 Poneglyph · WebGPU",
+      "task": "bubble-ocr",
+      "artifact": {
+        "repository": "Remidesbois/LightOnOCR-3-Poneglyph",
+        "revision": "dd066c12c4dcc990d71ebc78136e9c7c21c36522",
+        "url": "https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph"
+      },
+      "benchmark": {
+        "status": "published",
+        "dataset": "Poneglyph frozen Surya single-bubble crops",
+        "split": "test held out by page, previously evaluated for Surya and native LightOnOCR-3",
+        "date": "2026-10-13",
+        "sample_count": 1612,
+        "hardware": "NVIDIA GeForce RTX 5090 32 GB / Chromium WebGPU (Blackwell)",
+        "protocol": "Real app worker, ONNX Runtime Web 1.27.0 and fused WGSL decoder, mixed FP16/FP32, no quantization or CPU EP fallback. Image-only empty prompt, thinking disabled, greedy 256 tokens, 65536–1048576 pixels; native Torchvision uint8 antialiased bicubic resize reproduced in JavaScript. Whitespace collapsed; visible quotes, case, accents and punctuation preserved. Native BF16 CER 0.387984%; browser CER 0.393746% (205 vs 202 character errors), 1600/1612 literal outputs identical, no empty/truncated outputs. Conversion fidelity on the already inspected frozen test, not a new independent benchmark.",
+        "source_url": "https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph/blob/dd066c12c4dcc990d71ebc78136e9c7c21c36522/onnx/webgpu_metrics.json",
+        "primary_metric": "cer",
+        "metrics": {
+          "cer": { "label": "CER WebGPU", "value": 0.003937461585740627, "unit": "ratio", "lower_is_better": true, "display_precision": 3 },
+          "wer": { "label": "WER WebGPU", "value": 0.01409561360275998, "unit": "ratio", "lower_is_better": true, "display_precision": 3 },
+          "exact_match": { "label": "Exact match WebGPU", "value": 0.9224565756823822, "unit": "ratio", "lower_is_better": false, "display_precision": 2 }
+        }
+      }
+    },
     "ppocrv6-line": {
       "display_name": "PP-OCRv6 Bubble Line",
       "task": "bubble-line-ocr",
@@ -385,6 +410,63 @@
       "benchmark": {
         "status": "not_published",
         "reason": "No comparable Poneglyph held-out benchmark has been published for this provider-managed model."
+      }
+    },
+    "lighton3-bbox": {
+      "display_name": "LightOnOCR 3 Poneglyph BBox",
+      "task": "page-ocr-bbox",
+      "artifact": {
+        "repository": "Remidesbois/LightOnOCR-3-Poneglyph-bbox",
+        "revision": "41570a243115f8ed723c8fc8b761a5aa7735aa03",
+        "url": "https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph-bbox"
+      },
+      "benchmark": {
+        "status": "published",
+        "dataset": "Poneglyph validated full pages with text-zone bounding boxes",
+        "split": "frozen test, previously evaluated and inspected",
+        "date": "2026-10-12",
+        "sample_count": 189,
+        "hardware": "NVIDIA GeForce RTX 5090 32 GB",
+        "protocol": "Native Transformers 5.14.1 BF16 CUDA, grounding prompt, thinking disabled, greedy 1280 tokens, long edge <=2048 px; NFC and normalized whitespace with case and punctuation preserved; one-to-one spatial assignment at IoU >= 0.1, missed/extra zones penalized. Native results, not ONNX/WebGPU results.",
+        "source_url": "https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph-bbox/blob/41570a243115f8ed723c8fc8b761a5aa7735aa03/benchmark_native.json",
+        "primary_metric": "cer",
+        "metrics": {
+          "cer": {
+            "label": "Native CER",
+            "value": 0.010664923421740755,
+            "unit": "ratio",
+            "lower_is_better": true,
+            "display_precision": 2
+          },
+          "wer": {
+            "label": "Native WER",
+            "value": 0.02224131347842688,
+            "unit": "ratio",
+            "lower_is_better": true,
+            "display_precision": 2
+          },
+          "exact_bubble_text": {
+            "label": "Exact bubble text",
+            "value": 0.9021871202916161,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "page_text_exact": {
+            "label": "Exact page text",
+            "value": 0.4021164021164021,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          },
+          "f1_iou_0_5": {
+            "label": "F1@IoU 0.5",
+            "value": 0.9875190258751902,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          }
+        }
       }
     }
   }

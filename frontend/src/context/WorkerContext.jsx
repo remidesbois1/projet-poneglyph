@@ -10,6 +10,19 @@ export const useWorker = () => useContext(WorkerContext);
 const DEFAULT_OCR_MODEL_KEY = 'ppocrv6Line';
 
 export const OCR_MODELS = {
+    lighton3BubbleWebgpu: {
+        key: 'lighton3BubbleWebgpu', label: 'LightOnOCR 3 · bulles',
+        description: 'Bulles entières · WebGPU dans le navigateur',
+        task: 'bubble-ocr', size: '~1,74 Go', type: 'local', runtime: 'onnx',
+        cer: formatRegistryMetric(OCR_MODEL_REGISTRY_IDS.lighton3BubbleWebgpu),
+        benchmark: formatBenchmarkContext(OCR_MODEL_REGISTRY_IDS.lighton3BubbleWebgpu),
+        preserveTranscript: true,
+    },
+    lighton3Webgpu: {
+        key: 'lighton3Webgpu', label: 'LightOnOCR 3 · WebGPU',
+        description: 'Pages complètes · texte et bbox sur votre GPU',
+        task: 'page-ocr-bbox', size: '~1,72 Go', type: 'local', runtime: 'onnx',
+    },
     suryaWebgpu: {
         key: 'suryaWebgpu',
         label: 'Surya · WebGPU',
@@ -114,7 +127,11 @@ export const WorkerProvider = ({ children }) => {
         let entry = entries.current.get(key);
         if (entry?.status === 'loading' || entry?.status === 'ready') return;
         if (!entry) {
-            const worker = key === 'falconWebgpu'
+            const worker = key === 'lighton3BubbleWebgpu'
+                ? new Worker(new URL('../workers/lighton3Bubble.worker.js', import.meta.url), { type: 'module' })
+                : key === 'lighton3Webgpu'
+                ? new Worker(new URL('../workers/lighton3.worker.js', import.meta.url), { type: 'module' })
+                : key === 'falconWebgpu'
                 ? new Worker(new URL('../workers/falcon.worker.js', import.meta.url), { type: 'module' })
                 : key === 'suryaWebgpu'
                 ? new Worker(new URL('../workers/surya.worker.js', import.meta.url), { type: 'module' })

@@ -1,8 +1,27 @@
 # Benchmarks modèles publiés
 
-Ce document est généré depuis `shared/model-registry.json` (v1, 2026-09-09). Ne pas modifier manuellement.
+Ce document est généré depuis `shared/model-registry.json` (v1, 2026-10-13). Ne pas modifier manuellement.
 
 Les résultats ne sont comparables qu’à protocole et tâche identiques. Un matériel non consigné est indiqué explicitement plutôt que supposé.
+
+## LightOnOCR 3 Poneglyph · WebGPU
+
+- Identifiant registre : `lighton3-bubble`
+- Tâche : `bubble-ocr`
+- Version : [`Remidesbois/LightOnOCR-3-Poneglyph@dd066c12c4dcc990d71ebc78136e9c7c21c36522`](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph/tree/dd066c12c4dcc990d71ebc78136e9c7c21c36522)
+- Dataset : Poneglyph frozen Surya single-bubble crops
+- Split : test held out by page, previously evaluated for Surya and native LightOnOCR-3
+- Date : 2026-10-13
+- Échantillons : 1 612
+- Matériel : NVIDIA GeForce RTX 5090 32 GB / Chromium WebGPU (Blackwell)
+- Protocole : Real app worker, ONNX Runtime Web 1.27.0 and fused WGSL decoder, mixed FP16/FP32, no quantization or CPU EP fallback. Image-only empty prompt, thinking disabled, greedy 256 tokens, 65536–1048576 pixels; native Torchvision uint8 antialiased bicubic resize reproduced in JavaScript. Whitespace collapsed; visible quotes, case, accents and punctuation preserved. Native BF16 CER 0.387984%; browser CER 0.393746% (205 vs 202 character errors), 1600/1612 literal outputs identical, no empty/truncated outputs. Conversion fidelity on the already inspected frozen test, not a new independent benchmark.
+- Preuve : [artefact figé](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph/blob/dd066c12c4dcc990d71ebc78136e9c7c21c36522/onnx/webgpu_metrics.json)
+
+| Clé | Valeur | Sens favorable |
+|---|---:|---|
+| `cer` | CER WebGPU 0,394 % | plus bas |
+| `wer` | WER WebGPU 1,410 % | plus bas |
+| `exact_match` | Exact match WebGPU 92,25 % | plus haut |
 
 ## PP-OCRv6 Bubble Line
 
@@ -146,3 +165,24 @@ Les résultats ne sont comparables qu’à protocole et tâche identiques. Un ma
 | `exact_panel_match` | Exact panel 95,65 % | plus haut |
 | `bubble_position_accuracy` | Bubble position accuracy 96,62 % | plus haut |
 | `assignment_accuracy` | Bubble assignment accuracy 100,00 % | plus haut |
+
+## LightOnOCR 3 Poneglyph BBox
+
+- Identifiant registre : `lighton3-bbox`
+- Tâche : `page-ocr-bbox`
+- Version : [`Remidesbois/LightOnOCR-3-Poneglyph-bbox@41570a243115f8ed723c8fc8b761a5aa7735aa03`](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph-bbox/tree/41570a243115f8ed723c8fc8b761a5aa7735aa03)
+- Dataset : Poneglyph validated full pages with text-zone bounding boxes
+- Split : frozen test, previously evaluated and inspected
+- Date : 2026-10-12
+- Échantillons : 189
+- Matériel : NVIDIA GeForce RTX 5090 32 GB
+- Protocole : Native Transformers 5.14.1 BF16 CUDA, grounding prompt, thinking disabled, greedy 1280 tokens, long edge <=2048 px; NFC and normalized whitespace with case and punctuation preserved; one-to-one spatial assignment at IoU >= 0.1, missed/extra zones penalized. Native results, not ONNX/WebGPU results.
+- Preuve : [artefact figé](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph-bbox/blob/41570a243115f8ed723c8fc8b761a5aa7735aa03/benchmark_native.json)
+
+| Clé | Valeur | Sens favorable |
+|---|---:|---|
+| `cer` | Native CER 1,07 % | plus bas |
+| `wer` | Native WER 2,22 % | plus bas |
+| `exact_bubble_text` | Exact bubble text 90,22 % | plus haut |
+| `page_text_exact` | Exact page text 40,21 % | plus haut |
+| `f1_iou_0_5` | F1@IoU 0.5 98,75 % | plus haut |

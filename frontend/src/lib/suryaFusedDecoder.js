@@ -42,6 +42,9 @@ export class SuryaFusedDecoder {
         pass.setPipeline(task.pipeline); pass.setBindGroup(0, task.group); pass.dispatchWorkgroups(...task.groups);
     }
     async load(index, data) {
+        const embedding = index.weights['embed_tokens.weight'];
+        if (!embedding || embedding.shape[1] !== 1024 || embedding.transpose) throw new Error('Embedding Qwen3.5 incompatible.');
+        this.vocabSize = embedding.shape[0];
         this.device.pushErrorScope('validation');
         const temporary = [];
         const encoder = this.device.createCommandEncoder();
@@ -124,11 +127,11 @@ export class SuryaFusedDecoder {
             }
             const code = bind(0, 'x') + bind(1, 'w') + bind(2, 'y', 'f16', true) + reduce + `
                 @compute @workgroup_size(64) fn main(@builtin(local_invocation_index) lane: u32, @builtin(workgroup_id) g: vec3<u32>) {
-                    let row = g.x; var acc = 0.0;
+                    let row = g.x + g.y * 65535u; if (row >= ${n}u) { return; } var acc = 0.0;
                     for (var j = lane; j < ${k}u; j += 64u) { acc += f32(x[j]) * f32(w[row * ${k}u + j]); }
                     let result = sum(acc, lane, 64u); if (lane == 0u) { y[row] = f16(result); }
                 }`;
-            add('gemv ' + name, code, [src, weights(name), dst], n);
+            add('gemv ' + name, code, [src, weights(name), dst], [Math.min(n, 65535), Math.ceil(n / 65535)]);
         };
         const rms = (src, name, dst, residual) => {
             const code = bind(0, 'x', 'f32', true) + bind(1, 'weight', 'f32') + bind(2, 'y', 'f16', true) +
@@ -252,19 +255,20 @@ export class SuryaFusedDecoder {
             gemv(ff, p + 'mlp.down_proj.weight', down, 3584, 1024);
         }
         rms(x, 'norm.weight', norm, down);
-        const logits = b(65425), maxima = b(256, 4), indices = b(256, 4);
-        gemv(norm, 'embed_tokens.weight', logits, 1024, 65425);
+        const vocabSize = this.vocabSize, blocks = Math.ceil(vocabSize / 256);
+        const logits = b(vocabSize), maxima = b(blocks, 4), indices = b(blocks, 4);
+        gemv(norm, 'embed_tokens.weight', logits, 1024, vocabSize);
         const argmax = (last = false) => bind(0, 'x', last ? 'f32' : 'f16') + bind(1, 'values', last ? 'u32' : 'f32', true) +
             bind(2, 'indices', 'u32', true) + (last ? bind(3, 'ids', 'u32') : '') + `
             var<workgroup> m:array<f32,256>;var<workgroup> ids:array<u32,256>;
             @compute @workgroup_size(256) fn main(@builtin(local_invocation_index) lane:u32,@builtin(workgroup_id) g:vec3<u32>){
                 let i=g.x*256u+lane;var v=-3.4e38;var id=4294967295u;
-                if(i<${last ? 256 : 65425}u){v=f32(x[i]);id=${last ? 'inputIds[i]' : 'i'};}
+                ${last ? `for(var j=lane;j<${blocks}u;j+=256u){let candidate=x[j];let candidateId=inputIds[j];if(candidate>v||(candidate==v&&candidateId<id)){v=candidate;id=candidateId;}}` : `if(i<${vocabSize}u){v=f32(x[i]);id=i;}`}
                 m[lane]=v;ids[lane]=id;workgroupBarrier();
                 for(var s=128u;s>0u;s/=2u){if(lane<s){if(m[lane+s]>m[lane]||(m[lane+s]==m[lane]&&ids[lane+s]<ids[lane])){m[lane]=m[lane+s];ids[lane]=ids[lane+s];}}workgroupBarrier();}
                 if(lane==0u){${last ? 'indices[values[3]]=ids[0]; values[0]=ids[0];values[1]++;values[2]++;values[3]++;' : 'values[g.x]=m[0];indices[g.x]=ids[0];'}}
             }`;
-        add('argmax blocks', argmax(), [logits, maxima, indices], 256);
+        add('argmax blocks', argmax(), [logits, maxima, indices], blocks);
         add('argmax token', argmax(true).replace('var<storage, read> ids:', 'var<storage, read> inputIds:'), [maxima, this.params, this.tokens, indices], 1);
         this.tasks = tasks; this.sequenceBuffers = this.buffers.slice(before);
         this.generatedCount = 0;

@@ -1,4 +1,4 @@
-## Projet Poneglyph benchmark (2026-09-09)
+## Projet Poneglyph benchmark (2026-10-13)
 
 Registry ID: `readernet-reading-order`
 Pinned revision: `d97d4cd2903a7ebe49276a5269c4f3b7df608be7`

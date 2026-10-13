@@ -36,6 +36,7 @@ export function formatBenchmarkContext(modelId) {
 }
 
 export const OCR_MODEL_REGISTRY_IDS = Object.freeze({
+    lighton3BubbleWebgpu: 'lighton3-bubble',
     ppocrv6Line: 'ppocrv6-line',
     poneglyphLocal: 'lighton-bubble',
     suryaLocal: 'surya-bubble',

@@ -24,6 +24,7 @@ vi.mock('@/context/MangaContext', () => ({ useManga: vi.fn() }));
 vi.mock('@/context/TauriLocalOcrContext', () => ({ useTauriLocalOcrContext: vi.fn() }));
 vi.mock('@/hooks/useAnnotationInteractions', () => ({ useAnnotationInteractions: vi.fn() }));
 vi.mock('@/hooks/useAnnotationOCR', () => ({ useAnnotationOCR: vi.fn() }));
+vi.mock('@/hooks/useLighton3PageOcr', () => ({ useLighton3PageOcr: () => ({}) }));
 vi.mock('@/hooks/useAnnotationDetection', () => ({ useAnnotationDetection: vi.fn() }));
 vi.mock('@/hooks/useAnnotationMetadata', () => ({ useAnnotationMetadata: vi.fn() }));
 vi.mock('@/lib/pageImageClient', () => ({ fetchOriginalPageImage: vi.fn() }));

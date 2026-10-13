@@ -201,11 +201,11 @@ export function useAnnotationOCR({
         const models = selectedOcrModelKeys
             .map(key => OCR_MODELS[key])
             .filter(Boolean);
-        const job = Promise.allSettled(models.map(async model => ({
-            modelKey: model.key,
-            label: model.label,
-            text: capitalizeOcrSentenceStarts(await runModel(model, areaToCrop, requestId))
-        }))).then(settled => {
+        const job = Promise.allSettled(models.map(async model => {
+            const text = await runModel(model, areaToCrop, requestId);
+            return { modelKey: model.key, label: model.label,
+                text: model.preserveTranscript ? text : capitalizeOcrSentenceStarts(text) };
+        })).then(settled => {
             if (generation !== pageGeneration.current) throw new DOMException('Requête annulée.', 'AbortError');
             const candidates = settled
                 .filter(result => result.status === 'fulfilled')
