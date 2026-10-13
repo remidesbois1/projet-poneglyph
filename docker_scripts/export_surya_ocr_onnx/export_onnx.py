@@ -147,13 +147,18 @@ class Graph:
         print(f"Exported {self.name}: {len(self.nodes)} nodes", flush=True)
 
 
-def vision(source, out):
+def vision(source, out, attention_chunks=1):
     g = Graph(source, out, "vision")
     pixels = g.input("pixel_values", T.FLOAT16, ["patches", 1536])
     indices = g.input("position_indices", T.INT64, [4, "patches"])
     weights = g.input("position_weights", T.FLOAT, [4, "patches", 1])
     cos = g.input("vision_cos", T.FLOAT, [1, "patches", 64])
     sin = g.input("vision_sin", T.FLOAT, [1, "patches", 64])
+    if attention_chunks > 1:
+        assert attention_chunks == 16
+        g.input("query_group_splits", T.INT64, [4])
+        for group in range(4):
+            g.input(f"query_splits_{group}", T.INT64, [4])
     prefix = "model.visual."
     patch_weight = g.array(prefix + "patch_embed.proj.weight").reshape(768, 1536).T
     x = g.op("Add", g.mm(pixels, g.const(patch_weight, np.float16)), g.weight(prefix + "patch_embed.proj.bias"))
@@ -166,9 +171,28 @@ def vision(source, out):
         qkv = g.shape(g.linear(norm, p + "attn.qkv", True), [-1, 3, 12, 64])
         q, k, v = [g.trans(g.gather(qkv, i, 1), [1, 0, 2]) for i in range(3)]
         q, k = g.rope(q, cos, sin), g.rope(k, cos, sin)
-        scores = g.op("Mul", g.cast(g.mm(q, g.trans(k, [0, 2, 1]))), g.const(0.125))
-        probabilities = g.cast(g.op("Softmax", scores, axis=-1), T.FLOAT16)
-        attended = g.shape(g.trans(g.mm(probabilities, v), [1, 0, 2]), [-1, 768])
+        query_groups = [[q]]
+        if attention_chunks > 1:
+            groups = [g.fresh("query_group") for _ in range(4)]
+            g.nodes.append(h.make_node("Split", [q, "query_group_splits"], groups, axis=1))
+            query_groups = []
+            for index, group in enumerate(groups):
+                queries = [g.fresh("query_chunk") for _ in range(4)]
+                g.nodes.append(h.make_node("Split", [group, f"query_splits_{index}"], queries, axis=1))
+                query_groups.append(queries)
+        transposed_key = g.trans(k, [0, 2, 1])
+        attended_groups = []
+        for queries in query_groups:
+            attended_chunks = []
+            for query in queries:
+                scores = g.op("Mul", g.cast(g.mm(query, transposed_key)), g.const(0.125))
+                probabilities = g.cast(g.op("Softmax", scores, axis=-1), T.FLOAT16)
+                attended_chunks.append(g.mm(probabilities, v))
+            attended_groups.append(attended_chunks[0] if len(queries) == 1 else g.op("Concat", *attended_chunks, axis=1))
+        # Flatten each group before concatenation. Apart from bounding every
+        # kernel's binding count, this prevents a Concat fusion into 16 inputs.
+        flattened = [g.shape(g.trans(group, [1, 0, 2]), [-1, 768]) for group in attended_groups]
+        attended = flattened[0] if len(flattened) == 1 else g.op("Concat", *flattened, axis=0)
         x = g.op("Add", x, g.cast(g.linear(attended, p + "attn.proj", True)))
         norm = g.cast(g.norm(x, p + "norm2", "layer"), T.FLOAT16)
         ff = g.gelu(g.linear(norm, p + "mlp.linear_fc1", True), True)
@@ -286,7 +310,7 @@ def decoder(source, out, config, shared=None):
         x = g.op("Add", x, g.cast(g.linear(ff, p + "mlp.down_proj")))
     last = g.cast(g.norm(g.slice(x, -1, END, 1), "model.language_model.norm"), T.FLOAT16)
     logits = g.cast(g.mm(last, g.trans(embed, [1, 0])))
-    g.output(logits, "logits", T.FLOAT, [1, 1, 65425])
+    g.output(logits, "logits", T.FLOAT, [1, 1, config["text_config"]["vocab_size"]])
     g.output(g.op("ArgMax", logits, axis=-1, keepdims=0), "next_token", T.INT64, [1, 1])
     g.save()
     return g
