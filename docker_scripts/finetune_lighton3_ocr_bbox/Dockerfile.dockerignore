@@ -1,0 +1,15 @@
+**
+!docker_scripts/
+!docker_scripts/finetune_lighton3_ocr_bbox/
+!docker_scripts/finetune_lighton3_ocr_bbox/*.py
+!docker_scripts/finetune_lighton3_ocr_bbox/requirements.txt
+!docker_scripts/finetune_lighton_ocr_bbox/
+!docker_scripts/finetune_lighton_ocr_bbox/training_monitor.py
+!docker_scripts/finetune_surya_ocr_bbox/
+!docker_scripts/finetune_surya_ocr_bbox/export_dataset.py
+!docker_scripts/common_training/
+!docker_scripts/common_training/*.py
+!packages/
+!packages/shared/
+!packages/shared/src/
+!packages/shared/src/llm-prompts.json

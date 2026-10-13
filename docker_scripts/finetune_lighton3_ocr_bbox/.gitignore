@@ -1,0 +1,8 @@
+dataset/
+dataset_source/
+outputs/
+hf-cache/
+__pycache__/
+.pytest_cache/
+*.log
+trackio/

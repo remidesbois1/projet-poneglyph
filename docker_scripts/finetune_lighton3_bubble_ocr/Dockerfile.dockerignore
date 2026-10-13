@@ -1,0 +1,12 @@
+**
+!docker_scripts/
+!docker_scripts/finetune_lighton3_bubble_ocr/
+!docker_scripts/finetune_lighton3_bubble_ocr/*.py
+!docker_scripts/finetune_surya_bubble_ocr/
+!docker_scripts/finetune_surya_bubble_ocr/*.py
+!docker_scripts/common_training/
+!docker_scripts/common_training/*.py
+!packages/
+!packages/shared/
+!packages/shared/src/
+!packages/shared/src/llm-prompts.json

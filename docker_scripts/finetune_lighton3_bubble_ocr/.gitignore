@@ -1,0 +1,6 @@
+__pycache__/
+outputs/
+hf-cache/
+trackio/
+*.log
+.env

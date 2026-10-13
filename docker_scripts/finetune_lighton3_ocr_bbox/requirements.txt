@@ -1,0 +1,8 @@
+# The base image already supplies PyTorch 2.8/cu128, Transformers 5.14.1,
+# FLA 0.5.2 and SM120 causal-conv1d 1.6.2.post1.
+liger-kernel==0.8.0
+trackio==0.42.0
+nvidia-ml-py>=12,<14
+tensorboard>=2.18,<3
+pytest>=8,<9
+matplotlib==3.11.1
