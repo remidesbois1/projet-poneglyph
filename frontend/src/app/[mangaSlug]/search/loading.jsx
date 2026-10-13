@@ -1,44 +1,22 @@
 import React from 'react';
 import { Skeleton } from "@/components/ui/skeleton";
 
+// Same outline as the search page (title, mode switch, console), so nothing jumps when it takes over.
 export default function Loading() {
     return (
-        <div className="min-h-screen pb-20 space-y-8">
-            
-            <div className="bg-white border-b border-slate-200 pt-10 pb-8 px-4 shadow-sm -mx-4 sm:-mx-8 mb-8">
-                <div className="container max-w-4xl mx-auto text-center space-y-6">
-                    <Skeleton className="h-10 w-2/3 mx-auto" />
-                    <Skeleton className="h-14 w-full max-w-2xl mx-auto rounded-full" />
-                    <div className="flex justify-center gap-4">
-                        <Skeleton className="h-8 w-40 rounded-full" />
-                        <Skeleton className="h-8 w-40 rounded-full" />
+        <div role="status" aria-label="Chargement de la recherche" className="h-full w-full overflow-hidden">
+            <span className="sr-only">Chargement de la recherche…</span>
+            <div aria-hidden="true">
+                <div className="flex flex-col items-center px-2 pb-6 pt-5 sm:pt-9">
+                    <Skeleton className="h-10 w-72 max-w-full bg-white/8 motion-reduce:animate-none sm:h-12 sm:w-[28rem]" />
+                    <Skeleton className="mt-3 h-5 w-80 max-w-full bg-white/5 motion-reduce:animate-none" />
+                </div>
+                <Skeleton className="mx-auto h-12 w-full max-w-md rounded-xl bg-white/8 motion-reduce:animate-none" />
+                <div className="mx-auto mt-4 w-full max-w-3xl rounded-2xl border border-white/10 bg-[#071625]/92 p-2">
+                    <Skeleton className="h-14 w-full rounded-xl bg-white/8 motion-reduce:animate-none" />
+                    <div className="px-1.5 pb-0.5 pt-2.5">
+                        <Skeleton className="h-8 w-24 rounded-full bg-white/5 motion-reduce:animate-none" />
                     </div>
-                </div>
-            </div>
-
-            <div className="container mx-auto px-4 max-w-7xl">
-                <div className="flex items-center justify-between mb-6">
-                    <Skeleton className="h-8 w-48" />
-                    <Skeleton className="h-8 w-32" />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                        <div key={i} className="rounded-lg border border-slate-200 bg-white overflow-hidden flex flex-col h-[400px]">
-                            <Skeleton className="h-56 w-full" />
-                            <div className="p-5 flex-1 space-y-4">
-                                <div className="flex gap-2">
-                                    <Skeleton className="h-4 w-16" />
-                                    <Skeleton className="h-4 w-16" />
-                                </div>
-                                <Skeleton className="h-16 w-full" />
-                                <div className="flex justify-between items-center pt-4">
-                                    <Skeleton className="h-4 w-24" />
-                                    <Skeleton className="h-5 w-10" />
-                                </div>
-                            </div>
-                        </div>
-                    ))}
                 </div>
             </div>
         </div>

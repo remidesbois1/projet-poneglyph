@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { searchBubbles, searchF2llmLocal, searchOcrPageMatch, getMetadataSuggestions, getTomes, submitSearchFeedback } from '@/lib/api';
 import { generateF2llmBrowserQueryEmbedding } from '@/lib/f2llmBrowserEmbedding';
 import {
@@ -9,102 +9,19 @@ import {
     isAbortError,
     throwIfAborted,
 } from '@/lib/searchRequestLifecycle';
-import { cn } from '@/lib/utils';
-import SearchPageImage from '@/components/SearchPageImage';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useDetection } from '@/context/DetectionContext';
 import { useWorker } from '@/context/WorkerContext';
-import Link from 'next/link';
 import { useManga } from '@/context/MangaContext';
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Search, X, Loader2, Sparkles, BookOpen, MapPin, Quote, Filter, Check, ChevronRight, ImageUp, ScanText } from "lucide-react";
+import SearchConsole from './SearchConsole';
+import { SearchBackdrop, SearchHero, SearchModeSwitch } from './SearchHero';
+import SearchResults from './SearchResults';
+import { SEMANTIC_EXAMPLES, getSearchMode } from './searchModes';
 
 const RESULTS_PER_PAGE = 24;
 const OCR_RESULTS_LIMIT = 3;
 const OCR_SEARCH_PROVIDER = 'readernet+ppocrv6';
-
-const PONEGLYPH_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-function generateSlots(count, seed = 0) {
-    const slots = [];
-    for (let i = 0; i < count; i++) {
-        const s = (seed + i) * 2654435761;
-        const hash = (v) => ((s * (v + 1)) >>> 0) / 4294967296;
-        slots.push({
-            x: 2 + hash(1) * 96,
-            y: 2 + hash(2) * 96,
-            size: 20 + Math.floor(hash(3) * 30),
-            rotate: Math.floor(hash(4) * 80) - 40,
-            char: PONEGLYPH_LETTERS[Math.floor(hash(5) * 26)],
-            opacity: 0,
-        });
-    }
-    return slots;
-}
-
-function PoneglyphHeaderGlyphs({ count = 15, color = "#2F7AAF" }) {
-    const [glyphs, setGlyphs] = useState(() => generateSlots(count, 29));
-
-    useEffect(() => {
-        const timers = [];
-        glyphs.forEach((_, i) => {
-            const cycle = () => {
-                const delay = 500 + Math.random() * 3000;
-                const fadeIn = setTimeout(() => {
-                    setGlyphs(prev => prev.map((g, idx) =>
-                        idx === i ? { ...g, opacity: 1, char: PONEGLYPH_LETTERS[Math.floor(Math.random() * 26)] } : g
-                    ));
-                    const stayDuration = 2000 + Math.random() * 4000;
-                    const fadeOut = setTimeout(() => {
-                        setGlyphs(prev => prev.map((g, idx) =>
-                            idx === i ? { ...g, opacity: 0 } : g
-                        ));
-                        const nextTimer = setTimeout(cycle, 1000 + Math.random() * 2000);
-                        timers.push(nextTimer);
-                    }, stayDuration);
-                    timers.push(fadeOut);
-                }, delay);
-                timers.push(fadeIn);
-            };
-            cycle();
-        });
-        return () => timers.forEach(t => clearTimeout(t));
-    }, []);
-
-    return (
-        <div className="absolute inset-x-0 top-0 h-64 overflow-hidden pointer-events-none opacity-100">
-            {glyphs.map((g, i) => (
-                <span
-                    key={i}
-                    className="absolute select-none transition-all duration-1000"
-                    style={{
-                        fontFamily: "'Poneglyph', serif",
-                        fontSize: `${g.size}px`,
-                        left: `${g.x}%`,
-                        top: `${g.y * 0.6}%`,
-                        transform: `rotate(${g.rotate}deg)`,
-                        opacity: g.opacity * 0.25,
-                        color,
-                        lineHeight: 1,
-                    }}
-                >
-                    {g.char}
-                </span>
-            ))}
-        </div>
-    );
-}
 
 const waitForCondition = (predicate, timeoutMs, errorMessage, signal) => {
     const started = Date.now();
@@ -151,58 +68,6 @@ const clampDetectedBox = (box, imageWidth, imageHeight) => {
     return { x, y, w, h };
 };
 
-const ResultImage = ({ url, pageId, coords, type }) => {
-    if (type === 'semantic' || !coords) {
-        return (
-            <div className="w-full aspect-[2/3] bg-[#071625] overflow-hidden relative group">
-                <SearchPageImage
-                    url={url}
-                    pageId={pageId}
-                    thumbnail
-                    alt="Page preview"
-                    className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
-                    loading="lazy"
-                />
-                <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <p className="text-white text-[10px] uppercase tracking-widest font-bold opacity-70">Aperçu Complet</p>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="w-full h-56 bg-[#071625] overflow-hidden relative flex items-center justify-center border-b border-white/10 group">
-            <div className="absolute inset-0 bg-[#0b1b2d]/70 pattern-grid-lg opacity-20" />
-
-            <div
-                className="relative overflow-hidden rounded-lg border border-white/14 bg-white shadow-2xl transition-all duration-300 group-hover:scale-[1.03] group-hover:rotate-1"
-                style={{
-                    width: Math.min(coords.w, 240),
-                    height: Math.min(coords.h, 180),
-                    maxWidth: '85%',
-                    maxHeight: '85%'
-                }}
-            >
-                <SearchPageImage
-                    url={url}
-                    pageId={pageId}
-                    alt="Bubble crop"
-                    className="max-w-none"
-                    style={{
-                        position: 'absolute',
-                        left: `-${coords.x}px`,
-                        top: `-${coords.y}px`,
-                    }}
-                />
-            </div>
-
-            <Badge variant="secondary" className="absolute bottom-3 right-3 gap-1 border-white/14 bg-[#06111e]/92 font-bold text-slate-100 shadow-md backdrop-blur">
-                <Quote className="h-3 w-3" /> Bulle
-            </Badge>
-        </div>
-    );
-};
-
 export default function SearchPage({ initialQuery = '', initialMode = '' }) {
     const { mangaSlug } = useManga();
     const {
@@ -229,13 +94,23 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
     const savedOcrProvider = savedState.ocrProvider === OCR_SEARCH_PROVIDER ? savedState.ocrProvider : null;
     const savedSearchMode = isLandingSemanticSearch ? 'semantic' : savedState.searchMode || (savedState.useSemantic ? 'semantic' : 'keyword');
     const canRestoreResults = savedSearchMode !== 'ocr' || Boolean(savedOcrProvider);
+    const restoredResults = canRestoreResults ? savedState.results || [] : [];
+    const startingQuery = landingQuery || savedState.query || '';
+    // Same conditions as the search effect below: the very first render already shows the search as running.
+    const searchesOnMount = isLandingSemanticSearch
+        || (savedSearchMode === 'keyword' && restoredResults.length === 0 && startingQuery.trim().length >= 2);
 
-    const [query, setQuery] = useState(landingQuery || savedState.query || '');
+    const [query, setQuery] = useState(startingQuery);
     const debouncedQuery = useDebounce(query, 400);
 
-    const [results, setResults] = useState(canRestoreResults ? savedState.results || [] : []);
+    const [results, setResults] = useState(restoredResults);
     const [totalCount, setTotalCount] = useState(canRestoreResults ? savedState.totalCount || 0 : 0);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(searchesOnMount);
+    // The term the displayed results (or their absence) answer, which the field may already have moved on from.
+    const [settledTerm, setSettledTerm] = useState(
+        restoredResults.length > 0 ? String(savedState.settledTerm ?? savedState.query ?? '').trim() : null
+    );
+    const [searchError, setSearchError] = useState(null);
     const [page, setPage] = useState(canRestoreResults ? savedState.page || 1 : 1);
     const [hasMore, setHasMore] = useState(canRestoreResults ? savedState.hasMore || false : false);
     const [searchMode, setSearchMode] = useState(savedSearchMode);
@@ -249,26 +124,28 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
     const [ocrProvider, setOcrProvider] = useState(savedOcrProvider);
     const [ocrStatus, setOcrStatus] = useState('');
     const [localModelStatus, setLocalModelStatus] = useState('');
+    // Share of the current background task that is done (model download, bubbles read), or null when unknown.
+    const [progress, setProgress] = useState(null);
+    const [isDraggingImage, setIsDraggingImage] = useState(false);
     const [ocrHasSearched, setOcrHasSearched] = useState(savedOcrProvider ? savedState.ocrHasSearched || false : false);
 
     const [selectedCharacters, setSelectedCharacters] = useState(savedState.selectedCharacters || []);
     const [selectedArc, setSelectedArc] = useState(savedState.selectedArc || 'all');
     const [selectedTome, setSelectedTome] = useState(savedState.selectedTome || 'all');
-    const [showFilters, setShowFilters] = useState(savedState.showFilters || false);
 
     const [characterSuggestions, setCharacterSuggestions] = useState([]);
     const [arcSuggestions, setArcSuggestions] = useState([]);
     const [tomes, setTomes] = useState([]);
-    const [charPopoverOpen, setCharPopoverOpen] = useState(false);
 
     const searchLifecycleRef = useRef(null);
     if (!searchLifecycleRef.current) {
         searchLifecycleRef.current = createSearchRequestLifecycle();
     }
     const inputRef = useRef(null);
-    const fileInputRef = useRef(null);
+    const scrollRef = useRef(null);
+    const consoleAnchorRef = useRef(null);
     const isFirstRun = useRef(true);
-    const initialSemanticSearchRef = useRef(isLandingSemanticSearch);
+    const autoSemanticSearchRef = useRef(isLandingSemanticSearch);
     const detectionStatusRef = useRef(detectionStatus);
     const ocrModelStatusRef = useRef(ocrModelStatus);
     const activeOcrModelKeyRef = useRef(activeOcrModelKey);
@@ -279,15 +156,27 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         searchLifecycleRef.current.invalidate();
         activeLocalSearchRequestIdRef.current = null;
         setIsLoading(false);
+        setSearchError(null);
+        setProgress(null);
     }, []);
 
     const clearSearchResults = useCallback(() => {
         setResults([]);
         setTotalCount(0);
         setHasMore(false);
+        setSettledTerm(null);
     }, []);
 
-    useEffect(() => () => {
+    // A new search started from the sticky console: bring the first results back under it without moving the field.
+    const showFirstResults = useCallback(() => {
+        const scroller = scrollRef.current;
+        const anchor = consoleAnchorRef.current;
+        if (scroller && anchor && scroller.scrollTop > anchor.offsetTop) scroller.scrollTop = anchor.offsetTop;
+    }, []);
+
+    // Same phase as the search effect below, and declared before it: when the manga changes, the previous search is
+    // dropped first and the new one starts after. As a passive effect it would run later and cancel the new search.
+    useLayoutEffect(() => () => {
         searchLifecycleRef.current.invalidate();
         activeLocalSearchRequestIdRef.current = null;
     }, [mangaSlug]);
@@ -312,12 +201,12 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
     useEffect(() => {
         if (!mangaSlug) return;
         const state = {
-            query, results, totalCount, page, hasMore, useSemantic, searchMode, localOnly,
+            query, settledTerm, results, totalCount, page, hasMore, useSemantic, searchMode, localOnly,
             ocrExtractedBubbles, ocrProvider, ocrHasSearched,
-            selectedCharacters, selectedArc, selectedTome, showFilters
+            selectedCharacters, selectedArc, selectedTome
         };
         sessionStorage.setItem(`search_state_${mangaSlug}`, JSON.stringify(state));
-    }, [query, results, totalCount, page, hasMore, useSemantic, searchMode, localOnly, ocrExtractedBubbles, ocrProvider, ocrHasSearched, selectedCharacters, selectedArc, selectedTome, showFilters, mangaSlug]);
+    }, [query, settledTerm, results, totalCount, page, hasMore, useSemantic, searchMode, localOnly, ocrExtractedBubbles, ocrProvider, ocrHasSearched, selectedCharacters, selectedArc, selectedTome, mangaSlug]);
 
     useEffect(() => {
         return () => {
@@ -329,9 +218,9 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         const handleProgress = (event) => {
             const requestId = activeLocalSearchRequestIdRef.current;
             if (!requestId || !searchLifecycleRef.current.isCurrent(requestId)) return;
-            const progress = Math.round(event.detail?.progress || 0);
-            const file = event.detail?.file || '';
-            setLocalModelStatus(`F2LLM ${progress}% ${file ? file.split('/').pop() : ''}`.trim());
+            const percentage = Math.round(event.detail?.progress || 0);
+            setLocalModelStatus(`Chargement de F2LLM · ${percentage} %`);
+            setProgress(percentage / 100);
         };
 
         window.addEventListener('f2llm-progress', handleProgress);
@@ -362,11 +251,12 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         return () => controller.abort();
     }, [mangaSlug]);
 
-    useEffect(() => {
+    // A layout effect, so the search starts before the browser paints the frame in between (no flash of the idle guide).
+    useLayoutEffect(() => {
         if (useSemantic) {
             if (!mangaSlug) return;
-            if (initialSemanticSearchRef.current && debouncedQuery.trim().length >= 2) {
-                initialSemanticSearchRef.current = false;
+            if (autoSemanticSearchRef.current && debouncedQuery.trim().length >= 2) {
+                autoSemanticSearchRef.current = false;
                 setPage(1);
                 fetchResults(debouncedQuery, 1, true);
             }
@@ -410,13 +300,13 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         throwIfAborted(request.signal);
         if (detectionStatusRef.current === 'ready') return;
         searchLifecycleRef.current.commit(request.requestId, () => {
-            setOcrStatus("Chargement ReaderNet...");
+            setOcrStatus("Chargement de ReaderNet…");
         });
         loadDetectionModel();
         await waitForCondition(
             () => detectionStatusRef.current === 'ready',
             120000,
-            "Le pipeline ReaderNet n'a pas pu etre charge.",
+            "Le pipeline ReaderNet n’a pas pu être chargé.",
             request.signal
         );
         throwIfAborted(request.signal);
@@ -426,7 +316,7 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         throwIfAborted(request.signal);
         if (ocrWorkerRef.current && ocrModelStatusRef.current === 'ready' && activeOcrModelKeyRef.current === 'ppocrv6Line') return;
         searchLifecycleRef.current.commit(request.requestId, () => {
-            setOcrStatus("Chargement PP-OCRv6...");
+            setOcrStatus("Chargement de PP-OCRv6…");
         });
         await waitForCondition(
             () => Boolean(ocrWorkerRef.current),
@@ -439,7 +329,7 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         await waitForCondition(
             () => ocrWorkerRef.current && ocrModelStatusRef.current === 'ready' && activeOcrModelKeyRef.current === 'ppocrv6Line',
             120000,
-            "PP-OCRv6 n'a pas pu etre charge.",
+            "PP-OCRv6 n’a pas pu être chargé.",
             request.signal
         );
         throwIfAborted(request.signal);
@@ -500,12 +390,12 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
 
         await ensureReaderNetReady(request);
         searchLifecycleRef.current.commit(request.requestId, () => {
-            setOcrStatus("Detection ReaderNet...");
+            setOcrStatus("Détection des bulles…");
         });
         const boxes = await detectBubbles(imageFile, { signal: request.signal });
         throwIfAborted(request.signal);
         if (!boxes?.length) {
-            throw new Error("Aucune bulle detectee par le pipeline ReaderNet.");
+            throw new Error("Aucune bulle détectée par le pipeline ReaderNet.");
         }
 
         await ensurePpocrReady(request);
@@ -520,7 +410,8 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
                 if (bbox.w <= 0 || bbox.h <= 0) continue;
 
                 searchLifecycleRef.current.commit(request.requestId, () => {
-                    setOcrStatus(`PP-OCRv6 ${index + 1}/${boxes.length}...`);
+                    setOcrStatus(`Lecture des bulles · ${index + 1} / ${boxes.length}`);
+                    setProgress(index / boxes.length);
                 });
                 const crop = await createImageBitmap(pageBitmap, bbox.x, bbox.y, bbox.w, bbox.h);
                 throwIfAborted(request.signal);
@@ -569,6 +460,19 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         clearSearchResults();
     }, [clearSearchResults, invalidateActiveSearch, ocrImagePreviewUrl]);
 
+    const clearOcrImage = () => {
+        invalidateActiveSearch();
+        if (ocrImagePreviewUrl) URL.revokeObjectURL(ocrImagePreviewUrl);
+        setOcrImageFile(null);
+        setOcrImagePreviewUrl(null);
+        setOcrExtractedBubbles([]);
+        setOcrProvider(null);
+        setOcrStatus('');
+        setOcrHasSearched(false);
+        clearSearchResults();
+    };
+
+    // In visual mode the whole page takes an image, pasted or dropped. Without this, a drop next to the field would navigate away to the file.
     useEffect(() => {
         if (!useOcrSearch) return;
 
@@ -581,9 +485,33 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
             event.preventDefault();
             loadOcrImageFile(file);
         };
+        const carriesFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+        const handleDragOver = (event) => {
+            if (!carriesFiles(event)) return;
+            event.preventDefault();
+            setIsDraggingImage(true);
+        };
+        const handleDragLeave = (event) => {
+            if (!event.relatedTarget) setIsDraggingImage(false);
+        };
+        const handleDrop = (event) => {
+            if (!carriesFiles(event)) return;
+            event.preventDefault();
+            setIsDraggingImage(false);
+            loadOcrImageFile(event.dataTransfer.files?.[0]);
+        };
 
         window.addEventListener('paste', handlePaste);
-        return () => window.removeEventListener('paste', handlePaste);
+        window.addEventListener('dragover', handleDragOver);
+        window.addEventListener('dragleave', handleDragLeave);
+        window.addEventListener('drop', handleDrop);
+        return () => {
+            window.removeEventListener('paste', handlePaste);
+            window.removeEventListener('dragover', handleDragOver);
+            window.removeEventListener('dragleave', handleDragLeave);
+            window.removeEventListener('drop', handleDrop);
+            setIsDraggingImage(false);
+        };
     }, [useOcrSearch, loadOcrImageFile]);
 
     const runOcrSearch = async (pageToFetch = 1, isNewSearch = true) => {
@@ -595,9 +523,12 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         activeLocalSearchRequestIdRef.current = null;
         const request = searchLifecycleRef.current.begin();
         setIsLoading(true);
+        setSearchError(null);
+        setProgress(null);
         if (isNewSearch) {
             setResults([]);
             setFeedbackGiven({});
+            showFirstResults();
         }
 
         try {
@@ -611,7 +542,7 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
                 extracted = await extractOcrBubblesFromImage(ocrImageFile, request);
                 throwIfAborted(request.signal);
                 if (!extracted.bubbles.length) {
-                    throw new Error("Aucune bulle lisible detectee dans l'image.");
+                    throw new Error("Aucune bulle lisible détectée dans l’image.");
                 }
                 searchLifecycleRef.current.commit(request.requestId, () => {
                     setOcrExtractedBubbles(extracted.bubbles);
@@ -620,7 +551,8 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
             }
 
             searchLifecycleRef.current.commit(request.requestId, () => {
-                setOcrStatus("Recherche de la page...");
+                setOcrStatus("Recherche de la page…");
+                setProgress(1);
             });
             const response = await searchOcrPageMatch({
                 bubbles: extracted.bubbles,
@@ -641,24 +573,20 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
                 setTotalCount(newResults.length);
                 setHasMore(false);
                 setOcrHasSearched(true);
-                setOcrStatus(`${extracted.bubbles.length} bulles OCR, top ${newResults.length} affiche sur ${total} pages classees.`);
+                setOcrStatus(`${extracted.bubbles.length} bulles lues · ${newResults.length} meilleures pages sur ${total} classées`);
             });
         } catch (err) {
             if (searchLifecycleRef.current.isCurrent(request.requestId) && !isAbortError(err, request.signal)) {
                 const message = err?.response?.data?.error || err?.message || "Recherche OCR impossible.";
                 toast.error(message);
                 setOcrStatus(message);
+                setSearchError(message);
             }
         } finally {
-            if (searchLifecycleRef.current.commit(request.requestId, () => setIsLoading(false))) {
+            if (searchLifecycleRef.current.commit(request.requestId, () => { setIsLoading(false); setProgress(null); })) {
                 searchLifecycleRef.current.finish(request.requestId);
             }
         }
-    };
-
-    const handleOcrImageChange = (event) => {
-        const file = event.target.files?.[0];
-        loadOcrImageFile(file);
     };
 
     const handleManualSearch = () => {
@@ -672,20 +600,17 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         fetchResults(query, 1, true);
     };
 
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            handleManualSearch();
-        }
-    };
-
     async function fetchResults(searchTerm, pageToFetch, isNewSearch) {
         activeLocalSearchRequestIdRef.current = null;
         const request = searchLifecycleRef.current.begin();
 
         setIsLoading(true);
+        setSearchError(null);
+        setProgress(null);
         if (isNewSearch) {
             setResults([]);
             setFeedbackGiven({});
+            showFirstResults();
         }
 
         try {
@@ -694,14 +619,15 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
             if (useSemantic && localOnly) {
                 activeLocalSearchRequestIdRef.current = request.requestId;
                 searchLifecycleRef.current.commit(request.requestId, () => {
-                    setLocalModelStatus('F2LLM');
+                    setLocalModelStatus('Préparation de F2LLM…');
                 });
                 const embedding = await generateF2llmBrowserQueryEmbedding(searchTerm, {
                     signal: request.signal,
                 });
                 throwIfAborted(request.signal);
                 searchLifecycleRef.current.commit(request.requestId, () => {
-                    setLocalModelStatus('F2LLM pret');
+                    setLocalModelStatus('F2LLM prêt');
+                    setProgress(null);
                 });
                 response = await searchF2llmLocal({
                     query: searchTerm,
@@ -730,6 +656,7 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
 
             searchLifecycleRef.current.commit(request.requestId, () => {
                 setResults(prev => isNewSearch ? newResults : [...prev, ...newResults]);
+                setSettledTerm(searchTerm.trim());
 
                 if (useSemantic && pageToFetch === 1) {
                     setTotalCount(newResults.length);
@@ -743,9 +670,10 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         } catch (err) {
             if (searchLifecycleRef.current.isCurrent(request.requestId) && !isAbortError(err, request.signal)) {
                 console.error("Erreur recherche", err);
+                setSearchError(err?.response?.data?.error || "Le moteur de recherche est momentanément indisponible.");
             }
         } finally {
-            if (searchLifecycleRef.current.commit(request.requestId, () => setIsLoading(false))) {
+            if (searchLifecycleRef.current.commit(request.requestId, () => { setIsLoading(false); setProgress(null); })) {
                 activeLocalSearchRequestIdRef.current = null;
                 searchLifecycleRef.current.finish(request.requestId);
             }
@@ -774,7 +702,7 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
 
         try {
             await submitSearchFeedback({
-                query: debouncedQuery,
+                query: settledTerm ?? debouncedQuery,
                 doc_id: item.id,
                 doc_text: item.content,
                 is_relevant: isRelevant,
@@ -799,6 +727,18 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         clearSearchResults();
         setOcrHasSearched(false);
         setOcrStatus('');
+    };
+
+    const handleExample = (label) => {
+        setQuery(label);
+        setPage(1);
+        fetchResults(label, 1, true);
+    };
+
+    // "Rechercher par concept" keeps the query and runs it in semantic mode, through the search effect.
+    const handleTrySemantic = () => {
+        autoSemanticSearchRef.current = true;
+        handleSearchModeChange('semantic');
     };
 
     const handleLocalOnlyChange = (checked) => {
@@ -861,545 +801,86 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         setOcrStatus('');
     };
 
-    const accentColor = useOcrSearch ? "#eab308" : useSemantic ? "#A11010" : "#2f7aaf";
+    const mode = getSearchMode(searchMode);
     const firstOcrMatch = results[0]?.ocr?.matches?.[0] || null;
     const topOcrResult = useOcrSearch && firstOcrMatch?.query_index === 0 && firstOcrMatch?.score >= 0.85 ? results[0] : null;
-    const topOcrMatches = topOcrResult?.ocr?.matches || [];
-    const displayedTotalCount = topOcrResult ? 1 : totalCount;
+
+    const trimmedQuery = query.trim();
+    // Keyword search follows the field, so a query the debounce has not released yet is already a search in progress.
+    const isDebouncing = searchMode === 'keyword' && trimmedQuery.length >= 2 && query !== debouncedQuery;
+    const hasAnswer = useOcrSearch ? ocrHasSearched : trimmedQuery.length >= 2 && settledTerm === trimmedQuery;
+    const view = results.length > 0 ? 'results'
+        : isLoading || isDebouncing ? 'loading'
+            : searchError ? 'error'
+                : hasAnswer ? 'empty' : 'idle';
 
     return (
-        <div className="h-full overflow-y-auto overflow-x-hidden pb-20">
-            <div className="relative -mx-4 overflow-hidden border-b border-white/10 bg-[#06111e]/72 px-4 pb-10 pt-12 sm:-mx-8">
-                <PoneglyphHeaderGlyphs color={accentColor} />
+        <div ref={scrollRef} style={mode.theme} className="h-full min-h-0 w-full overflow-x-hidden overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable_both-edges]">
+            <div className="relative isolate pb-16">
+                <SearchBackdrop modeId={mode.id} />
+                <SearchHero mode={mode} />
+                <SearchModeSwitch value={mode.id} onChange={handleSearchModeChange} />
 
-                <div className="container max-w-5xl mx-auto space-y-8 relative z-10">
-                    <div className="text-center space-y-2">
-                        <h1 className="poneglyph-title text-3xl font-black sm:text-5xl">
-                            Voix de Toute Chose
-                        </h1>
-                        <p className="poneglyph-muted mx-auto max-w-xl text-sm font-medium sm:text-base">
-                            {useOcrSearch ? "Poneglyph Doré : retrouver une page depuis une image ou un crop." : useSemantic
-                                ? "Rio Poneglyph : Déchiffrer l'histoire à travers les concepts et les souvenirs."
-                                : "Poneglyph : Retrouver les traces écrites et les paroles exactes."
-                            }
-                        </p>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-6">
-                        <Tabs
-                            defaultValue="keyword"
-                            value={searchMode}
-                            onValueChange={handleSearchModeChange}
-                            className="w-full max-w-xl"
-                        >
-                            <TabsList className="grid h-12 w-full grid-cols-3 rounded-xl border border-white/12 bg-white/8 p-1">
-                                <TabsTrigger
-                                    value="keyword"
-                                    className="rounded-lg text-xs font-bold uppercase tracking-wider text-slate-300 data-[state=active]:bg-white/12 data-[state=active]:text-[#8dbbff] data-[state=active]:shadow-sm"
-                                >
-                                    <Quote className="h-3.5 w-3.5 mr-2 opacity-60" />
-                                    Textuel
-                                </TabsTrigger>
-                                <TabsTrigger
-                                    value="semantic"
-                                    className="rounded-lg text-xs font-bold uppercase tracking-wider text-slate-300 data-[state=active]:bg-[#A11010] data-[state=active]:text-white"
-                                >
-                                    <Sparkles className="h-3.5 w-3.5 mr-2" />
-                                    Sémantique
-                                </TabsTrigger>
-                                <TabsTrigger
-                                    value="ocr"
-                                    className="rounded-lg text-xs font-bold uppercase tracking-wider text-slate-300 data-[state=active]:bg-yellow-400 data-[state=active]:text-slate-950"
-                                >
-                                    <ScanText className="h-3.5 w-3.5 mr-2" />
-                                    Visuelle
-                                </TabsTrigger>
-                            </TabsList>
-                        </Tabs>
-
-                        {useSemantic && (
-                            <div className="flex w-full max-w-xl items-center justify-between rounded-xl border border-white/12 bg-white/[0.06] px-4 py-3">
-                                <div className="min-w-0">
-                                    <Label htmlFor="local-only-search" className="text-xs font-black uppercase tracking-widest text-slate-200">
-                                        Local Only
-                                    </Label>
-                                    {localOnly && localModelStatus && (
-                                        <p className="mt-1 truncate text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                                            {localModelStatus}
-                                        </p>
-                                    )}
-                                </div>
-                                <Switch
-                                    id="local-only-search"
-                                    checked={localOnly}
-                                    onCheckedChange={handleLocalOnlyChange}
-                                />
-                            </div>
-                        )}
-
-                        {useOcrSearch ? (
-                            <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#06111d]/88 p-2.5 shadow-sm">
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="flex h-20 w-full shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] text-slate-400 transition-colors hover:border-yellow-300/45 hover:bg-white/10 hover:text-white sm:w-20"
-                                    >
-                                        {ocrImagePreviewUrl ? (
-                                            <img src={ocrImagePreviewUrl} alt="OCR upload" className="h-full w-full object-cover" />
-                                        ) : (
-                                            <ImageUp className="h-6 w-6" />
-                                        )}
-                                    </button>
-                                    <input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={handleOcrImageChange}
-                                    />
-
-                                    <div className="min-w-0 flex-1 text-left">
-                                        <div className="flex min-w-0 items-center gap-2">
-                                            <div className="truncate text-sm font-semibold text-slate-100">
-                                                {ocrImageFile?.name || "Image ou crop de page"}
-                                            </div>
-                                            {ocrExtractedBubbles.length > 0 && (
-                                                <span className="shrink-0 rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-bold text-slate-300">
-                                                    {ocrExtractedBubbles.length}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-slate-400">
-                                            <span className="text-yellow-300">
-                                                ReaderNet + PP-OCRv6
-                                            </span>
-                                            {ocrProvider && (
-                                                <>
-                                                    <span className="text-slate-600">/</span>
-                                                    <span>OCR navigateur</span>
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="mt-1 min-h-4 truncate text-xs text-slate-500">
-                                            {ocrStatus || "Detection ReaderNet puis OCR PP-OCRv6"}
-                                        </div>
-                                    </div>
-
-                                    <Button
-                                        className="h-10 w-full shrink-0 rounded-xl bg-yellow-400 px-4 text-xs font-black uppercase tracking-widest text-slate-950 shadow-sm transition-all hover:bg-yellow-300 sm:w-auto"
-                                        onClick={handleManualSearch}
-                                        disabled={isLoading || (!ocrImageFile && ocrExtractedBubbles.length === 0)}
-                                        title="Scanner"
-                                    >
-                                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}
-                                        Scanner
-                                    </Button>
-                                </div>
-                            </div>
-                        ) : (
-                        <div className="relative w-full max-w-2xl group">
-                            <div className={cn(
-                                "relative flex items-center rounded-2xl border bg-[#040d18]/84 shadow-sm transition-all duration-1000 group-focus-within:shadow-xl group-focus-within:ring-4",
-                                useSemantic
-                                    ? "border-red-200 group-focus-within:border-red-500/50 group-focus-within:ring-[#A11010]/5"
-                                    : "border-white/14 group-focus-within:border-sky-400/50 group-focus-within:ring-[#2F7AAF]/12"
-                            )}>
-                                <Input
-                                    ref={inputRef}
-                                    type="text"
-                                    value={query}
-                                    onChange={handleQueryChange}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder={useSemantic ? "Ex: Première rencontre entre Luffy et Sanji..." : "Cherchez un dialogue exact..."}
-                                    className="h-14 rounded-2xl border-none bg-transparent pl-6 pr-24 text-base text-slate-100 shadow-none ring-0 placeholder:text-slate-500 focus-visible:ring-0 sm:h-16 sm:text-lg"
-                                />
-
-                                <div className="absolute right-2 flex items-center gap-1">
-                                    {query && (
-                                        <button
-                                            onClick={handleClearQuery}
-                                            className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                                        >
-                                            <X className="h-4 w-4" />
-                                        </button>
-                                    )}
-
-                                    <Button
-                                        size="icon"
-                                        className={cn(
-                                            "rounded-xl h-10 w-10 sm:h-12 sm:w-12 shadow-lg transition-all duration-1000",
-                                            useSemantic ? "bg-[#A11010] hover:bg-[#820d0d]" : "bg-[#2F7AAF] hover:bg-[#26628c]"
-                                        )}
-                                        onClick={handleManualSearch}
-                                        disabled={isLoading || query.length < 2}
-                                    >
-                                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                        )}
-
-                        <div className="flex flex-wrap justify-center gap-3">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setShowFilters(!showFilters)}
-                                className={cn(
-                                    "h-9 gap-2 rounded-xl px-4 font-bold shadow-sm transition-all",
-                                    showFilters ? "border-[#3d86ff] bg-[#3d86ff] text-white" : "border-white/14 bg-white/8 text-slate-300 hover:bg-white/14 hover:text-white"
-                                )}
-                            >
-                                <Filter className="h-3.5 w-3.5" />
-                                Filtres
-                                {(selectedCharacters.length > 0 || selectedArc !== 'all' || selectedTome !== 'all') && (
-                                    <span className={cn(
-                                        "flex items-center justify-center text-white text-[10px] h-4 w-4 rounded-full ml-1 transition-colors duration-1000",
-                                        useSemantic ? "bg-[#A11010]" : "bg-[#2F7AAF]"
-                                    )}>
-                                        {selectedCharacters.length + (selectedArc !== 'all' ? 1 : 0) + (selectedTome !== 'all' ? 1 : 0)}
-                                    </span>
-                                )}
-                            </Button>
-
-                            {(selectedCharacters.length > 0 || selectedArc !== 'all' || selectedTome !== 'all') && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                onClick={() => {
-                                    resetFilters();
-                                }}
-                                    className="h-9 text-[11px] font-bold text-slate-400 transition-colors hover:text-red-300"
-                                >
-                                    Tout réinitialiser
-                                </Button>
-                            )}
-                        </div>
-                    </div>
-
-                    {showFilters && (
-                        <div className="poneglyph-panel mx-auto grid max-w-4xl grid-cols-1 gap-6 rounded-3xl p-6 shadow-inner animate-in slide-in-from-top-4 fade-in duration-300 md:grid-cols-3">
-                            <div className="space-y-2 opacity-50 grayscale select-none">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-[2px] mb-1.5 block">Personnages</Label>
-                                <Popover open={charPopoverOpen} onOpenChange={setCharPopoverOpen}>
-                                    <PopoverTrigger asChild>
-                                        <Button disabled variant="outline" className="w-full justify-between h-10 text-xs font-bold bg-white rounded-xl border-slate-200">
-                                            {selectedCharacters.length > 0 ? `${selectedCharacters.length} persos.` : "Indisponible"}
-                                            <ChevronRight className={cn("h-4 w-4 transition-transform", charPopoverOpen && "rotate-90")} />
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-[300px] p-0 rounded-2xl shadow-2xl border-slate-100" align="start">
-                                        <Command className="rounded-2xl">
-                                            <CommandInput placeholder="Rechercher..." className="h-11" />
-                                            <CommandEmpty>Aucun résultat.</CommandEmpty>
-                                            <CommandGroup className="max-h-64 overflow-auto p-2">
-                                                {characterSuggestions.map((char) => (
-                                                    <CommandItem
-                                                        key={char}
-                                                        className="rounded-lg h-9 text-xs mb-0.5"
-                                                        onSelect={() => {
-                                                            updateSelectedCharacters(prev =>
-                                                                prev.includes(char) ? prev.filter(c => c !== char) : [...prev, char]
-                                                            );
-                                                        }}
-                                                    >
-                                                        <div className={cn("mr-2 h-4 w-4 rounded-sm border border-slate-300 flex items-center justify-center transition-colors", selectedCharacters.includes(char) && "bg-indigo-600 border-indigo-600")}>
-                                                            <Check className={cn("h-3 w-3 text-white transition-opacity", selectedCharacters.includes(char) ? "opacity-100" : "opacity-0")} />
-                                                        </div>
-                                                        {char}
-                                                    </CommandItem>
-                                                ))}
-                                            </CommandGroup>
-                                        </Command>
-                                    </PopoverContent>
-                                </Popover>
-                                <div className="flex flex-wrap gap-1.5 py-1">
-                                    {selectedCharacters.map(char => (
-                                        <Badge key={char} className="bg-white border-slate-200 text-slate-600 text-[10px] font-bold h-6 pr-1 shadow-sm">
-                                            {char}
-                                            <button
-                                                type="button"
-                                                className="ml-1 p-0.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-red-500 transition-colors pointer-events-auto"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    updateSelectedCharacters(prev => prev.filter(c => c !== char));
-                                                }}
-                                            >
-                                                <X className="h-3 w-3" />
-                                            </button>
-                                        </Badge>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="space-y-2 opacity-50 grayscale select-none">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-[2px] mb-1.5 block">Arc narratif</Label>
-                                <Select value={selectedArc} onValueChange={handleArcChange} disabled>
-                                    <SelectTrigger className="h-10 text-xs font-bold bg-white rounded-xl border-slate-200 shadow-sm">
-                                        <SelectValue placeholder="Indisponible" />
-                                    </SelectTrigger>
-                                    <SelectContent className="rounded-2xl border-slate-100">
-                                        <SelectItem value="all" className="text-xs">Tous les arcs</SelectItem>
-                                        {arcSuggestions.map(arc => <SelectItem key={arc} value={arc} className="text-xs">{arc}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-[2px] mb-1.5 block">Tome</Label>
-                                <Select value={selectedTome} onValueChange={handleTomeChange}>
-                                    <SelectTrigger className="h-10 text-xs font-bold bg-white rounded-xl border-slate-200 shadow-sm">
-                                        <SelectValue placeholder="Tous les tomes" />
-                                    </SelectTrigger>
-                                    <SelectContent className="max-h-64 rounded-2xl border-slate-100">
-                                        <SelectItem value="all" className="text-xs">Tous les tomes</SelectItem>
-                                        {tomes.map(tome => (
-                                            <SelectItem key={tome.numero} value={tome.numero.toString()} className="text-xs">
-                                                Tome {tome.numero} {tome.titre && `· ${tome.titre}`}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                    )}
+                <div ref={consoleAnchorRef} aria-hidden="true" className="h-4" />
+                <div className="z-20 md:sticky md:top-0">
+                    <SearchConsole
+                        mode={mode}
+                        query={query}
+                        inputRef={inputRef}
+                        onQueryChange={handleQueryChange}
+                        onClearQuery={handleClearQuery}
+                        onSubmit={handleManualSearch}
+                        isLoading={isLoading}
+                        progress={isLoading ? progress : null}
+                        localOnly={localOnly}
+                        onLocalOnlyChange={handleLocalOnlyChange}
+                        localModelStatus={localModelStatus}
+                        image={{
+                            fileName: ocrImageFile?.name,
+                            previewUrl: ocrImagePreviewUrl,
+                            bubbleCount: ocrExtractedBubbles.length,
+                            status: ocrStatus,
+                            hasError: Boolean(searchError),
+                            isDragging: isDraggingImage,
+                            onPick: loadOcrImageFile,
+                            onClear: clearOcrImage,
+                        }}
+                        filters={{
+                            tomes,
+                            selectedTome,
+                            onTomeChange: handleTomeChange,
+                            arcs: arcSuggestions,
+                            selectedArc,
+                            onArcChange: handleArcChange,
+                            characters: characterSuggestions,
+                            selectedCharacters,
+                            onCharactersChange: updateSelectedCharacters,
+                            onReset: resetFilters,
+                        }}
+                    />
                 </div>
-            </div>
 
-            <div className="container max-w-7xl mx-auto px-4 mt-12">
-                {results.length > 0 && (
-                    <div className="flex items-center gap-3 mb-8 px-2 animate-in fade-in duration-500">
-                        <div className={cn("h-10 w-1 rounded-full transition-colors duration-1000", useOcrSearch ? "bg-yellow-400" : useSemantic ? "bg-[#A11010]" : "bg-[#3d86ff]")} />
-                        <div>
-                            <span className="text-2xl font-black tracking-tight text-white">{displayedTotalCount}</span>
-                            <span className="ml-2 text-sm font-bold uppercase tracking-wider text-slate-400">Résultats trouvés</span>
-                        </div>
-                    </div>
-                )}
-
-                {topOcrResult && (
-                    <Link
-                        href={`/${mangaSlug}/annotate/${topOcrResult.page_id}?from=search`}
-                        prefetch={false}
-                        className="group mb-10 block rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400"
-                    >
-                        <Card className="poneglyph-panel overflow-hidden rounded-3xl border-yellow-300/25 bg-yellow-950/10">
-                            <div className="grid gap-0 lg:grid-cols-[minmax(280px,520px)_1fr]">
-                                <div className="min-h-[420px] bg-[#071625]">
-                                    <SearchPageImage
-                                        url={topOcrResult.url_image}
-                                        pageId={topOcrResult.page_id}
-                                        alt="Meilleur resultat OCR"
-                                        className="h-full max-h-[680px] w-full object-contain object-top transition-transform duration-500 group-hover:scale-[1.015]"
-                                    />
-                                </div>
-                                <CardContent className="flex min-h-[420px] flex-col justify-between gap-8 p-6 sm:p-8">
-                                    <div className="space-y-5">
-                                        <div className="flex flex-wrap gap-2">
-                                            <Badge className="border-yellow-300/35 bg-yellow-400/16 text-yellow-100">Top OCR</Badge>
-                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600">{topOcrResult.context}</Badge>
-                                            <Badge className="bg-yellow-100 text-yellow-800">
-                                                {(topOcrMatches[0].score * 100).toFixed(0)}% meilleure bulle
-                                            </Badge>
-                                            <Badge variant="outline" className="border-white/12 bg-white/8 text-slate-300">
-                                                {topOcrMatches.length} bulles reconnues
-                                            </Badge>
-                                        </div>
-
-                                        <div>
-                                            <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-yellow-200/80">
-                                                Bulles reconnues
-                                            </div>
-                                            <div className="space-y-3">
-                                                {topOcrMatches.map((match, matchIndex) => (
-                                                    <div key={`${match.bubble_id || matchIndex}-${matchIndex}`} className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 shadow-inner">
-                                                        <div className="mb-2 flex items-center justify-between gap-3">
-                                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                                                Bulle {match.query_index + 1}
-                                                            </span>
-                                                            <Badge className={cn(
-                                                                "shrink-0 border-none text-[10px] font-black",
-                                                                match.score >= 0.85 ? "bg-yellow-100 text-yellow-800" : "bg-slate-100 text-slate-600"
-                                                            )}>
-                                                                {(match.score * 100).toFixed(0)}%
-                                                            </Badge>
-                                                        </div>
-                                                        <div className="text-base font-semibold italic leading-relaxed text-white">
-                                                            &quot;{match.matched_text}&quot;
-                                                        </div>
-                                                        {match.query_text && (
-                                                            <div className="mt-2 text-xs font-medium leading-relaxed text-slate-400">
-                                                                OCR upload : &quot;{match.query_text}&quot;
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center justify-between border-t border-white/10 pt-5">
-                                        <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-slate-400">
-                                            <MapPin className="h-3 w-3 text-yellow-300" />
-                                            Page {topOcrResult.context.match(/Page (\d+)/)?.[1]}
-                                        </div>
-                                        <div className="rounded-full bg-white/8 p-2 transition-colors group-hover:bg-yellow-400/20">
-                                            <ChevronRight className="h-5 w-5 text-slate-200" />
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </div>
-                        </Card>
-                    </Link>
-                )}
-
-                {!topOcrResult && (
-                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-8">
-                    {results.map((item, index) => {
-                        const isSemantic = item.type === 'semantic';
-                        return (
-                            <Link
-                                key={`${item.id}-${index}`}
-                                href={`/${mangaSlug}/annotate/${item.page_id}?from=search`}
-                                prefetch={false}
-                                className={cn(
-                                    "group block focus-visible:outline-none focus-visible:ring-2 rounded-3xl",
-                                    useSemantic ? "focus-visible:ring-[#A11010]" : "focus-visible:ring-[#2F7AAF]"
-                                )}
-                            >
-                                <Card className={cn(
-                                    "poneglyph-panel poneglyph-card-hover flex h-full flex-col overflow-hidden rounded-3xl",
-                                    useSemantic ? "hover:border-red-300/40" : "hover:border-[#2F7AAF]/35"
-                                )}>
-                                    <ResultImage
-                                        url={item.url_image}
-                                        pageId={item.page_id}
-                                        coords={item.coords}
-                                        type={item.type}
-                                    />
-
-                                    <CardContent className="flex-1 p-4 sm:p-6 flex flex-col gap-4">
-                                        <div className="flex flex-wrap gap-2">
-                                            <Badge variant="secondary" className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 rounded-md border-none">
-                                                Vol.{item.context.match(/Tome (\d+)/)?.[1]} | Ch.{item.context.match(/Chap\. (\d+)/)?.[1]}
-                                            </Badge>
-                                            {item.similarity > 0 && (
-                                                <Badge className={cn(
-                                                    "text-[10px] font-black uppercase tracking-wider border-none",
-                                                    item.similarity > 0.8 ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-700"
-                                                )}>
-                                                    {(item.similarity * 100).toFixed(0)}% Match
-                                                </Badge>
-                                            )}
-                                        </div>
-
-                                        {!isSemantic && item.content && (
-                                            <div className={cn(
-                                                "py-1 pl-3 text-sm font-medium italic leading-relaxed text-slate-200 border-l-2",
-                                                useSemantic ? "border-red-200" : "border-[#2F7AAF]/30"
-                                            )}>
-                                                &quot;{highlightText(item.content, query)}&quot;
-                                            </div>
-                                        )}
-
-                                        <div className="mt-auto flex items-center justify-between pt-2">
-                                            <div className="flex items-center gap-1.5 text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                                <MapPin className={cn("h-3 w-3 transition-colors duration-1000", useSemantic ? "text-[#A11010]" : "text-[#2F7AAF]")} />
-                                                Page {item.context.match(/Page (\d+)/)?.[1]}
-                                            </div>
-                                            <div className="rounded-full bg-white/8 p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
-                                                <ChevronRight className="h-4 w-4 text-slate-300" />
-                                            </div>
-                                        </div>
-                                    </CardContent>
-
-                                    {useSemantic && (
-                                        <CardFooter className="flex items-center justify-between border-t border-white/10 bg-white/[0.045] px-6 py-4" onClick={(e) => e.preventDefault()}>
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Utile ?</span>
-                                            <div className="flex gap-2">
-                                                {feedbackGiven[item.id] ? (
-                                                    <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 uppercase">
-                                                        <Check className="h-3 w-3" /> Merci
-                                                    </span>
-                                                ) : (
-                                                    <>
-                                                        <Button variant="outline" size="icon" className="h-7 w-7 rounded-lg border-slate-200 bg-white hover:bg-emerald-50 hover:text-emerald-600 transition-colors" onClick={(e) => handleFeedback(e, item, true)}>
-                                                            <div className="text-xs">👍</div>
-                                                        </Button>
-                                                        <Button variant="outline" size="icon" className="h-7 w-7 rounded-lg border-slate-200 bg-white hover:bg-red-50 hover:text-red-600 transition-colors" onClick={(e) => handleFeedback(e, item, false)}>
-                                                            <div className="text-xs">👎</div>
-                                                        </Button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </CardFooter>
-                                    )}
-                                </Card>
-                            </Link>
-                        );
-                    })}
-
-                    {isLoading && Array.from({ length: 8 }).map((_, i) => (
-                        <div key={i} className="flex flex-col gap-4">
-                            <Skeleton className="aspect-[2/3] w-full rounded-3xl" />
-                            <div className="space-y-2 px-2">
-                                <Skeleton className="h-4 w-1/2 rounded-full" />
-                                <Skeleton className="h-3 w-3/4 rounded-full" />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-                )}
-
-                {!isLoading && results.length === 0 && (useOcrSearch ? ocrHasSearched : query.length >= 2) && (
-                    <div className="flex flex-col items-center justify-center py-20 text-center max-w-md mx-auto animate-in fade-in duration-700">
-                        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-white/8">
-                            <BookOpen className="h-10 w-10 text-slate-500" />
-                        </div>
-                        <h3 className="mb-2 text-xl font-black uppercase tracking-tight text-white">Zone Inconnue</h3>
-                        <p className="mb-8 text-sm font-medium leading-relaxed text-slate-400">
-                            {useOcrSearch ? "Aucune page proche dans nos archives." : <>Aucune occurrence de &quot;{query}&quot; dans nos archives.</>}
-                            {!useSemantic && !useOcrSearch && " L'IA pourrait vous aider par analogie."}
-                        </p>
-                        {!useSemantic && !useOcrSearch && (
-                            <Button
-                                onClick={() => handleSearchModeChange('semantic')}
-                                className="rounded-2xl h-12 px-8 bg-[#A11010] shadow-xl shadow-red-900/20 gap-2 font-bold uppercase tracking-widest text-xs transition-all active:scale-95 text-white"
-                            >
-                                <Sparkles className="h-4 w-4" />
-                                Rechercher par Concept
-                            </Button>
-                        )}
-                    </div>
-                )}
-
-                {!isLoading && hasMore && (
-                    <div className="flex justify-center mt-16 mb-20">
-                        <Button
-                            variant="outline"
-                            onClick={loadMore}
-                            className="h-12 rounded-2xl border-white/14 bg-white/8 px-10 text-xs font-black uppercase tracking-widest text-slate-200 shadow-xl transition-all hover:bg-white/14 hover:text-white"
-                        >
-                            Déchiffrer la suite
-                        </Button>
-                    </div>
-                )}
+                <SearchResults
+                    view={view}
+                    mode={mode}
+                    mangaSlug={mangaSlug}
+                    results={results}
+                    totalCount={totalCount}
+                    term={settledTerm}
+                    topOcrResult={topOcrResult}
+                    isLoadingMore={isLoading}
+                    isStale={isDebouncing}
+                    hasMore={hasMore}
+                    onLoadMore={loadMore}
+                    feedback={useSemantic ? { given: feedbackGiven, onVote: handleFeedback } : null}
+                    error={searchError}
+                    onRetry={handleManualSearch}
+                    onTrySemantic={handleTrySemantic}
+                    examples={useSemantic ? SEMANTIC_EXAMPLES[mangaSlug] || [] : []}
+                    onExample={handleExample}
+                    scan={{ status: ocrStatus, progress, bubbleCount: ocrExtractedBubbles.length }}
+                />
             </div>
         </div>
     );
 }
-
-const highlightText = (text, highlight) => {
-    if (!text) return "";
-    if (!highlight || !highlight.trim()) return text;
-    const cleanText = text.replace(/^\[Concept\]\s*/, '');
-    const escapedHighlight = highlight.replace(/[.*+?^${ }()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escapedHighlight})`, 'gi');
-    const parts = cleanText.split(regex);
-    return parts.map((part, i) =>
-        regex.test(part) ? <span key={i} className="bg-indigo-100 text-indigo-900 px-0.5 rounded font-bold underline decoration-indigo-300 underline-offset-2">{part}</span> : part
-    );
-};
-
