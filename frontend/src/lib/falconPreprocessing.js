@@ -16,6 +16,10 @@ export function half(value) {
     return sign | ((exponent << 10) + (rounded >>> 13));
 }
 
+const NORMALIZED_PIXEL_HALF = Uint16Array.from({ length: 256 }, (_, value) => half(value / 127.5 - 1));
+const MASKED_ATTENTION_HALF = half(-10000);
+const TEMPORAL_DENOMINATORS = Float64Array.from({ length: 16 }, (_, f) => 10000 ** (2 * f / 32));
+
 export function roundEven(value) {
     const floor = Math.floor(value);
     return value - floor === 0.5 ? floor + (floor % 2) : Math.round(value);
@@ -53,17 +57,21 @@ export function smartDimensions(width, height) {
 export function rotaryPositions(manifest, timePositions, spatialPositions) {
     const cos = new Float32Array(timePositions.length * 16 * 32);
     const sin = new Float32Array(cos.length);
+    const temporalCos = new Float32Array(16), temporalSin = new Float32Array(16);
     for (let s = 0; s < timePositions.length; s++) {
+        for (let f = 0; f < 16; f++) {
+            const angle = Math.fround(timePositions[s] / TEMPORAL_DENOMINATORS[f]);
+            temporalCos[f] = Math.cos(angle); temporalSin[f] = Math.sin(angle);
+        }
         for (let head = 0; head < 16; head++) {
-            for (let f = 0; f < 32; f++) {
-                const spatial = spatialPositions?.[s];
-                const frequency = manifest.golden_frequencies[head][f - 16];
-                const angle = Math.fround(f < 16
-                    ? timePositions[s] / (10000 ** (2 * f / 32))
-                    : spatial ? spatial[0] * frequency[0] + spatial[1] * frequency[1] : 0);
-                const i = (s * 16 + head) * 32 + f;
-                cos[i] = Math.cos(angle);
-                sin[i] = Math.sin(angle);
+            const base = (s * 16 + head) * 32, spatial = spatialPositions?.[s];
+            cos.set(temporalCos, base); sin.set(temporalSin, base);
+            if (!spatial) { cos.fill(1, base + 16, base + 32); continue; }
+            for (let f = 0; f < 16; f++) {
+                const frequency = manifest.golden_frequencies[head][f];
+                const angle = Math.fround(spatial[0] * frequency[0] + spatial[1] * frequency[1]);
+                cos[base + 16 + f] = Math.cos(angle);
+                sin[base + 16 + f] = Math.sin(angle);
             }
         }
     }
@@ -91,7 +99,7 @@ export function packImage(manifest, rgba, width, height) {
             let index = token * 768;
             for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
                 const offset = ((py * 16 + y) * width + px * 16 + x) * 4;
-                for (let channel = 0; channel < 3; channel++) pixels[index++] = half(rgba[offset + channel] / 127.5 - 1);
+                for (let channel = 0; channel < 3; channel++) pixels[index++] = NORMALIZED_PIXEL_HALF[rgba[offset + channel]];
             }
         }
     }
@@ -101,7 +109,7 @@ export function packImage(manifest, rgba, width, height) {
     const positions = ids.map(id => { if (!noIncrease.has(id)) position++; return Math.max(position, 0); });
     const attention = new Uint16Array(ids.length ** 2);
     for (let q = 0; q < ids.length; q++) for (let k = 0; k < ids.length; k++) {
-        if (!(k <= q || (q >= start && q < imageEnd && k >= start && k < imageEnd))) attention[q * ids.length + k] = half(-10000);
+        if (!(k <= q || (q >= start && q < imageEnd && k >= start && k < imageEnd))) attention[q * ids.length + k] = MASKED_ATTENTION_HALF;
     }
     return { ids, pixels, mask, attention, ...rotaryPositions(manifest, positions, spatial), lastPosition: position };
 }

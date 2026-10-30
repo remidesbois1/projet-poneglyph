@@ -6,7 +6,7 @@ self.addEventListener('message', ({ data }) => {
     queue = queue.catch(() => undefined).then(async () => {
         try {
             if (data.type === 'init') {
-                await engine.load(info => self.postMessage({ status: 'download_progress', ...info }));
+                await engine.load(info => self.postMessage({ status: 'download_progress', ...info }), data.options);
                 self.postMessage({ status: 'ready', modelKey: 'falconWebgpu', gpu: engine.gpuName });
             } else if (data.type === 'run') {
                 const result = await engine.recognize(data.imageBitmap || data.imageBlob,

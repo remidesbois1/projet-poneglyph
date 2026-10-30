@@ -43,8 +43,11 @@ ne sont pas nécessaires pour utiliser son propre fichier et ne sont pas publié
   softmax et projection de sortie du MLP en FP32 : un export intégralement FP16
   produit des dépassements numériques sur ce modèle.
 - Un graphe dynamique pour le prefill et le décodage, 618 Mo de poids externes.
-  Le cache reste sur GPU entre les tokens ; seuls les identifiants générés sont
-  rapatriés. Seule la dernière position est projetée sur le vocabulaire.
+  Pour la révision vérifiée et les GPU compatibles, le prefill utilise ce graphe
+  puis la génération utilise des kernels WebGPU spécialisés et un cache KV fixe
+  ne stockant que les huit têtes GQA distinctes. Si le modèle, les capacités du
+  GPU ou le décodage accéléré sont incompatibles, le décodage ONNX prend le relais.
+  Les poids sont identiques ; seuls les identifiants générés sont rapatriés.
 - Opérations ONNX standard, opset 17. Pas de fork de Transformers.js/ORT,
   de Triton, de FlexAttention ni de types complexes dans le navigateur.
 - ONNX Runtime Web 1.27.0, `executionProviders: ['webgpu']` et
@@ -62,6 +65,26 @@ utilise le redimensionnement Canvas haute qualité ; ses pixels interpolés peuv
 différer de Pillow. L’export mixte ne doit pas hériter des métriques PyTorch sans
 une nouvelle évaluation. Le modèle final a été réentraîné sur toutes les bulles :
 les exemples locaux vérifient le fonctionnement, pas la généralisation.
+
+L'accélération requiert la fonctionnalité WebGPU `subgroups` et des limites de
+buffers suffisantes. Son initialisation charge une copie supplémentaire des poids
+sur le GPU. Les mesures, les différences numériques et les limites de l'essai
+sont détaillées dans [le rapport d'inférence](../../documentation/falcon_ocr_inference_20261030.md).
+
+Pour régénérer l'index après un nouvel export, avec `onnx` et `numpy` installés :
+
+```powershell
+python docker_scripts/export_falcon_ocr_onnx/make_decode_index.py `
+  --model frontend/public/models/falcon-ocr --output frontend/src/lib/falconDecodeWeights.json
+```
+
+Le script vérifie le manifeste, les empreintes, les dimensions et les offsets ;
+l'index seul ne publie pas les poids. Pour reproduire le banc local, définir
+`FALCON_BENCH_FIXTURES` vers un dossier contenant `test128/examples.json` et les
+images associées, puis lancer `node frontend/bench/serve-falcon.mjs`. Le serveur
+écoute uniquement sur `127.0.0.1` et les résultats restent locaux. Le script
+`analyze_benchmark.py` compare ensuite deux fichiers de résultats portant sur
+les mêmes identifiants et références.
 
 ## Vérifications effectuées
 

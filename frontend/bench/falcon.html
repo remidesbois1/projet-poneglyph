@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="fr"><meta charset="utf-8"><title>Banc Falcon WebGPU</title>
+<body>
+<h1>Banc Falcon WebGPU</h1>
+<label>Moteur <select id="mode"><option value="onnx">ONNX actuel</option><option value="fused">Décodeur fusionné</option></select></label>
+<label>Corpus <select id="corpus"><option value="test128">128 bulles</option><option value="full1691">1 691 bulles</option><option value="falcon-stress">Cas extrêmes</option></select></label>
+<label>Batch GPU <input id="batch" type="number" value="8" min="1" max="8"></label>
+<label>Limite <input id="limit" type="number" min="1" value="128"></label>
+<label>Nom du résultat <input id="name" value="falcon-baseline"></label>
+<button id="load">Charger le modèle</button><button id="run" disabled>Mesurer</button>
+<p id="status" role="status">Non chargé</p><pre id="error" role="alert"></pre>
+<script type="module" src="/bench/falcon.js"></script>
+</body></html>
