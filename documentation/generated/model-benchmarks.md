@@ -1,6 +1,6 @@
 # Benchmarks modèles publiés
 
-Ce document est généré depuis `shared/model-registry.json` (v1, 2026-10-13). Ne pas modifier manuellement.
+Ce document est généré depuis `shared/model-registry.json` (v1, 2026-10-30). Ne pas modifier manuellement.
 
 Les résultats ne sont comparables qu’à protocole et tâche identiques. Un matériel non consigné est indiqué explicitement plutôt que supposé.
 
@@ -64,20 +64,20 @@ Les résultats ne sont comparables qu’à protocole et tâche identiques. Un ma
 
 - Identifiant registre : `surya-bubble`
 - Tâche : `bubble-ocr`
-- Version : [`Remidesbois/surya-bubble-ocr-poneglyph@7d7b358c545cfe757329f780da6ed4100bb5909f`](https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/tree/7d7b358c545cfe757329f780da6ed4100bb5909f)
+- Version : [`Remidesbois/surya-bubble-ocr-poneglyph@24a589633c9c4b57663bfc019b132f11b45f9eb8`](https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/tree/24a589633c9c4b57663bfc019b132f11b45f9eb8)
 - Dataset : Poneglyph validated single-bubble crops
 - Split : test held-out by page
-- Date : 2026-07-30
-- Échantillons : 1 423
-- Matériel : NVIDIA RTX 3090 24 GB
+- Date : 2026-10-30
+- Échantillons : 1 691
+- Matériel : NVIDIA RTX 5090 32 GB
 - Protocole : Exhaustive generative evaluation with a 256-token budget, collapsed whitespace and explicit blank, hallucination and token-limit accounting.
-- Preuve : [artefact figé](https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/blob/7d7b358c545cfe757329f780da6ed4100bb5909f/benchmark_test.json)
+- Preuve : [artefact figé](https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/blob/24a589633c9c4b57663bfc019b132f11b45f9eb8/benchmark_test.json)
 
 | Clé | Valeur | Sens favorable |
 |---|---:|---|
-| `cer` | CER 0,451 % | plus bas |
-| `wer` | WER 1,656 % | plus bas |
-| `exact_match` | Exact match 90,65 % | plus haut |
+| `cer` | CER 0,465 % | plus bas |
+| `wer` | WER 1,823 % | plus bas |
+| `exact_match` | Exact match 91,19 % | plus haut |
 | `token_limit_rate` | Token limit 0,00 % | plus bas |
 
 ## Surya OCR 2 Poneglyph BBox

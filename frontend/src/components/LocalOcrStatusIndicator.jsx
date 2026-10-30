@@ -156,7 +156,7 @@ function SectionLabel({ children }) {
     );
 }
 
-export default function LocalOcrStatusIndicator() {
+export default function LocalOcrStatusIndicator({ align = 'left' }) {
     const {
         isTauri,
         isCheckingLocalConnection,
@@ -325,7 +325,7 @@ export default function LocalOcrStatusIndicator() {
                 </span>
             </button>
 
-            <div className="pointer-events-none absolute left-0 top-full hidden w-[420px] pt-2 group-hover:block group-focus-within:block group-hover:pointer-events-auto group-focus-within:pointer-events-auto">
+            <div className={cn("pointer-events-none absolute top-full z-50 hidden w-[min(420px,calc(100vw-2rem))] pt-2 group-hover:block group-focus-within:block group-hover:pointer-events-auto group-focus-within:pointer-events-auto", align === 'right' ? 'right-0' : 'left-0')}>
                 <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl shadow-black/40 ring-1 ring-black/20">
                     <div className="border-b border-slate-800 px-4 py-3">
                         <div className="flex items-start justify-between gap-4">

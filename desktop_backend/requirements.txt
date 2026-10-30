@@ -10,3 +10,6 @@ transformers==5.7.0
 kernels==0.12.3
 triton-windows==3.6.0.post26; sys_platform == "win32"
 triton==3.6.0; sys_platform != "win32"
+flash-linear-attention==0.5.2; sys_platform == "win32"
+fla-core==0.5.2; sys_platform == "win32"
+einops==0.8.2; sys_platform == "win32"

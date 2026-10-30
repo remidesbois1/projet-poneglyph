@@ -23,6 +23,17 @@ describe('Surya image and rotary preprocessing', () => {
         expect(layout.positions).toEqual([[0, 0, 0], [1, 1, 1], [2, 2, 2], [2, 2, 3], [4, 4, 4], [5, 5, 5]]);
         expect(layout.nextPosition).toBe(6);
     });
+    it('preserves every pixel value and both frames across multiple patches', () => {
+        const layout = suryaLayout({ prompt_chunks: [[1], [2]], image_token_id: 11 }, 64, 32);
+        const rgba = Uint8Array.from({ length: 64 * 32 * 4 }, (_, i) => (i * 37 + Math.floor(i / 7)) % 256);
+        const expected = [];
+        for (const [py, px] of layout.patchPositions) for (let c = 0; c < 3; c++) for (let t = 0; t < 2; t++) {
+            for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+                expected.push(half(rgba[((py * 16 + y) * 64 + px * 16 + x) * 4 + c] / 127.5 - 1));
+            }
+        }
+        expect(packSuryaPixels(rgba, 64, layout)).toEqual(Uint16Array.from(expected));
+    });
     it('matches training output normalization', () => {
         expect(cleanSuryaText('  "Vas-y\nBuchi !"  ')).toBe('Vas-y Buchi !');
         expect(cleanSuryaText("L’équipage... ")).toBe('L’équipage...');

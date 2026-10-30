@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import glob
 import importlib.metadata
 import json
@@ -44,6 +45,10 @@ load_dotenv(DOCKER_SCRIPTS_DIR / ".env")
 load_dotenv(PROJECT_ROOT / ".env")
 
 MODEL_ID = os.getenv("SURYA_MODEL_ID", "datalab-to/surya-ocr-2")
+MODEL_REVISION = os.getenv("SURYA_MODEL_REVISION", "").strip() or None
+WEIGHT_DTYPE = os.getenv("SURYA_WEIGHT_DTYPE", "bfloat16").strip().lower()
+if WEIGHT_DTYPE not in {"bfloat16", "float32"}:
+    raise ValueError("SURYA_WEIGHT_DTYPE must be bfloat16 or float32.")
 DATASET_DIR = Path(os.getenv("SURYA_DATASET_DIR", str(SCRIPT_DIR / "surya_bubble_dataset")))
 OUTPUT_DIR = Path(os.getenv("SURYA_OUTPUT_DIR", str(SCRIPT_DIR / "outputs_surya_bubble_ocr")))
 FINAL_DIR = OUTPUT_DIR / "final_merged"
@@ -54,7 +59,7 @@ SPLITS = ("train", "val", "test")
 
 USER_PROMPT = get_prompt("ocr_surya_bubble", "SURYA_USER_PROMPT")
 MAX_NEW_TOKENS = int(os.getenv("SURYA_MAX_NEW_TOKENS", "256"))
-GEN_EVAL_MAX_SAMPLES = int(os.getenv("SURYA_GEN_EVAL_MAX_SAMPLES", "256"))
+GEN_EVAL_MAX_SAMPLES = int(os.getenv("SURYA_GEN_EVAL_MAX_SAMPLES", "0"))
 GEN_EVAL_BATCH_SIZE = int(os.getenv("SURYA_GEN_EVAL_BATCH", "8"))
 FINAL_TEST_MAX_SAMPLES = int(os.getenv("SURYA_FINAL_TEST_MAX_SAMPLES", "0"))
 RANDOM_SEED = int(os.getenv("SURYA_RANDOM_SEED", "42"))
@@ -92,6 +97,14 @@ def parse_args():
         help="Run this many real Trainer steps, then exit without saving or benchmarking.",
     )
     parser.add_argument("--model-path", default=None, help="Model path for merge-only or benchmark-only.")
+    parser.add_argument("--processor-path", default=None,
+                        help="Processor for benchmark-only when a checkpoint does not contain one.")
+    parser.add_argument("--benchmark-split", choices=("val", "test"), default="test",
+                        help="Split used with --benchmark-only (default: test).")
+    parser.add_argument("--benchmark-output", type=Path, default=None,
+                        help="Write benchmark outside the model directory.")
+    parser.add_argument("--write-report", action="store_true",
+                        help="With a test benchmark, finish the report in SURYA_OUTPUT_DIR.")
     parser.add_argument("--smoke-eval-samples", type=int, default=8,
                         help="Also validate loss and generation on this many validation crops after smoke steps.")
     return parser.parse_args()
@@ -331,6 +344,28 @@ class ImageLRUCache:
         return image
 
 
+class TextLRUCache:
+    """Cache deterministic template rendering and assistant-span tokenization."""
+
+    def __init__(self, max_items: int):
+        self.max_items = max(0, max_items)
+        self.items = OrderedDict()
+
+    def get(self, key):
+        value = self.items.pop(key, None)
+        if value is not None:
+            self.items[key] = value
+        return value
+
+    def put(self, key, value):
+        if not self.max_items:
+            return
+        self.items.pop(key, None)
+        self.items[key] = value
+        while len(self.items) > self.max_items:
+            self.items.popitem(last=False)
+
+
 class MangaOCRAugmenter:
     """Mild, text-preserving augmentation for clean manga bubble crops."""
 
@@ -359,10 +394,12 @@ class MangaOCRAugmenter:
         return image
 
 
-def process_batch(examples, processor, image_cache=None, augmenter=None):
+def process_batch(examples, processor, image_cache=None, augmenter=None, text_cache=None):
     batch_texts = []
     batch_images = []
     prompt_texts = []
+    cached_tokens = []
+    cache_keys = []
 
     ids = examples.get("id", [None] * len(examples["image_file"]))
     image_files = examples["image_file"]
@@ -383,10 +420,21 @@ def process_batch(examples, processor, image_cache=None, augmenter=None):
         if augmenter is not None:
             image = augmenter(image)
 
-        full_messages = messages_for_entry(image_path, str(reference))
-        prompt_messages = messages_for_entry(image_path, None)
-        batch_texts.append(apply_template(processor, full_messages, add_generation_prompt=False))
-        prompt_texts.append(apply_template(processor, prompt_messages, add_generation_prompt=True))
+        cache_key = (str(image_path), str(reference))
+        cached = text_cache.get(cache_key) if text_cache is not None else None
+        if cached is None:
+            full_messages = messages_for_entry(image_path, str(reference))
+            prompt_messages = messages_for_entry(image_path, None)
+            full_text = apply_template(processor, full_messages, add_generation_prompt=False)
+            prompt_text = apply_template(processor, prompt_messages, add_generation_prompt=True)
+            token_pair = None
+        else:
+            full_text, prompt_text, full_ids, prompt_ids = cached
+            token_pair = (full_ids, prompt_ids)
+        batch_texts.append(full_text)
+        prompt_texts.append(prompt_text)
+        cache_keys.append(cache_key)
+        cached_tokens.append(token_pair)
         batch_images.append(image)
 
     model_inputs = processor(
@@ -402,17 +450,24 @@ def process_batch(examples, processor, image_cache=None, augmenter=None):
     if tokenizer is None:
         raise RuntimeError("Surya processor has no tokenizer; assistant-only labels cannot be built.")
     padding_side = getattr(tokenizer, "padding_side", "right")
-    rendered_token_ids = tokenizer(
-        batch_texts + prompt_texts,
-        add_special_tokens=False,
-        padding=False,
-        truncation=False,
-    )["input_ids"]
-    batch_size = len(batch_texts)
-    full_text_token_ids = rendered_token_ids[:batch_size]
-    prompt_text_token_ids = rendered_token_ids[batch_size:]
+    missing_indices = [idx for idx, tokens in enumerate(cached_tokens) if tokens is None]
+    if missing_indices:
+        rendered_token_ids = tokenizer(
+            [batch_texts[idx] for idx in missing_indices]
+            + [prompt_texts[idx] for idx in missing_indices],
+            add_special_tokens=False,
+            padding=False,
+            truncation=False,
+        )["input_ids"]
+        missing_count = len(missing_indices)
+        for position, idx in enumerate(missing_indices):
+            full_ids = rendered_token_ids[position]
+            prompt_ids = rendered_token_ids[position + missing_count]
+            cached_tokens[idx] = (full_ids, prompt_ids)
+            if text_cache is not None:
+                text_cache.put(cache_keys[idx], (batch_texts[idx], prompt_texts[idx], full_ids, prompt_ids))
 
-    for idx, (full_ids, prompt_ids) in enumerate(zip(full_text_token_ids, prompt_text_token_ids)):
+    for idx, (full_ids, prompt_ids) in enumerate(cached_tokens):
         if full_ids[:len(prompt_ids)] != prompt_ids:
             raise ValueError(f"Template prefix mismatch for sample {ids[idx]}.")
         answer_ids = full_ids[len(prompt_ids):]
@@ -440,6 +495,7 @@ class SuryaBubbleCollator:
         self.processor = processor
         self.training = training
         self.image_cache = ImageLRUCache(int(os.getenv("SURYA_IMAGE_CACHE_ITEMS", "512")))
+        self.text_cache = TextLRUCache(int(os.getenv("SURYA_TEXT_CACHE_ITEMS", "16384")))
         self.augmenter = MangaOCRAugmenter() if training else None
 
     def __call__(self, features):
@@ -454,6 +510,7 @@ class SuryaBubbleCollator:
             self.processor,
             image_cache=self.image_cache,
             augmenter=self.augmenter if is_training_batch else None,
+            text_cache=self.text_cache,
         )
 
 
@@ -717,7 +774,14 @@ def generate_predictions(model, processor, entries, return_metadata=False):
     dtype = model_dtype(model)
     inputs = move_inputs_to_device(inputs, device, dtype)
 
-    with torch.inference_mode():
+    # FP32 master weights need autocast during generation as well as training:
+    # the fast DeltaNet kernels and the deployed model use BF16 computation.
+    generation_autocast = (
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+        if device.type == "cuda" and dtype == torch.float32
+        else contextlib.nullcontext()
+    )
+    with torch.inference_mode(), generation_autocast:
         output_ids = model.generate(
             **inputs,
             max_new_tokens=MAX_NEW_TOKENS,
@@ -1053,7 +1117,7 @@ class SuryaOCRTrainer(Seq2SeqTrainer):
                                          ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
         metrics = output.metrics
         dataset = dataloader.dataset
-        if dataset is None or self.gen_eval_max_samples == 0:
+        if dataset is None:
             return output
         split_name = "val"
         try:
@@ -1131,7 +1195,10 @@ def save_benchmark(path, metrics, samples):
 
 def configure_processor(model_id_or_path=MODEL_ID):
     print(f"Loading processor: {model_id_or_path}", flush=True)
-    processor = AutoProcessor.from_pretrained(model_id_or_path, trust_remote_code=True)
+    kwargs = {"trust_remote_code": True}
+    if MODEL_REVISION and str(model_id_or_path) == MODEL_ID:
+        kwargs["revision"] = MODEL_REVISION
+    processor = AutoProcessor.from_pretrained(model_id_or_path, **kwargs)
     tokenizer = getattr(processor, "tokenizer", None)
     if tokenizer is not None:
         tokenizer.padding_side = "left"
@@ -1207,7 +1274,11 @@ def configure_generation(model, processor=None):
 
 
 def load_model(model_id_or_path=MODEL_ID):
-    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+    dtype = (
+        torch.bfloat16
+        if torch.cuda.is_available() and WEIGHT_DTYPE == "bfloat16"
+        else torch.float32
+    )
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Loading model: {model_id_or_path} ({dtype}, device={device})", flush=True)
     kwargs = {
@@ -1215,6 +1286,8 @@ def load_model(model_id_or_path=MODEL_ID):
         "trust_remote_code": True,
         "low_cpu_mem_usage": True,
     }
+    if MODEL_REVISION and str(model_id_or_path) == MODEL_ID:
+        kwargs["revision"] = MODEL_REVISION
     attn_impl = os.getenv("SURYA_ATTN_IMPLEMENTATION", "sdpa").strip()
     if attn_impl:
         kwargs["attn_implementation"] = attn_impl
@@ -1435,7 +1508,8 @@ def make_training_args(smoke_steps: int = 0):
             "adamw_torch_fused" if torch.cuda.is_available() else "adamw_torch",
         ),
         "bf16": torch.cuda.is_available(),
-        "bf16_full_eval": torch.cuda.is_available(),
+        # Full-eval casting would mutate FP32 master parameters after training.
+        "bf16_full_eval": torch.cuda.is_available() and WEIGHT_DTYPE == "bfloat16",
         "fp16": False,
         "tf32": torch.cuda.is_available(),
         "logging_steps": int(os.getenv("SURYA_LOGGING_STEPS", "5")),
@@ -1455,6 +1529,9 @@ def make_training_args(smoke_steps: int = 0):
         "predict_with_generate": False,
         "dataloader_num_workers": dataloader_workers,
         "dataloader_pin_memory": torch.cuda.is_available(),
+        "accelerator_config": {
+            "non_blocking": torch.cuda.is_available() and env_bool("SURYA_NON_BLOCKING_TRANSFERS", True),
+        },
         "dataloader_persistent_workers": dataloader_workers > 0,
         "dataloader_prefetch_factor": (
             int(os.getenv("SURYA_DATALOADER_PREFETCH_FACTOR", "4"))
@@ -1527,21 +1604,36 @@ def merge_and_save(model, processor, train_mode: str):
     return model
 
 
-def benchmark_existing_model(model_path: str):
-    processor = configure_processor(model_path)
+def benchmark_existing_model(model_path: str, split_name="test", output_path=None, write_report=False,
+                             processor_path=None):
+    if write_report and split_name != "test":
+        raise ValueError("The final report requires a test benchmark.")
+    processor = configure_processor(processor_path or model_path)
     model = load_model(model_path).eval()
     configure_generation(model, processor)
-    test_dataset = prepare_dataset(TEST_FILE, "test", processor)
+    split_file = VAL_FILE if split_name == "val" else TEST_FILE
+    dataset = prepare_dataset(split_file, split_name, processor)
+    max_samples = GEN_EVAL_MAX_SAMPLES if split_name == "val" else FINAL_TEST_MAX_SAMPLES
     metrics, samples = run_generation_benchmark(
         model,
         processor,
-        test_dataset,
-        split_name="test",
-        max_samples=FINAL_TEST_MAX_SAMPLES or None,
-        title="FINAL TEST BENCHMARK",
+        dataset,
+        split_name=split_name,
+        max_samples=max_samples or None,
+        title=f"{split_name.upper()} BENCHMARK",
         worst_count=20,
     )
-    save_benchmark(Path(model_path) / "benchmark_test.json", metrics, samples)
+    if split_name == "test":
+        metrics["confidence_intervals"] = bootstrap_test_metrics(samples)
+    destination = output_path or Path(model_path) / f"benchmark_{split_name}.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    payload = save_benchmark(destination, metrics, samples)
+    if write_report:
+        summary_path = OUTPUT_DIR / "training_summary.json"
+        summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {}
+        summary.update(status="complete", test_metrics=metrics, final_model=model_path)
+        summary["artifacts"] = write_final_report(OUTPUT_DIR, payload, summary)
+        atomic_json(summary_path, summary)
 
 
 def main():
@@ -1550,7 +1642,10 @@ def main():
     set_seed(RANDOM_SEED)
 
     if args.benchmark_only:
-        benchmark_existing_model(args.model_path or str(FINAL_DIR))
+        benchmark_existing_model(
+            args.model_path or str(FINAL_DIR), args.benchmark_split, args.benchmark_output,
+            args.write_report, args.processor_path,
+        )
         return
 
     processor = configure_processor()
@@ -1581,8 +1676,28 @@ def main():
     data_collator = SuryaBubbleCollator(processor, training=True)
     training_args = make_training_args(args.train_smoke_steps)
     atomic_json(OUTPUT_DIR / "run_config.json", {
-        "runtime": runtime, "dataset": manifest, "model_id": MODEL_ID,
+        "runtime": runtime, "dataset": manifest, "model_id": MODEL_ID, "model_revision": MODEL_REVISION,
         "train_mode": train_mode, "seed": RANDOM_SEED, "prompt": USER_PROMPT,
+        "recipe": {
+            "weight_dtype": WEIGHT_DTYPE,
+            "max_new_tokens": MAX_NEW_TOKENS,
+            "generation_validation_samples": GEN_EVAL_MAX_SAMPLES,
+            "generation_batch_size": GEN_EVAL_BATCH_SIZE,
+            "image_pixels": [MIN_IMAGE_PIXELS, MAX_IMAGE_PIXELS],
+            "image_cache_items": int(os.getenv("SURYA_IMAGE_CACHE_ITEMS", "512")),
+            "text_cache_items": int(os.getenv("SURYA_TEXT_CACHE_ITEMS", "16384")),
+            "augment": env_bool("SURYA_AUGMENT", True),
+            "augment_probability": float(os.getenv("SURYA_AUGMENT_PROBABILITY", "0.70")),
+            "very_short_weight": float(os.getenv("SURYA_VERY_SHORT_WEIGHT", "1.20")),
+            "short_weight": float(os.getenv("SURYA_SHORT_WEIGHT", "1.10")),
+            "onomatopoeia_weight": float(os.getenv("SURYA_ONOMATOPOEIA_WEIGHT", "1.12")),
+            "max_sample_weight": float(os.getenv("SURYA_MAX_SAMPLE_WEIGHT", "1.50")),
+            "vision_last_blocks": int(os.getenv("SURYA_VISION_TRAIN_LAST_BLOCKS", "4")),
+            "vision_lr_multiplier": float(os.getenv("SURYA_VISION_LR_MULTIPLIER", "0.25")),
+            "merger_lr_multiplier": float(os.getenv("SURYA_MERGER_LR_MULTIPLIER", "0.50")),
+            "early_stopping_patience": int(os.getenv("SURYA_EARLY_STOPPING_PATIENCE", "2")),
+            "early_stopping_threshold": float(os.getenv("SURYA_EARLY_STOPPING_THRESHOLD", "0.0")),
+        },
         "training_args": training_args.to_dict(),
         "acceleration": model._surya_training_acceleration,
         "comparisons": False, "publication": False,
@@ -1662,8 +1777,11 @@ def main():
         if args.smoke_eval_samples > 0:
             count = min(args.smoke_eval_samples, len(val_dataset))
             trainer.eval_dataset = val_dataset.select(range(count))
-            trainer.gen_eval_max_samples = count
-            trainer.evaluate()
+            # Exercise the default full-validation path on this small subset.
+            trainer.gen_eval_max_samples = 0
+            smoke_metrics = trainer.evaluate()
+            if "eval_cer" not in smoke_metrics:
+                raise RuntimeError("Smoke validation did not return the CER used for checkpoint selection.")
         print(
             f"Training smoke test passed: {trainer.state.global_step} real step(s) completed.",
             flush=True,
@@ -1674,6 +1792,11 @@ def main():
 
     monitor.close("exporting", trainer.state)
     final_model = merge_and_save(trainer.model, processor, train_mode)
+    if env_bool("SURYA_DEFER_FINAL_TEST", False):
+        monitor.summary.update(dataset=manifest, final_model=str(FINAL_DIR))
+        monitor.close("validation_complete", trainer.state)
+        print("Final test deferred; select a model using validation before benchmarking test.", flush=True)
+        return
     print("Running held-out test benchmark...", flush=True)
     metrics, samples = run_generation_benchmark(
         final_model,

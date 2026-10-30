@@ -14,8 +14,9 @@ Le prompt partagé `ocr_surya_bubble` reste celui de l'inférence desktop.
 - Loss par bulle, pondérations légères des textes courts et onomatopées,
   augmentations manga conservatrices. Normalisation exacte sur la fenêtre
   d'accumulation, y compris si le dernier microbatch est incomplet.
-- Validation loss sur toutes les bulles de validation, génération sur un sous-ensemble
-  stratifié fixe (512 dans le profil Docker). Checkpoint retenu sur son CER.
+- Validation loss et génération sur toutes les bulles de validation par défaut.
+  Checkpoint retenu sur le CER de génération. Pour une exploration rapide,
+  `SURYA_GEN_EVAL_MAX_SAMPLES=512` utilise un sous-ensemble stratifié fixe.
 - Test réservé complet après sélection du checkpoint. Aucune comparaison avec
   d'autres modèles n'est exécutée ou ajoutée au rapport.
 
@@ -38,6 +39,18 @@ d'attention complète utilisent SDPA. Le regroupement par longueur réduit le
 padding. La validation génère par lots regroupés ; le cache KV est activé puis
 l'état entraînement est restauré même en cas d'erreur. Les kernels desktop de
 cache Flash/CUDA Graphs ne sont pas installés dans le modèle entraînable.
+Le collator garde aussi en mémoire les templates et leurs tokens déterministes
+entre les époques (`SURYA_TEXT_CACHE_ITEMS`, 16 384 par défaut, 0 pour désactiver).
+Les images augmentées ne sont pas mises en cache : l'augmentation reste aléatoire.
+Les transferts de lots sont non bloquants quand la mémoire épinglée et CUDA sont
+disponibles (`SURYA_NON_BLOCKING_TRANSFERS=0` pour les désactiver).
+
+La recette rapide conserve les paramètres en BF16. Pour éviter d'arrondir les
+petites mises à jour, `SURYA_WEIGHT_DTYPE=float32` garde les poids et états Adam en
+FP32 tout en utilisant BF16 pour les calculs. Cette variante consomme davantage de
+VRAM : commencer par `SURYA_TRAIN_BATCH=16` et `SURYA_GRAD_ACCUM=2`, puis mesurer
+le débit et la qualité avant de modifier le batch. `SURYA_MODEL_REVISION` permet de
+figer la révision Hugging Face du modèle initial ; elle est notée dans `run_config.json`.
 
 `torch.compile` global reste opt-in : les formes image variables et les kernels
 DeltaNet provoquent des coûts de compilation qui doivent être mesurés avant de
@@ -54,8 +67,17 @@ et les splits vides. Les hashes SHA-256 des métadonnées sont dans `run_config.
 Les credentials sont chargés depuis les fichiers `.env` locaux ; ils ne sont
 pas copiés dans l'image.
 
+Pour actualiser un export sans déplacer ses anciennes pages de test ou de validation
+dans l'entraînement, définir `SURYA_SPLIT_REFERENCE_DIR` vers l'ancien dossier de
+dataset et `SURYA_DATASET_DIR` vers un nouveau dossier distinct. Les nouvelles pages
+sont affectées de manière déterministe ; un split manquant ou incohérent interrompt
+l'export. Sans référence explicite, le split initial reste aléatoire par page.
+
 Variables nécessaires : `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` et, pour R2,
 `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PAGES_BUCKET_NAME`.
+L'export utilise la vue Supabase `ocr_training_bubbles` : elle doit être présente
+et accessible au rôle de service, afin d'exclure les pages contenant des textes
+issus uniquement d'un consensus automatique.
 
 ## Lancement local
 
@@ -79,7 +101,7 @@ python export_dataset.py
 python -m unittest test_training -v
 SURYA_RUN_GPU_TESTS=1 python -m unittest test_training.KernelTests -v
 SURYA_OUTPUT_DIR=/workspace/smoke python train_surya_bubble_ocr.py --train-smoke-steps 3 --smoke-eval-samples 16
-SURYA_GEN_EVAL_BATCH=32 SURYA_GEN_EVAL_MAX_SAMPLES=512 SURYA_IMAGE_CACHE_ITEMS=8192 python train_surya_bubble_ocr.py
+SURYA_GEN_EVAL_BATCH=32 SURYA_IMAGE_CACHE_ITEMS=8192 python train_surya_bubble_ocr.py
 ```
 
 Le smoke consomme de vrais batches, exécute forward/backward/AdamW puis loss et
@@ -87,6 +109,13 @@ génération sur validation. Utiliser un dossier distinct du run principal.
 `SURYA_RESUME_FROM_CHECKPOINT=auto` reprend le dernier checkpoint ; `0` repart du
 modèle de base. Choisir un nouveau `SURYA_OUTPUT_DIR` pour préserver un ancien run.
 Les poids exportés gardent le format Transformers standard.
+
+Pour comparer plusieurs recettes sans utiliser le test pour choisir le modèle,
+`SURYA_DEFER_FINAL_TEST=1` termine chaque entraînement après la sélection sur
+validation. `--benchmark-only --benchmark-split val --benchmark-output ...` évalue
+un modèle existant sur la validation ; une fois le modèle choisi,
+`--benchmark-only --benchmark-split test --benchmark-output ... --write-report`
+exécute le test réservé et écrit le rapport dans `SURYA_OUTPUT_DIR`.
 
 Pour une 3090, compiler avec `--build-arg TORCH_CUDA_ARCH_LIST=8.6
 --build-arg CAUSAL_CONV_CUDA_ARCH=86`, puis ajuster le batch de génération.

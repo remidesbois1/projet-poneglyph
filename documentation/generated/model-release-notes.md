@@ -1,6 +1,6 @@
 # Model benchmark release notes
 
-Generated from model registry v1 on 2026-10-13.
+Generated from model registry v1 on 2026-10-30.
 
 ## LightOnOCR 3 Poneglyph · WebGPU
 
@@ -32,11 +32,11 @@ Generated from model registry v1 on 2026-10-13.
 ## Surya OCR 2 Poneglyph
 
 - Registry ID: `surya-bubble`
-- Published version: `Remidesbois/surya-bubble-ocr-poneglyph@7d7b358c545cfe757329f780da6ed4100bb5909f`
-- Result: CER 0,451 % · WER 1,656 % · Exact match 90,65 % · Token limit 0,00 %
-- Evaluation: Poneglyph validated single-bubble crops, test held-out by page, 1423 samples, 2026-07-30
-- Hardware: NVIDIA RTX 3090 24 GB
-- Protocol and evidence: Exhaustive generative evaluation with a 256-token budget, collapsed whitespace and explicit blank, hallucination and token-limit accounting. https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/blob/7d7b358c545cfe757329f780da6ed4100bb5909f/benchmark_test.json
+- Published version: `Remidesbois/surya-bubble-ocr-poneglyph@24a589633c9c4b57663bfc019b132f11b45f9eb8`
+- Result: CER 0,465 % · WER 1,823 % · Exact match 91,19 % · Token limit 0,00 %
+- Evaluation: Poneglyph validated single-bubble crops, test held-out by page, 1691 samples, 2026-10-30
+- Hardware: NVIDIA RTX 5090 32 GB
+- Protocol and evidence: Exhaustive generative evaluation with a 256-token budget, collapsed whitespace and explicit blank, hallucination and token-limit accounting. https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/blob/24a589633c9c4b57663bfc019b132f11b45f9eb8/benchmark_test.json
 
 ## Surya OCR 2 Poneglyph BBox
 

@@ -6,12 +6,14 @@ import { downloadModel } from './modelDownload';
 import { SuryaFusedDecoder } from './suryaFusedDecoder';
 
 export const SURYA_MODEL_BASE = process.env.NEXT_PUBLIC_SURYA_MODEL_BASE ||
-    'https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/resolve/1d3698b88de708cc7b7cb8d349b4255715b70bc5/onnx';
+    'https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/resolve/24a589633c9c4b57663bfc019b132f11b45f9eb8/onnx';
+const SURYA_SOURCE_SHA256 = '8fa50e74b2ae134e5a8f0269cee2f8a41cfd586096bb8891eb1f3bd676b1dca7';
 
 export class SuryaWebGPU {
     constructor(descriptor = {}) {
         this.descriptor = { modelBase: SURYA_MODEL_BASE, localPath: '/models/surya-ocr',
             overrideBase: Boolean(process.env.NEXT_PUBLIC_SURYA_MODEL_BASE), label: 'Surya',
+            localSourceSha256: descriptor.modelBase ? null : SURYA_SOURCE_SHA256,
             prepareImage: prepareSuryaImage, cleanText: cleanSuryaText, ...descriptor };
     }
     async load(onProgress = () => {}, options = {}) {
@@ -23,11 +25,15 @@ export class SuryaWebGPU {
         ort.env.wasm.wasmPaths = new URL('/onnx/', self.location.origin).href;
         ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false;
         ort.env.webgpu.powerPreference = 'high-performance';
-        this.options = { tokenBatch: 8, ...options };
+        // The fused MLP is validated for Surya's bubble checkpoint only.
+        this.options = { tokenBatch: 8, fusedMlp: this.descriptor.localSourceSha256 === SURYA_SOURCE_SHA256, ...options };
         let base = this.descriptor.modelBase;
         if (!this.descriptor.overrideBase && process.env.NODE_ENV === 'development') {
             const local = new URL(this.descriptor.localPath, self.location.origin).href;
-            if ((await fetch(`${local}/browser_manifest.json`, { method: 'HEAD' }).catch(() => null))?.ok) base = local;
+            const localResponse = await fetch(`${local}/browser_manifest.json`,
+                this.descriptor.localSourceSha256 ? {} : { method: 'HEAD' }).catch(() => null);
+            if (localResponse?.ok && (!this.descriptor.localSourceSha256 ||
+                (await localResponse.json().catch(() => null))?.source_sha256 === this.descriptor.localSourceSha256)) base = local;
         }
         base = new URL(base, self.location.origin).href.replace(/\/$/, '');
         const getJson = async name => {
@@ -164,7 +170,9 @@ export class SuryaWebGPU {
                 const token = Number(outputs.next_token.data[0]); outputs.next_token.dispose();
                 return token;
             };
-            const chunk = this.manifest.chunk_size;
+            const requestedChunk = Number(this.options.prefillChunk);
+            const chunk = Number.isInteger(requestedChunk) && requestedChunk > 0
+                ? Math.min(requestedChunk, this.manifest.chunk_size) : this.manifest.chunk_size;
             const promptEnd = p.ids.length - (this.stateOnly ? 1 : 0);
             for (let start = 0; start < promptEnd; start += chunk) {
                 options.signal?.throwIfAborted();

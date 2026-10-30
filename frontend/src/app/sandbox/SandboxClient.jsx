@@ -858,7 +858,7 @@ export default function SandboxClient() {
                 onDrop={onDrop}>
                 <PoneglyphBackground count={32} seed={123} />
 
-                <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
+                <header className="relative z-20 mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
                     <Link href="/" className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[.18em] text-slate-400 transition hover:text-white">
                         <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/12 bg-white/[.07] text-[#8dbbff]">
                             <ArrowLeft size={14} />
@@ -866,7 +866,7 @@ export default function SandboxClient() {
                         Poneglyph
                     </Link>
                     <div className="flex items-center gap-2">
-                        <LocalOcrStatusIndicator />
+                        <LocalOcrStatusIndicator align="right" />
                     </div>
                 </header>
 

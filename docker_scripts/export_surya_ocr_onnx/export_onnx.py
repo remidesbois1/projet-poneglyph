@@ -1,7 +1,7 @@
-"""Surya OCR 2: portable vision + hybrid DeltaNet ONNX, batch one, chunks <=32.
+"""Surya OCR 2: portable vision + hybrid DeltaNet ONNX, batch one.
 
 All recurrent state stays explicit. A finite Neumann series solves the triangular
-DeltaNet chunk recurrence (nilpotent at order 32); no Loop or custom operators.
+DeltaNet chunk recurrence; no Loop or custom operators.
 Weights/matmuls are FP16, residuals, reductions and recurrent state are FP32.
 """
 import argparse
@@ -19,7 +19,7 @@ END = 2**63 - 1
 
 
 class Graph:
-    def __init__(self, source, directory, name, shared=None):
+    def __init__(self, source, directory, name, shared=None, chunk_size=32):
         self.weights = safe_open(source / "model.safetensors", framework="pt")
         self.nodes, self.initializers, self.inputs, self.outputs = [], [], [], []
         self.serial, self.weight_names = 0, {}
@@ -28,6 +28,7 @@ class Graph:
         self.data_index = shared.data_index if shared else {}
         self.stream = None if shared else (directory / self.data_name).open("wb")
         self.single_token = name == "decode"
+        self.chunk_size = chunk_size
 
     def fresh(self, stem):
         self.serial += 1
@@ -241,7 +242,7 @@ def delta(g, x, p, layer):
     vb = g.op("Mul", v, beta)
     a = g.op("Neg", g.op("Mul", g.op("Mul", g.mm(kb, g.trans(k, [0, 2, 1])), decay_matrix), "strict_lower"))
     inverse = g.op("Add", "identity", a)
-    for _ in range(4):
+    for _ in range(g.chunk_size.bit_length() - 2):
         a = g.mm(a, a)
         inverse = g.mm(inverse, g.op("Add", "identity", a))
     u = g.mm(inverse, vb)
@@ -259,8 +260,8 @@ def delta(g, x, p, layer):
     return g.linear(g.cast(g.shape(gated, [1, -1, 2048]), T.FLOAT16), p + "out_proj")
 
 
-def decoder(source, out, config, shared=None):
-    g = Graph(source, out, "decode" if shared else "decoder", shared=shared)
+def decoder(source, out, config, shared=None, chunk_size=32):
+    g = Graph(source, out, "decode" if shared else "decoder", shared=shared, chunk_size=chunk_size)
     seq = 1 if shared else "sequence"
     ids = g.input("input_ids", T.INT64, [1, seq])
     image = g.input("image_features", T.FLOAT16, ["image_tokens", 1024])
@@ -316,7 +317,9 @@ def decoder(source, out, config, shared=None):
     return g
 
 
-def export(source, out):
+def export(source, out, chunk_size=32):
+    if chunk_size not in (32, 64):
+        raise ValueError("Supported prefill chunk sizes are 32 and 64")
     out.mkdir(parents=True, exist_ok=True)
     config = json.loads((source / "config.json").read_text())
     text, visual = config["text_config"], config["vision_config"]
@@ -328,8 +331,8 @@ def export(source, out):
     assert (visual["depth"], visual["hidden_size"], visual["num_heads"], visual["patch_size"],
             visual["spatial_merge_size"], visual["temporal_patch_size"]) == (12, 768, 12, 16, 2, 2)
     vision(source, out)
-    prefill = decoder(source, out, config)
-    decoder(source, out, config, shared=prefill)
+    prefill = decoder(source, out, config, chunk_size=chunk_size)
+    decoder(source, out, config, shared=prefill, chunk_size=chunk_size)
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(source)
     prompt = "Transcris exactement le texte visible dans cette bulle. Ne rajoute rien."
@@ -341,7 +344,7 @@ def export(source, out):
             return hashlib.file_digest(stream, "sha256").hexdigest()
     manifest = {"schema": 1, "model_id": "Remidesbois/surya-bubble-ocr-poneglyph",
                 "source_sha256": digest(source / "model.safetensors"), "config": config,
-                "format": "mixed-fp16-fp32", "chunk_size": 32, "max_new_tokens": 256,
+                "format": "mixed-fp16-fp32", "chunk_size": chunk_size, "max_new_tokens": 256,
                 "prompt_chunks": chunks, "image_token_id": 11, "stop_ids": [2],
                 "min_pixels": 65536, "max_pixels": 1048576,
                 "files": {name: {"bytes": (out / name).stat().st_size, "sha256": digest(out / name)}
@@ -361,5 +364,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--chunk-size", type=int, choices=(32, 64), default=32)
     args = parser.parse_args()
-    export(args.source, args.output)
+    export(args.source, args.output, args.chunk_size)

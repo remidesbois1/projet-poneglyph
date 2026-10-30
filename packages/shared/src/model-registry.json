@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-13",
+  "updated_at": "2026-10-30",
   "provenance_policy": "Published values must come from a pinned artifact and carry the dataset, split, date, hardware, model revision and evaluation protocol.",
   "models": {
     "lighton3-bubble": {
@@ -112,37 +112,37 @@
       "task": "bubble-ocr",
       "artifact": {
         "repository": "Remidesbois/surya-bubble-ocr-poneglyph",
-        "revision": "7d7b358c545cfe757329f780da6ed4100bb5909f",
+        "revision": "24a589633c9c4b57663bfc019b132f11b45f9eb8",
         "url": "https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph"
       },
       "benchmark": {
         "status": "published",
         "dataset": "Poneglyph validated single-bubble crops",
         "split": "test held-out by page",
-        "date": "2026-07-30",
-        "sample_count": 1423,
-        "hardware": "NVIDIA RTX 3090 24 GB",
+        "date": "2026-10-30",
+        "sample_count": 1691,
+        "hardware": "NVIDIA RTX 5090 32 GB",
         "protocol": "Exhaustive generative evaluation with a 256-token budget, collapsed whitespace and explicit blank, hallucination and token-limit accounting.",
-        "source_url": "https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/blob/7d7b358c545cfe757329f780da6ed4100bb5909f/benchmark_test.json",
+        "source_url": "https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/blob/24a589633c9c4b57663bfc019b132f11b45f9eb8/benchmark_test.json",
         "primary_metric": "cer",
         "metrics": {
           "cer": {
             "label": "CER",
-            "value": 0.004509963642143325,
+            "value": 0.0046471632178860895,
             "unit": "ratio",
             "lower_is_better": true,
             "display_precision": 3
           },
           "wer": {
             "label": "WER",
-            "value": 0.01655595298926929,
+            "value": 0.018226230740323188,
             "unit": "ratio",
             "lower_is_better": true,
             "display_precision": 3
           },
           "exact_match": {
             "label": "Exact match",
-            "value": 0.9065354884047786,
+            "value": 0.911886457717327,
             "unit": "ratio",
             "lower_is_better": false,
             "display_precision": 2

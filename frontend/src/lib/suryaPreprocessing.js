@@ -1,5 +1,12 @@
 import { half, roundEven } from './falconPreprocessing';
 
+// An image channel has only 256 values. Convert each value once, with the
+// exact same FP16 rounding as the original per-pixel path.
+const NORMALIZED_PIXEL_HALF = Uint16Array.from({ length: 256 }, (_, value) => half(value / 127.5 - 1));
+const TEXT_ROTARY_FREQUENCIES = Float32Array.from({ length: 32 }, (_, f) => 1 / (10000000 ** (f / 32)));
+const VISION_ROTARY_FREQUENCIES = Float32Array.from({ length: 16 }, (_, f) => 1 / (10000 ** (f / 16)));
+const layoutCaches = new WeakMap();
+
 export function suryaDimensions(width, height, minPixels = 65536, maxPixels = 1048576) {
     if (!(width > 0 && height > 0) || Math.max(width, height) / Math.min(width, height) > 200) {
         throw new Error('Dimensions d’image incompatibles avec Surya.');
@@ -21,7 +28,7 @@ export function suryaRotary(positions) {
     const cos = new Float32Array(positions.length * 64), sin = new Float32Array(cos.length);
     for (let s = 0; s < positions.length; s++) for (let f = 0; f < 32; f++) {
         const axis = f % 3 === 1 && f < 33 ? 1 : f % 3 === 2 && f < 30 ? 2 : 0;
-        const angle = Math.fround(positions[s][axis] * Math.fround(1 / (10000000 ** (f / 32))));
+        const angle = Math.fround(positions[s][axis] * TEXT_ROTARY_FREQUENCIES[f]);
         cos[s * 64 + f] = cos[s * 64 + f + 32] = Math.cos(angle);
         sin[s * 64 + f] = sin[s * 64 + f + 32] = Math.sin(angle);
     }
@@ -43,7 +50,7 @@ export function suryaLayout(manifest, width, height) {
             [y0 * 48 + x0, y0 * 48 + x1, y1 * 48 + x0, y1 * 48 + x1].forEach((v, i) => { indices[i * patches + n] = BigInt(v); });
             [(1 - fy) * (1 - fx), (1 - fy) * fx, fy * (1 - fx), fy * fx].forEach((v, i) => { weights[i * patches + n] = v; });
             for (let f = 0; f < 32; f++) {
-                const angle = Math.fround((f < 16 ? y : x) * Math.fround(1 / (10000 ** ((f % 16) / 16))));
+                const angle = Math.fround((f < 16 ? y : x) * VISION_ROTARY_FREQUENCIES[f % 16]);
                 cos[n * 64 + f] = cos[n * 64 + f + 32] = Math.cos(angle);
                 sin[n * 64 + f] = sin[n * 64 + f + 32] = Math.sin(angle);
             }
@@ -64,11 +71,15 @@ export function packSuryaPixels(rgba, width, layout) {
     const pixels = new Uint16Array(layout.patches * 1536);
     let index = 0;
     for (const [py, px] of layout.patchPositions) {
-        for (let c = 0; c < 3; c++) for (let t = 0; t < 2; t++) {
+        for (let c = 0; c < 3; c++) {
+            const frameStart = index;
             for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
                 const value = rgba[((py * 16 + y) * width + px * 16 + x) * 4 + c];
-                pixels[index++] = half(value / 127.5 - 1);
+                pixels[index++] = NORMALIZED_PIXEL_HALF[value];
             }
+            // Surya uses two identical temporal frames for a still image.
+            pixels.set(pixels.subarray(frameStart, index), index);
+            index += 256;
         }
     }
     return pixels;
@@ -80,7 +91,20 @@ export async function prepareSuryaImage(manifest, bitmap) {
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height);
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(bitmap, 0, 0, width, height);
-    const layout = suryaLayout(manifest, width, height);
+    // Crops frequently round to the same grid. Keep a small, model-specific
+    // cache; very large layouts are left uncached to bound memory usage.
+    let cache = layoutCaches.get(manifest);
+    if (!cache) { cache = new Map(); layoutCaches.set(manifest, cache); }
+    const key = `${width}x${height}`;
+    let layout = cache.get(key);
+    if (layout) { cache.delete(key); cache.set(key, layout); }
+    else {
+        layout = suryaLayout(manifest, width, height);
+        if (layout.patches <= 1024) {
+            if (cache.size >= 16) cache.delete(cache.keys().next().value);
+            cache.set(key, layout);
+        }
+    }
     return { ...layout, pixels: packSuryaPixels(ctx.getImageData(0, 0, width, height).data, width, layout) };
 }
 

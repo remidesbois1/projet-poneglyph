@@ -17,6 +17,7 @@ const bind = (i, name, type = 'f16', rw = false) => `@group(0) @binding(${i}) va
 export class SuryaFusedDecoder {
     constructor(device, options = {}) {
         this.device = device; this.weights = {}; this.buffers = []; this.pipelines = new Map();
+        this.rotaryTables = new Map();
         this.options = options;
         device.lost.then(info => { this.deviceLost = info.message || 'Périphérique WebGPU perdu.'; });
     }
@@ -88,11 +89,17 @@ export class SuryaFusedDecoder {
         const weights = key => this.weights[key];
         const tasks = []; const add = (...args) => tasks.push(this.kernel(...args));
         this.params = this.buffer(16, 'token-position-length', new Uint32Array([token, position, length, 0]));
-        const rotations = suryaRotary(Array.from({ length: maxTokens + 8 }, (_, i) => [position + i, position + i, position + i]));
-        const angles = new Float32Array((maxTokens + 8) * 128);
-        for (let i = 0; i < maxTokens + 8; i++) {
-            angles.set(rotations.cos.subarray(i * 64, i * 64 + 64), i * 128);
-            angles.set(rotations.sin.subarray(i * 64, i * 64 + 64), i * 128 + 64);
+        const rotaryKey = `${position}:${maxTokens}`;
+        let angles = this.rotaryTables.get(rotaryKey);
+        if (!angles) {
+            const rotations = suryaRotary(Array.from({ length: maxTokens + 8 }, (_, i) => [position + i, position + i, position + i]));
+            angles = new Float32Array((maxTokens + 8) * 128);
+            for (let i = 0; i < maxTokens + 8; i++) {
+                angles.set(rotations.cos.subarray(i * 64, i * 64 + 64), i * 128);
+                angles.set(rotations.sin.subarray(i * 64, i * 64 + 64), i * 128 + 64);
+            }
+            if (this.rotaryTables.size >= 32) this.rotaryTables.delete(this.rotaryTables.keys().next().value);
+            this.rotaryTables.set(rotaryKey, angles);
         }
         const rotary = this.buffer(angles.byteLength, 'rotary-table', angles);
         this.tokens = b(maxTokens + 8, 4, 'generated-tokens');
@@ -132,6 +139,38 @@ export class SuryaFusedDecoder {
                     let result = sum(acc, lane, 64u); if (lane == 0u) { y[row] = f16(result); }
                 }`;
             add('gemv ' + name, code, [src, weights(name), dst], [Math.min(n, 65535), Math.ceil(n / 65535)]);
+        };
+        // Compute both MLP projections together and preserve the FP16 rounding
+        // between the matrix products and SwiGLU used by the original path.
+        const mlp = (src, prefix, dst) => {
+            if (!this.device.features.has('subgroups') || this.options.gemv === 'shared' || this.options.fusedMlp === false) {
+                gemv(src, prefix + 'gate_proj.weight', gate, 1024, 3584);
+                gemv(src, prefix + 'up_proj.weight', up, 1024, 3584);
+                add('SwiGLU', bind(0, 'gate') + bind(1, 'up') + bind(2, 'out', 'f16', true) + `
+                    @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) id:vec3<u32>){let i=id.x;let v=f32(gate[i]);out[i]=f16(v*(1.0/(1.0+exp(-v)))*f32(up[i]));}
+                `, [gate, up, dst], 14);
+                return;
+            }
+            const code = 'enable subgroups;\n' + bind(0, 'x') + bind(1, 'gate') + bind(2, 'up') + bind(3, 'out', 'f16', true) + `
+                var<workgroup> parts: array<f32,256>;
+                @compute @workgroup_size(128) fn main(@builtin(local_invocation_index) lane:u32, @builtin(workgroup_id) g:vec3<u32>,
+                    @builtin(subgroup_size) size:u32, @builtin(subgroup_invocation_id) slane:u32) {
+                    let row=g.x*4u;var a=0.0;var b=0.0;var c=0.0;var d=0.0;
+                    var e=0.0;var f=0.0;var h=0.0;var i=0.0;
+                    for(var j=lane;j<1024u;j+=128u){let value=f32(x[j]);
+                        a+=value*f32(gate[row*1024u+j]);b+=value*f32(gate[(row+1u)*1024u+j]);
+                        c+=value*f32(gate[(row+2u)*1024u+j]);d+=value*f32(gate[(row+3u)*1024u+j]);
+                        e+=value*f32(up[row*1024u+j]);f+=value*f32(up[(row+1u)*1024u+j]);
+                        h+=value*f32(up[(row+2u)*1024u+j]);i+=value*f32(up[(row+3u)*1024u+j]);}
+                    let sa=subgroupAdd(a);let sb=subgroupAdd(b);let sc=subgroupAdd(c);let sd=subgroupAdd(d);
+                    let se=subgroupAdd(e);let sf=subgroupAdd(f);let sh=subgroupAdd(h);let si=subgroupAdd(i);
+                    if(slane==0u){let p=(lane/size)*8u;parts[p]=sa;parts[p+1u]=sb;parts[p+2u]=sc;parts[p+3u]=sd;
+                        parts[p+4u]=se;parts[p+5u]=sf;parts[p+6u]=sh;parts[p+7u]=si;}
+                    workgroupBarrier();
+                    if(lane<4u){var gsum=0.0;var usum=0.0;for(var n=0u;n<128u/size;n++){gsum+=parts[n*8u+lane];usum+=parts[n*8u+4u+lane];}
+                        let v=f32(f16(gsum));let u=f32(f16(usum));out[row+lane]=f16(v*(1.0/(1.0+exp(-v)))*u);}
+                }`;
+            add('fused MLP projections SwiGLU', code, [src, weights(prefix + 'gate_proj.weight'), weights(prefix + 'up_proj.weight'), dst], 3584 / 4);
         };
         const rms = (src, name, dst, residual) => {
             const code = bind(0, 'x', 'f32', true) + bind(1, 'weight', 'f32') + bind(2, 'y', 'f16', true) +
@@ -247,11 +286,7 @@ export class SuryaFusedDecoder {
                 gemv(core, l + 'o_proj.weight', attended, 2048, 1024);
             }
             rms(x, p + 'post_attention_layernorm.weight', norm, attended);
-            gemv(norm, p + 'mlp.gate_proj.weight', gate, 1024, 3584);
-            gemv(norm, p + 'mlp.up_proj.weight', up, 1024, 3584);
-            add('SwiGLU', bind(0, 'gate') + bind(1, 'up') + bind(2, 'out', 'f16', true) + `
-                @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) id:vec3<u32>){let i=id.x;let v=f32(gate[i]);out[i]=f16(v*(1.0/(1.0+exp(-v)))*f32(up[i]));}
-            `, [gate, up, ff], 14);
+            mlp(norm, p + 'mlp.', ff);
             gemv(ff, p + 'mlp.down_proj.weight', down, 3584, 1024);
         }
         rms(x, 'norm.weight', norm, down);
@@ -331,5 +366,5 @@ export class SuryaFusedDecoder {
             weightBytes: this.weightBytes, sequenceBytes: (this.sequenceBuffers || []).reduce((bytes, b) => bytes + b.size, 0),
             subgroups: this.device.features.has('subgroups') && this.options.gemv !== 'shared' };
     }
-    dispose() { this.end(); this.buffers.forEach(b => b.destroy()); this.buffers = []; this.weights = {}; }
+    dispose() { this.end(); this.buffers.forEach(b => b.destroy()); this.buffers = []; this.weights = {}; this.rotaryTables.clear(); }
 }

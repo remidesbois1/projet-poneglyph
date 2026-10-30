@@ -1,12 +1,13 @@
 """Numerical and data-contract regressions. GPU kernel tests are explicitly opt-in."""
 
 import copy
+import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import torch
 import torch.nn.functional as F
@@ -75,6 +76,28 @@ class DataAndLossTests(unittest.TestCase):
                 self.assertEqual(batch["ocr_targets"].numel(), 7)
                 torch.testing.assert_close(batch["ocr_token_weights"].sum(), batch["sample_weights"].sum())
 
+    def test_text_cache_preserves_targets_and_tracks_changed_reference(self):
+        with tempfile.TemporaryDirectory() as folder:
+            image = Path(folder) / "crop.png"
+            Image.new("RGB", (32, 32)).save(image)
+            processor = FakeProcessor()
+            cache = training.TextLRUCache(2)
+            def batch(text, text_cache):
+                return training.process_batch(
+                    {"id": [1], "image_file": ["crop.png"], "text": [text]},
+                    processor,
+                    text_cache=text_cache,
+                )
+            with patch.object(training, "resolve_image_path", return_value=image):
+                first = batch("A", cache)
+                cached = batch("A", cache)
+                changed = batch("BC", cache)
+                uncached = batch("BC", None)
+            for key in ("labels", "ocr_positions", "ocr_targets", "ocr_token_weights"):
+                torch.testing.assert_close(cached[key], first[key])
+                torch.testing.assert_close(changed[key], uncached[key])
+            self.assertEqual(len(cache.items), 2)
+
     def test_sparse_head_matches_dense_loss_and_gradients_with_uneven_accumulation(self):
         torch.manual_seed(42)
         original = ToyModel()
@@ -114,11 +137,57 @@ class DataAndLossTests(unittest.TestCase):
         self.assertTrue(model.training)
         self.assertFalse(model.config.use_cache)
 
+    def test_full_validation_returns_cer_for_checkpoint_selection(self):
+        trainer = object.__new__(training.SuryaOCRTrainer)
+        trainer.gen_eval_max_samples = 0
+        trainer.model = object()
+        trainer.processor = object()
+        trainer.args = SimpleNamespace(output_dir="unused")
+        trainer.state = SimpleNamespace(global_step=5)
+        trainer.update_generation_early_stopping = MagicMock()
+        output = SimpleNamespace(metrics={"eval_loss": 0.2})
+        dataloader = SimpleNamespace(dataset=[{"split": "val"}])
+        with patch.object(training.Seq2SeqTrainer, "evaluation_loop", return_value=output), \
+             patch.object(training, "run_generation_benchmark", return_value=({"cer": 0.01}, [])) as generate, \
+             patch.object(training, "save_benchmark"):
+            result = trainer.evaluation_loop(dataloader, "Evaluation")
+        self.assertEqual(result.metrics["eval_cer"], 0.01)
+        self.assertEqual(generate.call_args.kwargs["max_samples"], 0)
+        trainer.update_generation_early_stopping.assert_called_once_with(0.01)
+
     def test_no_baseline_comparison_is_saved(self):
         with tempfile.TemporaryDirectory() as folder:
             sample = {"reference": "A", "prediction": "A", "cer": 0., "levenshtein": 0}
             payload = training.save_benchmark(Path(folder)/"test.json", {"cer": 0.}, [sample])
             self.assertNotIn("baseline_comparisons", payload)
+
+    def test_deferred_test_writes_report_without_touching_model_directory(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output_dir = Path(folder) / "output"
+            model_dir = Path(folder) / "model"
+            model_dir.mkdir()
+            sample = {"reference": "A", "prediction": "A", "cer": 0.0,
+                      "levenshtein": 0, "page_id": "page-1"}
+            metrics = training.compute_text_metrics([sample])
+            model = MagicMock()
+            model.eval.return_value = model
+            with patch.object(training, "OUTPUT_DIR", output_dir), \
+                 patch.object(training, "configure_processor", return_value=object()) as configure_processor, \
+                 patch.object(training, "load_model", return_value=model), \
+                 patch.object(training, "configure_generation"), \
+                 patch.object(training, "prepare_dataset", return_value=[sample]), \
+                 patch.object(training, "run_generation_benchmark", return_value=(metrics, [sample])), \
+                 patch.object(training, "write_final_report", return_value=["report.html"]):
+                training.benchmark_existing_model(
+                    str(model_dir), "test", output_dir / "test.json", write_report=True,
+                    processor_path="separate-processor",
+                )
+            configure_processor.assert_called_once_with("separate-processor")
+            summary = json.loads((output_dir / "training_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["status"], "complete")
+            self.assertEqual(summary["test_metrics"]["confidence_intervals"]["page_count"], 1)
+            self.assertEqual(summary["artifacts"], ["report.html"])
+            self.assertEqual(list(model_dir.iterdir()), [])
 
 
 @unittest.skipUnless(os.getenv("SURYA_RUN_GPU_TESTS") == "1", "Set SURYA_RUN_GPU_TESTS=1 for CUDA backward tests")

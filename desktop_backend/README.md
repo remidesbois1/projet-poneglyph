@@ -22,6 +22,14 @@ The same architecture-specific engines are enabled for the cropped-bubble
 320x640 bubble and smaller caches, so compilation still happens during model
 loading without imposing full-page cache sizes on every crop.
 
+On Windows with CUDA BF16, Surya's bubble model also uses the pinned
+Flash Linear Attention kernels for DeltaNet prefill and recurrence when the
+dependencies in `requirements.txt` are installed. First load can take longer
+while Triton compiles kernels; subsequent requests reuse them. CPU, other
+precision modes and Surya-BBox keep the reference path. If a kernel fails,
+the bubble model falls back to the reference PyTorch operations. Set
+`PONEGLYPH_SURYA_FLA=0` to opt out when diagnosing a GPU-specific problem.
+
 Only one page is decoded at a time. If a required kernel is unavailable or the
 optimized path fails, the server restores the model and continues with standard
 Transformers `generate`.

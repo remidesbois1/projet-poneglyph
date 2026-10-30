@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -37,6 +38,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 OUTPUT_DIR = Path(os.getenv("SURYA_DATASET_DIR", str(SCRIPT_DIR / "surya_bubble_dataset")))
+SPLIT_REFERENCE_DIR = os.getenv("SURYA_SPLIT_REFERENCE_DIR", "").strip()
 VAL_SIZE = float(os.getenv("SURYA_VAL_SIZE", "0.15"))
 TEST_SIZE = float(os.getenv("SURYA_TEST_SIZE", "0.15"))
 RANDOM_SEED = int(os.getenv("SURYA_RANDOM_SEED", "42"))
@@ -124,9 +126,10 @@ def fetch_all_bubbles(supabase: Client):
 
     while True:
         response = (
-            supabase.table("bulles")
+            supabase.table("ocr_training_bubbles")
             .select("id, x, y, w, h, texte_propose, id_page, pages(url_image)")
             .eq("statut", "Validé")
+            .order("id")
             .range(offset, offset + SUPABASE_PAGE_SIZE - 1)
             .execute()
         )
@@ -211,11 +214,56 @@ def verify_split_integrity(splits) -> None:
         raise RuntimeError(f"Page-level split leak detected: {details}")
 
 
-def split_pages(page_ids):
+def load_reference_page_splits(reference_dir):
+    """Recover all existing page assignments, rejecting incomplete or leaky references."""
+    assignments = {}
+    for split_name in ("train", "val", "test"):
+        metadata_path = Path(reference_dir) / split_name / "metadata.jsonl"
+        if not metadata_path.is_file():
+            raise FileNotFoundError(f"Missing reference split: {metadata_path}")
+        count = 0
+        with metadata_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                page_id = entry.get("page_id")
+                if page_id is None or not str(page_id).strip():
+                    raise ValueError(f"Missing page_id in {metadata_path}")
+                page_id = str(page_id)
+                previous = assignments.setdefault(page_id, split_name)
+                if previous != split_name:
+                    raise ValueError(f"Reference page {page_id} appears in {previous} and {split_name}")
+                count += 1
+        if not count:
+            raise ValueError(f"Empty reference split: {metadata_path}")
+    return assignments
+
+
+def split_pages(page_ids, reference_dir=None):
     if VAL_SIZE <= 0 or TEST_SIZE <= 0 or VAL_SIZE + TEST_SIZE >= 1:
         raise ValueError("SURYA_VAL_SIZE and SURYA_TEST_SIZE must be > 0 and sum to < 1.")
     if len(page_ids) < 3:
         raise ValueError("At least 3 distinct pages are required for train/val/test splits.")
+
+    if reference_dir:
+        reference = load_reference_page_splits(reference_dir)
+        splits = {name: [] for name in ("train", "val", "test")}
+        new_count = 0
+        for page_id in sorted(str(value) for value in page_ids):
+            split_name = reference.get(page_id)
+            if split_name is None:
+                # Hashing keeps assignments stable when other pages are added.
+                digest = hashlib.sha256(f"{RANDOM_SEED}:{page_id}".encode("utf-8")).digest()
+                draw = int.from_bytes(digest[:8], "big") / 2**64
+                split_name = "test" if draw < TEST_SIZE else "val" if draw < TEST_SIZE + VAL_SIZE else "train"
+                new_count += 1
+            splits[split_name].append(page_id)
+        verify_split_integrity(splits)
+        if any(not ids for ids in splits.values()):
+            raise ValueError("A preserved page split is empty for the current dataset.")
+        print(f"Preserved page splits from {reference_dir}; assigned {new_count} new pages.", flush=True)
+        return splits
 
     train_ids, holdout_ids = train_test_split(
         sorted(page_ids),
@@ -391,6 +439,7 @@ def write_report(splits, split_entries, grouping_skips, split_skips):
         "allow_empty_text": ALLOW_EMPTY_TEXT,
         "min_text_length": MIN_TEXT_LENGTH,
         "crop_pad_px": CROP_PAD_PX,
+        "split_reference_dir": SPLIT_REFERENCE_DIR or None,
         "prompt": USER_PROMPT,
         "splits": {},
         "skipped": {
@@ -416,6 +465,11 @@ def main():
     require_env()
 
     if CLEAN_DATASET and OUTPUT_DIR.exists():
+        if SPLIT_REFERENCE_DIR:
+            reference_path = Path(SPLIT_REFERENCE_DIR).resolve()
+            output_path = OUTPUT_DIR.resolve()
+            if reference_path == output_path or output_path in reference_path.parents:
+                raise ValueError("Cannot clean a dataset containing the reference splits.")
         print(f"Cleaning existing dataset directory: {OUTPUT_DIR}", flush=True)
         shutil.rmtree(OUTPUT_DIR)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -426,7 +480,7 @@ def main():
     if not pages:
         raise RuntimeError("No valid bubbles were exported from Supabase.")
 
-    splits = split_pages(list(pages.keys()))
+    splits = split_pages(list(pages.keys()), SPLIT_REFERENCE_DIR or None)
     print("Page-level split:", flush=True)
     for split_name, page_ids in splits.items():
         n_bubbles = sum(len(pages[page_id]["bubbles"]) for page_id in page_ids)

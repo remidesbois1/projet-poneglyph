@@ -1,4 +1,4 @@
-## Projet Poneglyph benchmark (2026-10-13)
+## Projet Poneglyph benchmark (2026-10-30)
 
 Registry ID: `lighton3-bubble`
 Pinned revision: `dd066c12c4dcc990d71ebc78136e9c7c21c36522`

@@ -1,4 +1,4 @@
-## Projet Poneglyph benchmark (2026-10-13)
+## Projet Poneglyph benchmark (2026-10-30)
 
 Registry ID: `ppocrv6-line`
 Pinned revision: `10b932d4aadca2830850ccf5951116597404bef8`

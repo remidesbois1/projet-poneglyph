@@ -1,8 +1,8 @@
 # Surya OCR Poneglyph — ONNX et WebGPU
 
-Fine-tuning non-bbox du 5 octobre 2026, sélectionné sur le CER de validation.
+Fine-tuning non-bbox du 30 octobre 2026, sélectionné sur le CER de validation.
 SHA-256 du checkpoint natif :
-`67fa1733d2541d6305cffef1e5202e47930a5f5393d1901adda52e7daab05629`.
+`8fa50e74b2ae134e5a8f0269cee2f8a41cfd586096bb8891eb1f3bd676b1dca7`.
 
 La page `/sandbox/surya` et le moteur **Surya · WebGPU** exécutent l'OCR dans
 un worker du navigateur. Les images restent sur l'appareil. Chrome/Edge
@@ -59,7 +59,9 @@ utilise ONNX. Les sessions imposent `disable_cpu_ep_fallback: '1'`.
 Le décodeur est dans `frontend/src/lib/suryaFusedDecoder.js`, l'orchestration
 dans `suryaWebgpu.js`, le worker dans `frontend/src/workers/surya.worker.js`.
 Le prompt résout la récurrence triangulaire DeltaNet par une série de
-Neumann finie sur des blocs de 32 tokens. Les petites matrices de
+Neumann finie sur des blocs définis par le manifeste, 32 tokens par défaut.
+L'exporteur peut aussi construire des blocs de 64 ; leur précision doit être
+vérifiée sur le matériel et le jeu de données cibles. Les petites matrices de
 récurrence et les résidus restent en FP32.
 
 ## Prétraitement et précision
@@ -75,7 +77,10 @@ les activations FP16 et la référence native BF16 ne sont pas identiques bit
 à bit. Les résultats du modèle natif ne sont donc pas attribués au moteur
 WebGPU : le banc mesure ses propres CER, WER et transcriptions exactes.
 
-## Mesures vérifiées sur RTX 5090
+## Mesures historiques sur RTX 5090, checkpoint du 5 octobre
+
+Ces chiffres décrivent la révision précédente, pas le nouveau checkpoint.
+Les mesures du 30 octobre sont dans `documentation/surya_bubble_inference_20261030.md`.
 
 Application Next.js compilée, worker de production, artefacts chargés depuis
 la révision HF `1d3698b88de708cc7b7cb8d349b4255715b70bc5`, modèle chaud.
@@ -105,7 +110,7 @@ Depuis la racine du dépôt, PowerShell :
 
 ```powershell
 docker build -t poneglyph/surya-onnx:optimized docker_scripts/export_surya_ocr_onnx
-$source = (Resolve-Path 'docker_scripts/finetune_surya_bubble_ocr/outputs_surya_bubble_ocr/rtx5090-20261005/final_merged').Path
+$source = (Resolve-Path 'docker_scripts/finetune_surya_bubble_ocr/outputs_surya_bubble_ocr/rtx5090-20261030/release-bf16').Path
 New-Item -ItemType Directory -Force frontend/public/models/surya-ocr | Out-Null
 $output = (Resolve-Path 'frontend/public/models/surya-ocr').Path
 docker run --rm -v "${source}:/source:ro" -v "${output}:/output" poneglyph/surya-onnx:optimized --source /source --output /output
@@ -118,7 +123,8 @@ L'export fonctionne sur CPU. Pour compléter un export existant :
 `test_optimizations.py` vérifie par exécution ORT que la suppression des
 logits et la fusion RMS préservent les états récurrents.
 
-En développement, le worker détecte `/models/surya-ocr/browser_manifest.json`.
+En développement, le worker utilise `/models/surya-ocr/browser_manifest.json`
+uniquement si son checkpoint correspond au modèle Surya épinglé.
 Sinon il utilise la révision HF épinglée dans `suryaWebgpu.js`.
 `NEXT_PUBLIC_SURYA_MODEL_BASE` permet d'imposer une URL de dossier ; il faut
 reconstruire/redémarrer Next.js après changement.
@@ -132,7 +138,7 @@ node frontend/bench/serve-surya.mjs
 
 Le banc utilise le même worker que l'application. Il sépare l'échauffement,
 les répétitions, les 26 cas (dont deux cas de résistance), le contrôle de
-128 bulles et le test complet de 1 612 bulles. Il propose un balayage des
+128 bulles et les tests complets de 1 612 ou 1 691 bulles. Il propose un balayage des
 GEMV et tailles de soumission, et un profil GPU séparé avec des requêtes
 de timestamps. Désactiver le profilage pour mesurer le débit.
 

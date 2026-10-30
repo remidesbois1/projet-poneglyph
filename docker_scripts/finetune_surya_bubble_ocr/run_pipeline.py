@@ -138,7 +138,7 @@ def check_supabase_access():
 
     client = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
     response = (
-        client.table("bulles")
+        client.table("ocr_training_bubbles")
         .select("id, x, y, w, h, texte_propose, id_page, pages(url_image)")
         .eq("statut", "Validé")
         .limit(1)

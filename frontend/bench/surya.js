@@ -19,14 +19,15 @@ worker.onmessage = ({ data }) => {
 };
 worker.onerror = event => { for (const request of pending.values()) request.reject(new Error(event.message)); pending.clear(); };
 const $ = id => document.getElementById(id);
-const examples = await (await fetch('/models/surya-ocr/fixtures/examples.json')).json();
-const images = await Promise.all(examples.map(async item => ({ ...item, blob: await (await fetch(`/models/surya-ocr/${item.image}`)).blob() })));
+const fixtureBase = new URLSearchParams(location.search).get('fixtures') || '/models/surya-ocr';
+const examples = await (await fetch(`${fixtureBase}/fixtures/examples.json`)).json();
+const images = await Promise.all(examples.map(async item => ({ ...item, blob: await (await fetch(`${fixtureBase}/${item.image}`)).blob() })));
 $('load').onclick = async () => {
     $('load').disabled = true;
     try {
         await engine.load(p => { $('status').textContent = `${p.file} · ${Math.round(p.progress)} %`; }, {
-            profile: $('profile').checked, mode: $('mode').value, gemv: $('gemv').value, tokenBatch: Number($('batch').value),
-            prefill: $('prefill').value,
+            profile: $('profile').checked, mode: $('mode').value, gemv: $('gemv').value, fusedMlp: $('fusedMlp').checked, tokenBatch: Number($('batch').value),
+            prefill: $('prefill').value, prefillChunk: Number($('prefillChunk').value),
         });
         $('status').textContent = `Prêt · ${engine.gpuName}`; $('run').disabled = false;
         $('sweep').disabled = engine.options.mode !== 'fused';
@@ -35,14 +36,15 @@ $('load').onclick = async () => {
 };
 async function measure(sweep = false) {
     $('run').disabled = true; $('sweep').disabled = true; $('error').textContent = ''; $('rows').replaceChildren();
-    engine.options.tokenBatch = Number($('batch').value); engine.options.gemv = $('gemv').value;
+    engine.options.tokenBatch = Number($('batch').value); engine.options.gemv = $('gemv').value; engine.options.fusedMlp = $('fusedMlp').checked;
+    engine.options.prefillChunk = Number($('prefillChunk').value);
     const results = [];
     let items = $('corpus').value === 'all' ? images : [images[$('corpus').value === 'short' ? 0 : 23]];
-    if (['test128', 'full1612'].includes($('corpus').value)) {
+    if (['test128', 'full1612', 'full1691'].includes($('corpus').value)) {
         const corpus = $('corpus').value;
-        items = await (await fetch(`/models/surya-ocr/${corpus}/examples.json`)).json();
+        items = await (await fetch(`${fixtureBase}/${corpus}/examples.json`)).json();
         // Read just before inference: full test sets must not trigger thousands of parallel requests.
-        items = items.map(item => ({ ...item, url: `/models/surya-ocr/${corpus}/${item.image.split('/').pop()}` }));
+        items = items.map(item => ({ ...item, url: `${fixtureBase}/${corpus}/${item.image.split('/').pop()}` }));
     }
     const ids = $('ids').value.trim().split(/[\s,]+/).filter(Boolean);
     if (ids.length) items = items.filter(item => ids.includes(item.id));

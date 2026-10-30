@@ -12,6 +12,19 @@ from export_prefill import export
 
 
 class PrefillOptimizationTests(unittest.TestCase):
+    def test_neumann_depth_covers_32_and_64_token_blocks(self):
+        rng = np.random.default_rng(8)
+        for size in (32, 48, 64):
+            a = np.tril(rng.normal(scale=0.02, size=(size, size)), -1)
+            expected = np.linalg.solve(np.eye(size) - a, np.eye(size))
+            inverse = np.eye(size) + a
+            power = a
+            # A graph exported for 64 tokens must support all shorter chunks.
+            for _ in range((32 if size == 32 else 64).bit_length() - 2):
+                power = power @ power
+                inverse = inverse @ (np.eye(size) + power)
+            np.testing.assert_allclose(inverse, expected, atol=1e-12, rtol=1e-12)
+
     def test_pruned_fused_graph_preserves_recurrent_output(self):
         rng = np.random.default_rng(17)
         with tempfile.TemporaryDirectory() as tmp:

@@ -66,9 +66,9 @@ class ModelRegistryTests(unittest.TestCase):
     def test_embedded_registry_has_immutable_verified_weight_pins(self):
         expected = {
             "bbox": (
-                "8bdf97f30cb8006d17624407a847b6766fa2374b",
+                "fb35b7f4f99b282d5c2867d5cf23e66df0d03925",
                 2011367496,
-                "a981e7e51584cd86b1f4e7bec2e786f4e28661003c3a5f9f6bfe6c6a00bd05c0",
+                "4fbe0b8304b36442edb00045ae378e5585b64936840744a81976c6465d6b7470",
             ),
             "base": (
                 "3d5181ce138e7d92132a741f1e54c3a9e602e129",
@@ -76,9 +76,9 @@ class ModelRegistryTests(unittest.TestCase):
                 "941647735280ef32d60fd575ddf8103e5526ff36edb8d1778ca953e2f5b16153",
             ),
             "surya": (
-                "7d7b358c545cfe757329f780da6ed4100bb5909f",
+                "24a589633c9c4b57663bfc019b132f11b45f9eb8",
                 1331461328,
-                "9d3554f1487caa1fd33c30e6a397d306b0d71fe041639f8668482ad3b02a223d",
+                "8fa50e74b2ae134e5a8f0269cee2f8a41cfd586096bb8891eb1f3bd676b1dca7",
             ),
             "surya_bbox": (
                 "671cfe63672286ccfe629079a8d57f7ed967f3d5",

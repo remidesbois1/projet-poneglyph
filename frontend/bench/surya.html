@@ -6,10 +6,12 @@
 <label>Moteur <select id="mode"><option value="onnx">ONNX</option><option value="fused">Fusion GPU</option></select></label>
 <label><input type="checkbox" id="profile">Profil GPU</label>
 <label>GEMV <select id="gemv"><option value="subgroup">Sous-groupes</option><option value="shared">Mémoire partagée</option></select></label>
+<label><input type="checkbox" id="fusedMlp" checked>MLP fusionné</label>
 <label>Tokens par soumission <select id="batch"><option>1</option><option>2</option><option>4</option><option selected>8</option></select></label>
 <label>Prompt <select id="prefill"><option value="fast">Optimisé</option><option value="classic">Classique</option></select></label>
+<label>Taille des blocs du prompt <select id="prefillChunk"><option value="0">Modèle</option><option value="32">32</option><option value="40">40</option><option value="48">48</option><option value="56">56</option><option value="64">64</option></select></label>
 <button id="load">Charger</button><p id="status" role="status">Non chargé</p>
-<label>Corpus <select id="corpus"><option value="all">26 bulles</option><option value="short">Bulle courte</option><option value="long">Bulle longue</option><option value="test128">128 bulles de test</option><option value="full1612">Test complet · 1 612 bulles</option></select></label>
+<label>Corpus <select id="corpus"><option value="all">26 bulles</option><option value="short">Bulle courte</option><option value="long">Bulle longue</option><option value="test128">128 bulles de test</option><option value="full1612">Test complet · 1 612 bulles</option><option value="full1691">Test complet · 1 691 bulles</option></select></label>
 <label>Répétitions <input id="repeats" type="number" value="1" min="1" max="10" size="3"></label>
 <label>IDs ciblés <input id="ids" placeholder="Tous" size="12"></label>
 <button id="run" disabled>Mesurer</button>

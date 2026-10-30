@@ -12,6 +12,7 @@ from train_surya_bubble_ocr import (
     SuryaBubbleCollator,
     apply_template,
     configure_processor,
+    configure_torch_runtime,
     messages_for_entry,
     prepare_dataset,
     resolve_image_path,
@@ -107,23 +108,37 @@ def supervised_tokens(labels):
 
 def main():
     args = parse_args()
+    configure_torch_runtime()
     processor = configure_processor(args.model_id)
     split_name = args.metadata.parent.name
     dataset = prepare_dataset(args.metadata, split_name)
     batch_size = min(max(args.batch_size, 1), len(dataset))
     features = [dataset[index] for index in range(batch_size)]
     optimized_collator = SuryaBubbleCollator(processor, training=False)
+    uncached_collator = SuryaBubbleCollator(processor, training=False)
+    uncached_collator.text_cache.max_items = 0
 
     legacy_process(features[:1], processor)
-    optimized_collator(features[:1])
+    # Warm the image and text caches before timing repeated epochs.
+    optimized_collator(features)
+    uncached_collator(features)
     legacy_times, legacy_output = timed(
         lambda: legacy_process(features, processor),
         args.repeats,
     )
-    optimized_times, optimized_output = timed(
-        lambda: optimized_collator(features),
-        args.repeats,
-    )
+    # Alternate the measurements so changing system load cannot favor whichever
+    # configuration happened to run last.
+    optimized_times, uncached_times = [], []
+    optimized_output = uncached_output = None
+    for repeat in range(args.repeats):
+        for cached in ((True, False) if repeat % 2 == 0 else (False, True)):
+            started = time.perf_counter()
+            output = (optimized_collator if cached else uncached_collator)(features)
+            (optimized_times if cached else uncached_times).append(time.perf_counter() - started)
+            if cached:
+                optimized_output = output
+            else:
+                uncached_output = output
     legacy_median = statistics.median(legacy_times)
     optimized_median = statistics.median(optimized_times)
     report = {
@@ -136,6 +151,13 @@ def main():
         "legacy_median_seconds": legacy_median,
         "optimized_median_seconds": optimized_median,
         "speedup": legacy_median / optimized_median,
+        "text_cache_disabled_seconds": uncached_times,
+        "text_cache_disabled_median_seconds": statistics.median(uncached_times),
+        "text_cache_speedup": statistics.median(uncached_times) / optimized_median,
+        "text_cache_targets_exact_match": (
+            supervised_tokens(uncached_output["labels"])
+            == supervised_tokens(optimized_output["labels"])
+        ),
         "supervised_tokens_exact_match": (
             supervised_tokens(legacy_output["labels"])
             == supervised_tokens(optimized_output["labels"])

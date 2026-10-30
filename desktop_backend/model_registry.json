@@ -33,17 +33,17 @@
     },
     "surya": {
       "repo_id": "Remidesbois/surya-bubble-ocr-poneglyph",
-      "revision": "7d7b358c545cfe757329f780da6ed4100bb5909f",
+      "revision": "24a589633c9c4b57663bfc019b132f11b45f9eb8",
       "dir_name": "surya-bubble-ocr-poneglyph",
       "trust_remote_code": false,
       "files": [
         { "path": "chat_template.jinja", "size": 2872, "sha256": "86f17a85672e7f367b5e6c6de6f67f53ede0fba4abb3d67c583a6ef647c1aa85" },
-        { "path": "config.json", "size": 2659, "sha256": "7a74ef4665f9270b6013208eb07a34d31dd2368d94ca7f676590b2941bef7412" },
+        { "path": "config.json", "size": 2672, "sha256": "3ddb214991f95153322111e5b8f260443cfc34bad8b38f5d6eb847da91fee3d8" },
         { "path": "generation_config.json", "size": 179, "sha256": "433bc8a012e4f05e87bff9fc398f717dc21746bddf3d2cbd922e4a500838dfc1" },
-        { "path": "model.safetensors", "size": 1331461328, "sha256": "9d3554f1487caa1fd33c30e6a397d306b0d71fe041639f8668482ad3b02a223d" },
+        { "path": "model.safetensors", "size": 1331461328, "sha256": "8fa50e74b2ae134e5a8f0269cee2f8a41cfd586096bb8891eb1f3bd676b1dca7" },
         { "path": "processor_config.json", "size": 1328, "sha256": "056f03f359fafe65702b63464a8e26e03dff40fda13f1941952ea02b2a20263a" },
         { "path": "tokenizer.json", "size": 1656850, "sha256": "3d7807f0cbdb7175b0e210111a241b3979799a17e920f924b078449401aa4911" },
-        { "path": "tokenizer_config.json", "size": 600, "sha256": "04d915a4f5fdc4abdd448e41729e7fcd06a4975335f6469e92277e29afa07b91" }
+        { "path": "tokenizer_config.json", "size": 701, "sha256": "1bd0403e61e582c0cb686424fe1373d2c59964981ddfb9bf88c850b8d827cf0a" }
       ]
     },
     "surya_bbox": {

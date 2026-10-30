@@ -410,6 +410,12 @@ def write_final_report(output_dir, benchmark, summary):
 <footer><p>Rapport autonome · Graphiques disponibles en PNG et SVG dans plots/ · Mesures brutes dans metrics.jsonl et metrics.csv · Prédictions dans predictions_test.csv</p></footer></body></html>'''
     (output_dir / "report.html").write_text(text, encoding="utf-8")
     if (output_dir / "final_merged").is_dir():
+        configuration = summary.get("configuration") or {}
+        recipe = configuration.get("recipe") or {}
+        weight_dtype = recipe.get("weight_dtype", "bfloat16")
+        weight_label = {"bfloat16": "BF16", "float32": "FP32"}.get(weight_dtype, weight_dtype)
+        source_model = configuration.get("model_id", "datalab-to/surya-ocr-2")
+        transformers_version = (configuration.get("runtime") or {}).get("transformers") or "non renseignée"
         model_card = f'''---
 base_model: datalab-to/surya-ocr-2
 library_name: transformers
@@ -426,6 +432,7 @@ tags:
 
 Fine-tuning local sur RTX 5090. Entrée : un crop RGB de bulle ; sortie : sa transcription française.
 Prompt : `{benchmark.get('prompt', '')}`
+Modèle utilisé pour cette reprise : `{source_model}`.
 
 Meilleur checkpoint sélectionné uniquement sur le CER de validation :
 `{Path(str(summary.get('best_model_checkpoint', ''))).name}`.
@@ -449,13 +456,14 @@ ce fichier. Pas de comparaison avec un autre modèle.
 
 ## Chargement
 
-Poids BF16 au format Transformers standard (`transformers==5.14.1`).
+Poids {weight_label} au format Transformers standard (`transformers=={transformers_version}`).
+Pour une inférence GPU en BF16, les charger avec `dtype=torch.bfloat16`.
 Charger `AutoProcessor` et `AutoModelForImageTextToText` depuis ce dossier.
 Les patches Liger d'entraînement ne sont pas nécessaires au rechargement.
 `generation_config.json` contient les identifiants EOS/PAD et le budget de génération.
 
 La recette, les versions des packages et les empreintes des données sont dans
-le dossier parent : `run_config.json`, `package_versions.json`, `training_summary.json`.
+le dossier parent : `run_config.json`, `training_runtime_profile.json`, `training_summary.json`.
 Le rapport autonome est `../report.html` et les figures PNG/SVG sont dans `../plots/`.
 '''
         (output_dir / "final_merged" / "README.md").write_text(model_card, encoding="utf-8")

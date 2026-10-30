@@ -29,7 +29,7 @@ SURYA_MODEL_KEY = "surya"
 SURYA_BBOX_MODEL_KEY = "surya_bbox"
 DEFAULT_MODEL_KEY = BBOX_MODEL_KEY
 MODEL_REGISTRY_PATH = Path(__file__).with_name("model_registry.json")
-MODEL_REGISTRY_SHA256 = "d3a51bebfc73f275aafcded1c5e7d4cf18181c7719f1d6a3a516689dcdbdd395"
+MODEL_REGISTRY_SHA256 = "5b1cc47e32561e1d3d003e1c37ba4ab9832451858f0d8babc1f60c0a174e5fd1"
 UNSAFE_MODEL_DIR_OVERRIDE_ENV = "PONEGLYPH_ALLOW_UNVERIFIED_MODEL_DIRS"
 MODEL_INSTALL_METADATA_FILENAME = ".poneglyph-model.json"
 RUNTIME_MODEL_FILES = frozenset(
@@ -1045,6 +1045,54 @@ def transformer_attention_attempts(selected_device: str):
     return attempts
 
 
+_surya_model_load_lock = threading.RLock()
+
+
+@contextlib.contextmanager
+def surya_kernel_policy(model_key: str, selected_device: str, selected_dtype):
+    """Use optional FLA kernels only for the CUDA BF16 bubble model."""
+    from transformers.models.qwen3_5 import modeling_qwen3_5 as qwen
+
+    use_fla = (model_key == SURYA_MODEL_KEY and selected_device == "cuda"
+               and selected_dtype == get_torch().bfloat16
+               and env_bool("PONEGLYPH_SURYA_FLA", True))
+    names = ("FusedRMSNormGated", "chunk_gated_delta_rule", "fused_recurrent_gated_delta_rule")
+    with _surya_model_load_lock:
+        saved = {name: getattr(qwen, name) for name in names}
+        try:
+            if not use_fla:
+                for name in names:
+                    setattr(qwen, name, None)
+            yield
+        finally:
+            for name, value in saved.items():
+                setattr(qwen, name, value)
+
+
+def restore_surya_torch_kernels(model) -> bool:
+    """Restore reference DeltaNet operations if optional GPU kernels fail."""
+    from transformers.models.qwen3_5 import modeling_qwen3_5 as qwen
+
+    changed = False
+    for layer in model.model.language_model.layers:
+        if layer.layer_type != "linear_attention":
+            continue
+        attention = layer.linear_attn
+        if attention.chunk_gated_delta_rule is not qwen.torch_chunk_gated_delta_rule:
+            attention.chunk_gated_delta_rule = qwen.torch_chunk_gated_delta_rule
+            changed = True
+        if attention.recurrent_gated_delta_rule is not qwen.torch_recurrent_gated_delta_rule:
+            attention.recurrent_gated_delta_rule = qwen.torch_recurrent_gated_delta_rule
+            changed = True
+        if not isinstance(attention.norm, qwen.Qwen3_5RMSNormGated):
+            old_norm = attention.norm
+            norm = qwen.Qwen3_5RMSNormGated(attention.head_v_dim, eps=attention.layer_norm_epsilon)
+            norm.weight = old_norm.weight
+            attention.norm = norm
+            changed = True
+    return changed
+
+
 def load_transformers_model(
     model_key: str,
     loaded_processor,
@@ -1058,15 +1106,16 @@ def load_transformers_model(
             if model_key in SURYA_MODEL_KEYS:
                 from transformers import AutoModelForImageTextToText
 
-                model = AutoModelForImageTextToText.from_pretrained(
-                    model_dir,
-                    torch_dtype=selected_dtype,
-                    trust_remote_code=False,
-                    local_files_only=True,
-                    low_cpu_mem_usage=True,
-                    use_safetensors=True,
-                    **attention_kwargs,
-                ).eval()
+                with surya_kernel_policy(model_key, selected_device, selected_dtype):
+                    model = AutoModelForImageTextToText.from_pretrained(
+                        model_dir,
+                        torch_dtype=selected_dtype,
+                        trust_remote_code=False,
+                        local_files_only=True,
+                        low_cpu_mem_usage=True,
+                        use_safetensors=True,
+                        **attention_kwargs,
+                    ).eval()
             else:
                 from transformers import LightOnOcrForConditionalGeneration
 
@@ -1560,6 +1609,7 @@ def model_status_payload(model_key: str = DEFAULT_MODEL_KEY):
     status_error = configuration_error or state["last_error"]
     return {
         "installed": installed,
+        "artifact_revision": model_registry_entry(model_key)["revision"],
         "loaded": loaded,
         "loading": state["loading"],
         "ready": installed and loaded and not state["loading"] and status_error is None,
@@ -1714,14 +1764,25 @@ def transformers_generate(model_key: str, image, messages, max_new_tokens_overri
                 f"Transformers: {exc}",
             )
             loaded_model = state["model"]
+            if model_key == SURYA_MODEL_KEY:
+                restore_surya_torch_kernels(loaded_model)
 
     generation_started = time.perf_counter()
     with torch.inference_mode(), generation_autocast_context(torch, selected_device, selected_dtype):
-        output_ids = loaded_model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens_override or get_max_new_tokens(model_key),
-            do_sample=False,
-        )
+        try:
+            output_ids = loaded_model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens_override or get_max_new_tokens(model_key),
+                do_sample=False,
+            )
+        except Exception:
+            if model_key != SURYA_MODEL_KEY or not restore_surya_torch_kernels(loaded_model):
+                raise
+            output_ids = loaded_model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens_override or get_max_new_tokens(model_key),
+                do_sample=False,
+            )
 
     gen_ids = output_ids[0, inputs["input_ids"].shape[1] :]
     state["last_generation_profile"] = {
