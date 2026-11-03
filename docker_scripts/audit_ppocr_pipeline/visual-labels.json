@@ -1,0 +1,1205 @@
+{
+  "protocol": "Direct contact-sheet review by the assistant; one annotator; exploratory labels require human confirmation. No labels derived from string length.",
+  "labels": [
+    {
+      "id": 8553,
+      "split": "val",
+      "label": "stylized_sfx",
+      "note": "Curved PATAM; readable by the recognizer despite stylization."
+    },
+    {
+      "id": 4351,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4249,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6175,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 915,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4226,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6899,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8555,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2416,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1287,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2721,
+      "split": "val",
+      "label": "stylized_sfx",
+      "note": "Vertical/curved ROAAR."
+    },
+    {
+      "id": 2606,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4157,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7808,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5346,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7740,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3545,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4427,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5412,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2215,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6719,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1073,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8200,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 326,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7741,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4347,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7608,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4230,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6346,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2783,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6813,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1373,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3205,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2136,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1454,
+      "split": "val",
+      "label": "special_layout",
+      "note": "Vertically stacked spoken cry YAAHHH."
+    },
+    {
+      "id": 156,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8021,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8521,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6778,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7615,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 501,
+      "split": "val",
+      "label": "ambiguous",
+      "note": "Horizontal BLP: expressive sound, OCR-compatible geometry."
+    },
+    {
+      "id": 2762,
+      "split": "val",
+      "label": "stylized_sfx",
+      "note": "Vertical/angled RRR."
+    },
+    {
+      "id": 112,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8118,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4639,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6533,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6197,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 483,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6528,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7778,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5145,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5140,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6872,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3323,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3544,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8506,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5568,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3327,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5343,
+      "split": "val",
+      "label": "stylized_sfx",
+      "note": "Angled VIOUU over drawing."
+    },
+    {
+      "id": 2649,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5842,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3623,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2749,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1205,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6673,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6203,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6177,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2613,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8394,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 852,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6764,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4878,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5759,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5552,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5151,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8204,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1557,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2415,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3878,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5733,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5152,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7772,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5556,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3543,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4008,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1673,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 850,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2210,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1675,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7292,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5153,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7254,
+      "split": "val",
+      "label": "special_layout",
+      "note": "Vertically stacked spoken cry AHH."
+    },
+    {
+      "id": 6248,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6249,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5777,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1456,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6193,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1192,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2741,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1228,
+      "split": "val",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6625,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2549,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 769,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1596,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1050,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8089,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3667,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1659,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 705,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5116,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5056,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7045,
+      "split": "test",
+      "label": "special_layout",
+      "note": "Vertically stacked spoken scream AAHH!!; not necessarily SFX."
+    },
+    {
+      "id": 8416,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2936,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7144,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1128,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 607,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4654,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 733,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7139,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2984,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5740,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3977,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6551,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5053,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1542,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2971,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 760,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6459,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2477,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2126,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 888,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6731,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5355,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2708,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3362,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 706,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6300,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2531,
+      "split": "test",
+      "label": "stylized_sfx",
+      "note": "Vertical/angled SCHLOP."
+    },
+    {
+      "id": 363,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 658,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3660,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 788,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5753,
+      "split": "test",
+      "label": "stylized_sfx",
+      "note": "Curved FRSHH."
+    },
+    {
+      "id": 1968,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4620,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6488,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 731,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6615,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5750,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5780,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6950,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5047,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4769,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4381,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6301,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6947,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2848,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2409,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 791,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4973,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4563,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2319,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6621,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2518,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6332,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7117,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6951,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5909,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5495,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3740,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 7781,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1601,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6516,
+      "split": "test",
+      "label": "stylized_sfx",
+      "note": "CRAAC over drawing."
+    },
+    {
+      "id": 6676,
+      "split": "test",
+      "label": "stylized_sfx",
+      "note": "Angled/vertical KLING."
+    },
+    {
+      "id": 2989,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1325,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1115,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 3647,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4334,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6461,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2701,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 1040,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6629,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2985,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5361,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 8175,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4770,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2975,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2614,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 6628,
+      "split": "test",
+      "label": "ambiguous",
+      "note": "Horizontal TSS: expressive sound, OCR-compatible geometry."
+    },
+    {
+      "id": 1045,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 4551,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 653,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 725,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 5755,
+      "split": "test",
+      "label": "stylized_sfx",
+      "note": "Angled/vertical KWIT."
+    },
+    {
+      "id": 1534,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2118,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2617,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    },
+    {
+      "id": 2522,
+      "split": "test",
+      "label": "ordinary",
+      "note": "Horizontal dialogue or ordinary punctuation; visually inspected."
+    }
+  ]
+}

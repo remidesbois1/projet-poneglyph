@@ -28,7 +28,7 @@ const PPOCR_LINE_DETECTOR_PATH = `${PPOCR_LINE_MODEL_BASE}/bubble_line_detector_
 const PPOCR_REC_PATH = `${PPOCR_LINE_MODEL_BASE}/ppocrv6_bubble_line_rec.onnx`;
 const PPOCR_REC_WEBGPU_COMPAT_PATH = `${PPOCR_LINE_MODEL_BASE}/ppocrv6_bubble_line_rec_webgpu.onnx`;
 const PPOCR_MANIFEST_PATH = `${PPOCR_LINE_MODEL_BASE}/browser_manifest.json`;
-const PPOCR_LINE_CONF = 0.25;
+const PPOCR_LINE_CONF = 0.10;
 const PPOCR_LINE_NMS_IOU = 0.75;
 const PPOCR_LINE_PAD = 2;
 const PPOCR_LINE_GAP = 8;
@@ -334,10 +334,10 @@ function preprocessPpocrCanvas(canvas) {
 
     const resized = new OffscreenCanvas(width, height);
     const ctx = resized.getContext('2d', { willReadFrequently: true });
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#808080';
     ctx.fillRect(0, 0, width, height);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(canvas, 0, 0, width, height);
+    ctx.drawImage(canvas, 0, 0, Math.min(width, aspectWidth), height);
 
     const rgba = ctx.getImageData(0, 0, width, height).data;
     const pixelCount = width * height;

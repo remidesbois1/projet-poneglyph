@@ -1,0 +1,3146 @@
+{
+  "created_at": "2026-11-03T18:48:27.160Z",
+  "protocol": "Native ORT CPU+Skia; separate Chrome/WASM check. Historical page-disjoint splits, not a new blind holdout. CER is micro-averaged Levenshtein, exact is per bubble. Extra unmatched predictions not penalized by GT-conditioned page coverage scores.",
+  "snapshot": {
+    "created_at": "2026-11-03T18:15:44.471Z",
+    "validated_total": 11670,
+    "pages": 258,
+    "examples": 2410,
+    "validation": 1191,
+    "test": 1219,
+    "changed_references": 16,
+    "invalid_bbox": 0,
+    "missing": 0,
+    "revisions": {
+      "ppocrv6-line": {
+        "repository": "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec",
+        "revision": "10b932d4aadca2830850ccf5951116597404bef8",
+        "url": "https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec"
+      },
+      "readernet-reading-order": {
+        "repository": "Remidesbois/Poneglyph-ReaderNet",
+        "revision": "d97d4cd2903a7ebe49276a5269c4f3b7df608be7",
+        "url": "https://huggingface.co/Remidesbois/Poneglyph-ReaderNet"
+      }
+    },
+    "artifacts": {
+      "browser_manifest.json": "f430f44640abff517ac0444d4169d8be195c97c71a94800bb31d70b9f5f81ed3",
+      "bubble_detector.onnx": "fa28ece56ba9e5ccf4361fbb4d2533e088906b0a0d1cd187c02422ba7d6f5688",
+      "bubble_line_detector_yolo26n.onnx": "b8a7d12cbb65ce4028cd1b49fabf01b14a0ca3f28ff9509387524f648f183505",
+      "dataset_stats.json": "e357a6433f9d092a25804c12879fe225a35577f1251705f2aad7e461fa5b2949",
+      "model_manifest.json": "8e10c2c0e8a55888d1dbf09365fd032b000c5cf3517ee81a74ab3c497e00f240",
+      "ordering.onnx": "e5c92135ccdbcb7cb678ec05388be03348d8b2eff7f7d24b9ef7644e2a23df94",
+      "panel_detector.onnx": "67a9b0128a49cf8c1c0a7e1907e0e943fdedcaedf0877894b0fb87d9283c597f",
+      "pipeline_manifest.json": "240f51eb47615bf33088e3174d08f232ac4a6b978a03a45874aa0430e85f9c23",
+      "ppocrv6_bubble_line_rec.onnx": "d85e44d24c05959c717907bd8c2952472a4a00b6937f66cbf0722da463fc0d1a",
+      "ppocrv6_bubble_line_rec_webgpu.onnx": "73e599ee88feded5cafa1d7e297719d7467a3fc4c11ae5ceeb52d8218a3e31e3",
+      "test_predictions.csv": "c2e4b9c897e95fd882d468f1329e3ba50138bd23a434b9f7c173eefaa43a9172",
+      "test_summary.json": "4b2907591e29b46fa15b81874b037a1bc62c3b3b7ae0d4aba2331e74a933c77f",
+      "validation_predictions.csv": "6f79ed947c43686554003bab81de892534f7d51967979744225588cbbd0762ef"
+    },
+    "val_test_page_overlap": 0,
+    "invalid_order_pages": [
+      272,
+      280
+    ]
+  },
+  "validation": {
+    "split": "val",
+    "mode": "ablation",
+    "source_revision": {
+      "ppocrv6-line": {
+        "repository": "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec",
+        "revision": "10b932d4aadca2830850ccf5951116597404bef8",
+        "url": "https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec"
+      },
+      "readernet-reading-order": {
+        "repository": "Remidesbois/Poneglyph-ReaderNet",
+        "revision": "d97d4cd2903a7ebe49276a5269c4f3b7df608be7",
+        "url": "https://huggingface.co/Remidesbois/Poneglyph-ReaderNet"
+      }
+    },
+    "n": 300,
+    "baseline": {
+      "n": 300,
+      "chars": 9838,
+      "errors": 314,
+      "cer": 0.031917056312258586,
+      "exact": 0.6666666666666666,
+      "exact_count": 200,
+      "empty": 17,
+      "content_cer": 0.028091634705089664,
+      "content_exact": 0.7433333333333333
+    },
+    "raw": {
+      "n": 300,
+      "chars": 9838,
+      "errors": 365,
+      "cer": 0.03710103679609677,
+      "exact": 0.5433333333333333,
+      "exact_count": 163,
+      "empty": 17,
+      "content_cer": 0.026433088006634187,
+      "content_exact": 0.76
+    },
+    "post": {
+      "n": 300,
+      "chars": 9838,
+      "errors": 299,
+      "cer": 0.03039235616995324,
+      "exact": 0.6766666666666666,
+      "exact_count": 203,
+      "empty": 17,
+      "content_cer": 0.026536747175287655,
+      "content_exact": 0.7566666666666667
+    },
+    "long_dialogue_proxy": {
+      "n": 132,
+      "chars": 7508,
+      "errors": 176,
+      "cer": 0.023441662226957913,
+      "exact": 0.7121212121212122,
+      "exact_count": 94,
+      "empty": 0,
+      "content_cer": 0.021609940572663425,
+      "content_exact": 0.7803030303030303
+    },
+    "short_proxy": {
+      "n": 81,
+      "chars": 432,
+      "errors": 93,
+      "cer": 0.2152777777777778,
+      "exact": 0.48148148148148145,
+      "exact_count": 39,
+      "empty": 17,
+      "content_cer": 0.19753086419753085,
+      "content_exact": 0.5555555555555556
+    },
+    "no_lines": [
+      3562,
+      6717
+    ],
+    "variants": {
+      "baseline": {
+        "n": 300,
+        "chars": 9838,
+        "errors": 314,
+        "cer": 0.031917056312258586,
+        "exact": 0.6666666666666666,
+        "exact_count": 200,
+        "empty": 17,
+        "content_cer": 0.028091634705089664,
+        "content_exact": 0.7433333333333333
+      },
+      "pad_white": {
+        "n": 300,
+        "chars": 9838,
+        "errors": 292,
+        "cer": 0.029680829436877415,
+        "exact": 0.7133333333333334,
+        "exact_count": 214,
+        "empty": 9,
+        "content_cer": 0.026122110500673784,
+        "content_exact": 0.7766666666666666
+      },
+      "pad_gray": {
+        "n": 300,
+        "chars": 9838,
+        "errors": 257,
+        "cer": 0.026123195771498273,
+        "exact": 0.7866666666666666,
+        "exact_count": 236,
+        "empty": 4,
+        "content_cer": 0.023323312947030165,
+        "content_exact": 0.8433333333333334
+      },
+      "width480": {
+        "n": 300,
+        "chars": 9838,
+        "errors": 258,
+        "cer": 0.026224842447651962,
+        "exact": 0.7733333333333333,
+        "exact_count": 232,
+        "empty": 1,
+        "content_cer": 0.022908676272416294,
+        "content_exact": 0.85
+      },
+      "width640": {
+        "n": 300,
+        "chars": 9838,
+        "errors": 270,
+        "cer": 0.02744460256149624,
+        "exact": 0.7433333333333333,
+        "exact_count": 223,
+        "empty": 7,
+        "content_cer": 0.024152586296257904,
+        "content_exact": 0.8166666666666667
+      },
+      "pad4": {
+        "n": 300,
+        "chars": 9838,
+        "errors": 319,
+        "cer": 0.032425289693027035,
+        "exact": 0.6333333333333333,
+        "exact_count": 190,
+        "empty": 16,
+        "content_cer": 0.028195293873743133,
+        "content_exact": 0.7266666666666667
+      }
+    },
+    "thresholds": {
+      "0.2": {
+        "n": 300,
+        "chars": 9838,
+        "errors": 249,
+        "cer": 0.025310022362268755,
+        "exact": 0.6833333333333333,
+        "exact_count": 205,
+        "empty": 17,
+        "content_cer": 0.02114647040530735,
+        "content_exact": 0.76,
+        "changed_boxes": 7
+      },
+      "0.1": {
+        "n": 300,
+        "chars": 9838,
+        "errors": 165,
+        "cer": 0.016771701565358812,
+        "exact": 0.7,
+        "exact_count": 210,
+        "empty": 17,
+        "content_cer": 0.013164714418990359,
+        "content_exact": 0.78,
+        "changed_boxes": 16
+      },
+      "0.05": {
+        "n": 300,
+        "chars": 9838,
+        "errors": 160,
+        "cer": 0.016263468184590364,
+        "exact": 0.7033333333333334,
+        "exact_count": 211,
+        "empty": 17,
+        "content_cer": 0.01275007774437649,
+        "content_exact": 0.7833333333333333,
+        "changed_boxes": 22
+      }
+    }
+  },
+  "selection": {
+    "n": 300,
+    "split": "val",
+    "profile": "select",
+    "source_revision": {
+      "ppocrv6-line": {
+        "repository": "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec",
+        "revision": "10b932d4aadca2830850ccf5951116597404bef8",
+        "url": "https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec"
+      },
+      "readernet-reading-order": {
+        "repository": "Remidesbois/Poneglyph-ReaderNet",
+        "revision": "d97d4cd2903a7ebe49276a5269c4f3b7df608be7",
+        "url": "https://huggingface.co/Remidesbois/Poneglyph-ReaderNet"
+      }
+    },
+    "variants": {
+      "gray_010": {
+        "conf": 0.1,
+        "config": {
+          "mode": "pad-gray"
+        },
+        "strict": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 107,
+          "cer": 0.010876194348444806,
+          "exact": 0.8266666666666667,
+          "exact_count": 248,
+          "empty": 4,
+          "content_cer": 0.008292733492277393,
+          "content_exact": 0.8833333333333333
+        },
+        "raw": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 132,
+          "cer": 0.01341736125228705,
+          "exact": 0.7433333333333333,
+          "exact_count": 223,
+          "empty": 4,
+          "content_cer": 0.006530527625168446,
+          "content_exact": 0.9
+        },
+        "post": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 91,
+          "cer": 0.009249847529985769,
+          "exact": 0.84,
+          "exact_count": 252,
+          "empty": 4,
+          "content_cer": 0.006634186793821914,
+          "content_exact": 0.8966666666666666
+        },
+        "training": {
+          "n": 300,
+          "chars": 9648,
+          "errors": 105,
+          "cer": 0.010883084577114429,
+          "exact": 0.8266666666666667,
+          "exact_count": 248,
+          "empty": 4,
+          "content_cer": 0.008291873963515755,
+          "content_exact": 0.8833333333333333
+        },
+        "no_lines": [
+          6717
+        ]
+      },
+      "gray_005": {
+        "conf": 0.05,
+        "config": {
+          "mode": "pad-gray"
+        },
+        "strict": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 107,
+          "cer": 0.010876194348444806,
+          "exact": 0.8233333333333334,
+          "exact_count": 247,
+          "empty": 4,
+          "content_cer": 0.00839639266093086,
+          "content_exact": 0.8833333333333333
+        },
+        "raw": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 133,
+          "cer": 0.01351900792844074,
+          "exact": 0.7433333333333333,
+          "exact_count": 223,
+          "empty": 4,
+          "content_cer": 0.006634186793821914,
+          "content_exact": 0.9033333333333333
+        },
+        "post": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 91,
+          "cer": 0.009249847529985769,
+          "exact": 0.84,
+          "exact_count": 252,
+          "empty": 4,
+          "content_cer": 0.006737845962475381,
+          "content_exact": 0.9
+        },
+        "training": {
+          "n": 300,
+          "chars": 9648,
+          "errors": 107,
+          "cer": 0.011090381426202322,
+          "exact": 0.8233333333333334,
+          "exact_count": 247,
+          "empty": 4,
+          "content_cer": 0.008395522388059701,
+          "content_exact": 0.8833333333333333
+        },
+        "no_lines": []
+      },
+      "width480_010": {
+        "conf": 0.1,
+        "config": {
+          "minWidth": 480
+        },
+        "strict": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 110,
+          "cer": 0.011181134376905875,
+          "exact": 0.8066666666666666,
+          "exact_count": 242,
+          "empty": 1,
+          "content_cer": 0.00798175598631699,
+          "content_exact": 0.8866666666666667
+        },
+        "raw": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 138,
+          "cer": 0.014027241309209189,
+          "exact": 0.72,
+          "exact_count": 216,
+          "empty": 1,
+          "content_cer": 0.006012231781901109,
+          "content_exact": 0.91
+        },
+        "post": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 92,
+          "cer": 0.00935149420613946,
+          "exact": 0.8266666666666667,
+          "exact_count": 248,
+          "empty": 1,
+          "content_cer": 0.006115890950554577,
+          "content_exact": 0.9066666666666666
+        },
+        "training": {
+          "n": 300,
+          "chars": 9648,
+          "errors": 108,
+          "cer": 0.011194029850746268,
+          "exact": 0.8066666666666666,
+          "exact_count": 242,
+          "empty": 1,
+          "content_cer": 0.007980928689883914,
+          "content_exact": 0.8866666666666667
+        },
+        "no_lines": [
+          6717
+        ]
+      },
+      "gray_020": {
+        "conf": 0.2,
+        "config": {
+          "mode": "pad-gray"
+        },
+        "strict": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 187,
+          "cer": 0.019007928440739986,
+          "exact": 0.8033333333333333,
+          "exact_count": 241,
+          "empty": 4,
+          "content_cer": 0.016378148647247848,
+          "content_exact": 0.86
+        },
+        "raw": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 212,
+          "cer": 0.02154909534458223,
+          "exact": 0.7233333333333334,
+          "exact_count": 217,
+          "empty": 4,
+          "content_cer": 0.014615942780138903,
+          "content_exact": 0.8766666666666667
+        },
+        "post": {
+          "n": 300,
+          "chars": 9838,
+          "errors": 171,
+          "cer": 0.017381581622280953,
+          "exact": 0.8166666666666667,
+          "exact_count": 245,
+          "empty": 4,
+          "content_cer": 0.01471960194879237,
+          "content_exact": 0.8733333333333333
+        },
+        "training": {
+          "n": 300,
+          "chars": 9648,
+          "errors": 185,
+          "cer": 0.019174958540630182,
+          "exact": 0.8033333333333333,
+          "exact_count": 241,
+          "empty": 4,
+          "content_cer": 0.016376451077943614,
+          "content_exact": 0.86
+        },
+        "no_lines": [
+          3562,
+          6717
+        ]
+      }
+    }
+  },
+  "test": {
+    "n": 1219,
+    "split": "test",
+    "profile": "confirm",
+    "source_revision": {
+      "ppocrv6-line": {
+        "repository": "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec",
+        "revision": "10b932d4aadca2830850ccf5951116597404bef8",
+        "url": "https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec"
+      },
+      "readernet-reading-order": {
+        "repository": "Remidesbois/Poneglyph-ReaderNet",
+        "revision": "d97d4cd2903a7ebe49276a5269c4f3b7df608be7",
+        "url": "https://huggingface.co/Remidesbois/Poneglyph-ReaderNet"
+      }
+    },
+    "variants": {
+      "production": {
+        "conf": 0.25,
+        "config": {},
+        "strict": {
+          "n": 1219,
+          "chars": 40130,
+          "errors": 1278,
+          "cer": 0.03184649887864441,
+          "exact": 0.7202625102543068,
+          "exact_count": 878,
+          "empty": 70,
+          "content_cer": 0.028479967480501002,
+          "content_exact": 0.7809680065627563
+        },
+        "raw": {
+          "n": 1219,
+          "chars": 40130,
+          "errors": 1461,
+          "cer": 0.036406678295539494,
+          "exact": 0.6078753076292043,
+          "exact_count": 741,
+          "empty": 70,
+          "content_cer": 0.02766698000558929,
+          "content_exact": 0.7891714520098442
+        },
+        "post": {
+          "n": 1219,
+          "chars": 40130,
+          "errors": 1247,
+          "cer": 0.03107400946922502,
+          "exact": 0.7235438884331419,
+          "exact_count": 882,
+          "empty": 70,
+          "content_cer": 0.027717791722771272,
+          "content_exact": 0.7875307629204266
+        },
+        "training": {
+          "n": 1219,
+          "chars": 39365,
+          "errors": 1257,
+          "cer": 0.03193191921757907,
+          "exact": 0.7210828547990156,
+          "exact_count": 879,
+          "empty": 70,
+          "content_cer": 0.028451670265464246,
+          "content_exact": 0.7809680065627563
+        },
+        "no_lines": [
+          6947,
+          8094,
+          6336,
+          5357,
+          5747,
+          6711,
+          4556,
+          6790,
+          2940,
+          5492,
+          8508
+        ]
+      },
+      "candidate": {
+        "conf": 0.1,
+        "config": {
+          "mode": "pad-gray"
+        },
+        "strict": {
+          "n": 1219,
+          "chars": 40130,
+          "errors": 419,
+          "cer": 0.010441066533765263,
+          "exact": 0.8326497128794094,
+          "exact_count": 1015,
+          "empty": 3,
+          "content_cer": 0.007494728284342369,
+          "content_exact": 0.8958162428219852
+        },
+        "raw": {
+          "n": 1219,
+          "chars": 40130,
+          "errors": 529,
+          "cer": 0.013182157986543732,
+          "exact": 0.7670221493027072,
+          "exact_count": 935,
+          "empty": 3,
+          "content_cer": 0.006630929092248673,
+          "content_exact": 0.9073010664479081
+        },
+        "post": {
+          "n": 1219,
+          "chars": 40130,
+          "errors": 388,
+          "cer": 0.009668577124345877,
+          "exact": 0.8383921246923708,
+          "exact_count": 1022,
+          "empty": 3,
+          "content_cer": 0.006707146668021646,
+          "content_exact": 0.9048400328137818
+        },
+        "training": {
+          "n": 1219,
+          "chars": 39365,
+          "errors": 408,
+          "cer": 0.01036453702527626,
+          "exact": 0.8342904019688269,
+          "exact_count": 1017,
+          "empty": 3,
+          "content_cer": 0.0074939667217071,
+          "content_exact": 0.8958162428219852
+        },
+        "no_lines": []
+      }
+    }
+  },
+  "page_detection": {
+    "n": 258,
+    "gt": 2414,
+    "detected": 2394,
+    "matched": 2386,
+    "matched_permissive": 2403,
+    "order": {
+      "matched_order": {
+        "pages": 256,
+        "exact": 225,
+        "pairs": 11194,
+        "inversions": 44
+      },
+      "gt_box_order": {
+        "pages": 256,
+        "exact": 222,
+        "pairs": 11451,
+        "inversions": 48
+      }
+    }
+  },
+  "page_ocr": {
+    "pages": 129,
+    "bubbles": 1221,
+    "detected": 1209,
+    "variants": {
+      "production": {
+        "all": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 1582,
+          "cer": 0.0394159856487941,
+          "exact": 0.7035217035217035,
+          "exact_count": 859,
+          "empty": 86,
+          "content_cer": 0.03538496710442757,
+          "content_exact": 0.7567567567567568
+        },
+        "matched": {
+          "n": 1209,
+          "chars": 39927,
+          "errors": 1373,
+          "cer": 0.03438775765772535,
+          "exact": 0.7105045492142267,
+          "exact_count": 859,
+          "empty": 74,
+          "content_cer": 0.030409804672539256,
+          "content_exact": 0.7642679900744417
+        },
+        "post": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 1552,
+          "cer": 0.038668527008172214,
+          "exact": 0.7059787059787059,
+          "exact_count": 862,
+          "empty": 86,
+          "content_cer": 0.03462290751136739,
+          "content_exact": 0.7624897624897625
+        },
+        "page_text_exact": 9,
+        "page_content_exact": 16,
+        "page_text_and_order_exact": 8
+      },
+      "candidate": {
+        "all": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 652,
+          "cer": 0.016244767789515648,
+          "exact": 0.8337428337428338,
+          "exact_count": 1018,
+          "empty": 14,
+          "content_cer": 0.013209032946376407,
+          "content_exact": 0.8902538902538902
+        },
+        "matched": {
+          "n": 1209,
+          "chars": 39927,
+          "errors": 443,
+          "cer": 0.01109524882911313,
+          "exact": 0.8420181968569065,
+          "exact_count": 1018,
+          "empty": 2,
+          "content_cer": 0.008119494446572194,
+          "content_exact": 0.8990901571546733
+        },
+        "post": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 619,
+          "cer": 0.015422563284831574,
+          "exact": 0.8402948402948403,
+          "exact_count": 1026,
+          "empty": 14,
+          "content_cer": 0.012370767394010211,
+          "content_exact": 0.9000819000819
+        },
+        "page_text_exact": 28,
+        "page_content_exact": 47,
+        "page_text_and_order_exact": 24
+      }
+    }
+  },
+  "browser": {
+    "n": 100,
+    "split": "test",
+    "sampling": "deterministic hash sample",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "provider": "wasm",
+    "production_text_differences": [
+      {
+        "id": 6300,
+        "node": "",
+        "browser": "!!"
+      },
+      {
+        "id": 2531,
+        "node": "bBb",
+        "browser": "b"
+      },
+      {
+        "id": 658,
+        "node": "",
+        "browser": "!!"
+      },
+      {
+        "id": 5750,
+        "node": "",
+        "browser": "!"
+      },
+      {
+        "id": 6947,
+        "node": "",
+        "browser": "!"
+      },
+      {
+        "id": 2319,
+        "node": "",
+        "browser": "!"
+      },
+      {
+        "id": 6951,
+        "node": "Pour continuer de causer avec une mâchoire brisé.",
+        "browser": "Pour continuer de causer avec une mâchoire brisée."
+      },
+      {
+        "id": 6516,
+        "node": "raaC",
+        "browser": "rac"
+      },
+      {
+        "id": 1040,
+        "node": "",
+        "browser": "!"
+      },
+      {
+        "id": 8175,
+        "node": "GumGum...",
+        "browser": "Gum gum..."
+      },
+      {
+        "id": 4770,
+        "node": "",
+        "browser": "!!"
+      },
+      {
+        "id": 5755,
+        "node": "R",
+        "browser": ""
+      }
+    ],
+    "candidate_text_differences": [
+      {
+        "id": 2531,
+        "node": "i",
+        "browser": ""
+      },
+      {
+        "id": 2617,
+        "node": "Comment en est-on arri-ves là ?",
+        "browser": "Comment en est-on arrives là ?"
+      }
+    ],
+    "jpeg_text_differences": [
+      {
+        "id": 8175,
+        "png": "Gum gum...",
+        "jpeg": "Gum Gum..."
+      },
+      {
+        "id": 5755,
+        "png": "Ka",
+        "jpeg": "Koa"
+      },
+      {
+        "id": 2617,
+        "png": "Comment en est-on arrives là ?",
+        "jpeg": "Comment en est-on arrivés là ?"
+      }
+    ],
+    "scores": {
+      "production": {
+        "n": 100,
+        "chars": 3213,
+        "errors": 97,
+        "cer": 0.030189853719265483,
+        "exact": 0.78,
+        "exact_count": 78,
+        "empty": 2,
+        "content_cer": 0.02663284717818643,
+        "content_exact": 0.88
+      },
+      "candidate": {
+        "n": 100,
+        "chars": 3213,
+        "errors": 53,
+        "cer": 0.01649548708372238,
+        "exact": 0.8,
+        "exact_count": 80,
+        "empty": 2,
+        "content_cer": 0.012999365884590995,
+        "content_exact": 0.9
+      },
+      "jpegCandidate": {
+        "n": 100,
+        "chars": 3213,
+        "errors": 51,
+        "cer": 0.015873015873015872,
+        "exact": 0.81,
+        "exact_count": 81,
+        "empty": 2,
+        "content_cer": 0.012682308180088777,
+        "content_exact": 0.9
+      }
+    }
+  },
+  "diagnostic_browser": {
+    "n": 20,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "provider": "wasm",
+    "production_text_differences": [
+      {
+        "id": 4351,
+        "node": "",
+        "browser": "..."
+      },
+      {
+        "id": 8553,
+        "node": "Patam",
+        "browser": "PAtam"
+      },
+      {
+        "id": 2416,
+        "node": "",
+        "browser": "?"
+      },
+      {
+        "id": 5412,
+        "node": "",
+        "browser": "!"
+      },
+      {
+        "id": 5343,
+        "node": "Viouu",
+        "browser": "iouu"
+      },
+      {
+        "id": 6717,
+        "node": "! Ll",
+        "browser": "Jgg"
+      },
+      {
+        "id": 3562,
+        "node": "Spof",
+        "browser": "SPoa"
+      }
+    ],
+    "candidate_text_differences": [],
+    "jpeg_text_differences": [
+      {
+        "id": 2779,
+        "png": "Quiconque tombe amoureux en premier perd est une règle absolue",
+        "jpeg": "Quiconque en premier perd est une règle absolue"
+      },
+      {
+        "id": 5343,
+        "png": "iouu. .",
+        "jpeg": "iouu."
+      },
+      {
+        "id": 483,
+        "png": "...",
+        "jpeg": ". ."
+      }
+    ],
+    "scores": {
+      "production": {
+        "n": 20,
+        "chars": 454,
+        "errors": 105,
+        "cer": 0.23127753303964757,
+        "exact": 0.4,
+        "exact_count": 8,
+        "empty": 0,
+        "content_cer": 0.21896162528216703,
+        "content_exact": 0.45
+      },
+      "candidate": {
+        "n": 20,
+        "chars": 454,
+        "errors": 11,
+        "cer": 0.024229074889867842,
+        "exact": 0.75,
+        "exact_count": 15,
+        "empty": 0,
+        "content_cer": 0.020316027088036117,
+        "content_exact": 0.75
+      },
+      "jpegCandidate": {
+        "n": 20,
+        "chars": 454,
+        "errors": 28,
+        "cer": 0.06167400881057269,
+        "exact": 0.7,
+        "exact_count": 14,
+        "empty": 0,
+        "content_cer": 0.05869074492099323,
+        "content_exact": 0.7
+      }
+    }
+  },
+  "router": {
+    "protocol": "Exploratory stump; fitted on 99 reviewed validation images; held-out evaluation on 99 reviewed test images; ambiguous excluded. One visual annotator. Selection maximizes recall subject to zero observed ordinary false routes on fit sample.",
+    "rule": {
+      "feature": "crop_aspect",
+      "threshold": 0.4929045774369515,
+      "direction": "lt"
+    },
+    "fit": {
+      "n": 99,
+      "tp": 4,
+      "fp": 0,
+      "tn": 93,
+      "fn": 2,
+      "precision": 1,
+      "recall": 0.6666666666666666,
+      "ordinary_false_skip_rate": 0,
+      "false_skip_ids": [],
+      "missed_ids": [
+        8553,
+        5343
+      ],
+      "routed_ids": [
+        2721,
+        1454,
+        2762,
+        7254
+      ]
+    },
+    "test": {
+      "n": 99,
+      "tp": 3,
+      "fp": 0,
+      "tn": 93,
+      "fn": 3,
+      "precision": 1,
+      "recall": 0.5,
+      "ordinary_false_skip_rate": 0,
+      "false_skip_ids": [],
+      "missed_ids": [
+        5753,
+        6516,
+        5755
+      ],
+      "routed_ids": [
+        7045,
+        2531,
+        6676
+      ]
+    }
+  },
+  "classes": {
+    "val": {
+      "ordinary": {
+        "n": 93,
+        "production": {
+          "n": 93,
+          "chars": 3323,
+          "errors": 94,
+          "cer": 0.02828769184471863,
+          "exact": 0.6666666666666666,
+          "exact_count": 62,
+          "empty": 8,
+          "content_cer": 0.022427035330261136,
+          "content_exact": 0.7956989247311828
+        },
+        "candidate": {
+          "n": 93,
+          "chars": 3323,
+          "errors": 23,
+          "cer": 0.006921456515197111,
+          "exact": 0.8387096774193549,
+          "exact_count": 78,
+          "empty": 0,
+          "content_cer": 0.0030721966205837174,
+          "content_exact": 0.9354838709677419
+        },
+        "candidate_raw": {
+          "n": 93,
+          "chars": 3323,
+          "errors": 35,
+          "cer": 0.010532651218778213,
+          "exact": 0.7311827956989247,
+          "exact_count": 68,
+          "empty": 0,
+          "content_cer": 0.0015360983102918587,
+          "content_exact": 0.967741935483871
+        },
+        "candidate_post": {
+          "n": 93,
+          "chars": 3323,
+          "errors": 18,
+          "cer": 0.005416792055371652,
+          "exact": 0.8709677419354839,
+          "exact_count": 81,
+          "empty": 0,
+          "content_cer": 0.0015360983102918587,
+          "content_exact": 0.967741935483871
+        }
+      },
+      "stylized_sfx": {
+        "n": 4,
+        "production": {
+          "n": 4,
+          "chars": 27,
+          "errors": 13,
+          "cer": 0.48148148148148145,
+          "exact": 0.25,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0.48148148148148145,
+          "content_exact": 0.25
+        },
+        "candidate": {
+          "n": 4,
+          "chars": 27,
+          "errors": 16,
+          "cer": 0.5925925925925926,
+          "exact": 0.25,
+          "exact_count": 1,
+          "empty": 2,
+          "content_cer": 0.5925925925925926,
+          "content_exact": 0.25
+        },
+        "candidate_raw": {
+          "n": 4,
+          "chars": 27,
+          "errors": 16,
+          "cer": 0.5925925925925926,
+          "exact": 0.25,
+          "exact_count": 1,
+          "empty": 2,
+          "content_cer": 0.5925925925925926,
+          "content_exact": 0.25
+        },
+        "candidate_post": {
+          "n": 4,
+          "chars": 27,
+          "errors": 16,
+          "cer": 0.5925925925925926,
+          "exact": 0.25,
+          "exact_count": 1,
+          "empty": 2,
+          "content_cer": 0.5925925925925926,
+          "content_exact": 0.25
+        }
+      },
+      "special_layout": {
+        "n": 2,
+        "production": {
+          "n": 2,
+          "chars": 12,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 2,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate": {
+          "n": 2,
+          "chars": 12,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 2,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate_raw": {
+          "n": 2,
+          "chars": 12,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 2,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate_post": {
+          "n": 2,
+          "chars": 12,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 2,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        }
+      },
+      "ambiguous": {
+        "n": 1,
+        "production": {
+          "n": 1,
+          "chars": 6,
+          "errors": 1,
+          "cer": 0.16666666666666666,
+          "exact": 0,
+          "exact_count": 0,
+          "empty": 0,
+          "content_cer": 0.16666666666666666,
+          "content_exact": 0
+        },
+        "candidate": {
+          "n": 1,
+          "chars": 6,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate_raw": {
+          "n": 1,
+          "chars": 6,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate_post": {
+          "n": 1,
+          "chars": 6,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        }
+      }
+    },
+    "test": {
+      "ordinary": {
+        "n": 93,
+        "production": {
+          "n": 93,
+          "chars": 3177,
+          "errors": 89,
+          "cer": 0.028013849543594586,
+          "exact": 0.7419354838709677,
+          "exact_count": 69,
+          "empty": 7,
+          "content_cer": 0.025008015389547934,
+          "content_exact": 0.8279569892473119
+        },
+        "candidate": {
+          "n": 93,
+          "chars": 3177,
+          "errors": 39,
+          "cer": 0.012275731822474031,
+          "exact": 0.8172043010752689,
+          "exact_count": 76,
+          "empty": 0,
+          "content_cer": 0.008656620711766592,
+          "content_exact": 0.9247311827956989
+        },
+        "candidate_raw": {
+          "n": 93,
+          "chars": 3177,
+          "errors": 45,
+          "cer": 0.014164305949008499,
+          "exact": 0.7634408602150538,
+          "exact_count": 71,
+          "empty": 0,
+          "content_cer": 0.006732927220262905,
+          "content_exact": 0.956989247311828
+        },
+        "candidate_post": {
+          "n": 93,
+          "chars": 3177,
+          "errors": 34,
+          "cer": 0.010701920050361977,
+          "exact": 0.8279569892473119,
+          "exact_count": 77,
+          "empty": 0,
+          "content_cer": 0.007053542802180186,
+          "content_exact": 0.946236559139785
+        },
+        "browser": {
+          "production": {
+            "n": 93,
+            "chars": 3177,
+            "errors": 78,
+            "cer": 0.024551463644948063,
+            "exact": 0.8172043010752689,
+            "exact_count": 76,
+            "empty": 0,
+            "content_cer": 0.02116062840654056,
+            "content_exact": 0.9139784946236559
+          },
+          "candidate": {
+            "n": 93,
+            "chars": 3177,
+            "errors": 38,
+            "cer": 0.011960969468051622,
+            "exact": 0.8172043010752689,
+            "exact_count": 76,
+            "empty": 0,
+            "content_cer": 0.00833600512984931,
+            "content_exact": 0.9247311827956989
+          },
+          "jpegCandidate": {
+            "n": 93,
+            "chars": 3177,
+            "errors": 36,
+            "cer": 0.0113314447592068,
+            "exact": 0.8279569892473119,
+            "exact_count": 77,
+            "empty": 0,
+            "content_cer": 0.008015389547932029,
+            "content_exact": 0.9247311827956989
+          }
+        }
+      },
+      "stylized_sfx": {
+        "n": 5,
+        "production": {
+          "n": 5,
+          "chars": 26,
+          "errors": 19,
+          "cer": 0.7307692307692307,
+          "exact": 0,
+          "exact_count": 0,
+          "empty": 1,
+          "content_cer": 0.6538461538461539,
+          "content_exact": 0.2
+        },
+        "candidate": {
+          "n": 5,
+          "chars": 26,
+          "errors": 15,
+          "cer": 0.5769230769230769,
+          "exact": 0.4,
+          "exact_count": 2,
+          "empty": 1,
+          "content_cer": 0.5769230769230769,
+          "content_exact": 0.4
+        },
+        "candidate_raw": {
+          "n": 5,
+          "chars": 26,
+          "errors": 15,
+          "cer": 0.5769230769230769,
+          "exact": 0.4,
+          "exact_count": 2,
+          "empty": 1,
+          "content_cer": 0.5769230769230769,
+          "content_exact": 0.4
+        },
+        "candidate_post": {
+          "n": 5,
+          "chars": 26,
+          "errors": 15,
+          "cer": 0.5769230769230769,
+          "exact": 0.4,
+          "exact_count": 2,
+          "empty": 1,
+          "content_cer": 0.5769230769230769,
+          "content_exact": 0.4
+        },
+        "browser": {
+          "production": {
+            "n": 5,
+            "chars": 26,
+            "errors": 19,
+            "cer": 0.7307692307692307,
+            "exact": 0,
+            "exact_count": 0,
+            "empty": 2,
+            "content_cer": 0.6923076923076923,
+            "content_exact": 0.2
+          },
+          "candidate": {
+            "n": 5,
+            "chars": 26,
+            "errors": 15,
+            "cer": 0.5769230769230769,
+            "exact": 0.4,
+            "exact_count": 2,
+            "empty": 2,
+            "content_cer": 0.5769230769230769,
+            "content_exact": 0.4
+          },
+          "jpegCandidate": {
+            "n": 5,
+            "chars": 26,
+            "errors": 15,
+            "cer": 0.5769230769230769,
+            "exact": 0.4,
+            "exact_count": 2,
+            "empty": 2,
+            "content_cer": 0.5769230769230769,
+            "content_exact": 0.4
+          }
+        }
+      },
+      "special_layout": {
+        "n": 1,
+        "production": {
+          "n": 1,
+          "chars": 7,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate": {
+          "n": 1,
+          "chars": 7,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate_raw": {
+          "n": 1,
+          "chars": 7,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate_post": {
+          "n": 1,
+          "chars": 7,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "browser": {
+          "production": {
+            "n": 1,
+            "chars": 7,
+            "errors": 0,
+            "cer": 0,
+            "exact": 1,
+            "exact_count": 1,
+            "empty": 0,
+            "content_cer": 0,
+            "content_exact": 1
+          },
+          "candidate": {
+            "n": 1,
+            "chars": 7,
+            "errors": 0,
+            "cer": 0,
+            "exact": 1,
+            "exact_count": 1,
+            "empty": 0,
+            "content_cer": 0,
+            "content_exact": 1
+          },
+          "jpegCandidate": {
+            "n": 1,
+            "chars": 7,
+            "errors": 0,
+            "cer": 0,
+            "exact": 1,
+            "exact_count": 1,
+            "empty": 0,
+            "content_cer": 0,
+            "content_exact": 1
+          }
+        }
+      },
+      "ambiguous": {
+        "n": 1,
+        "production": {
+          "n": 1,
+          "chars": 3,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate": {
+          "n": 1,
+          "chars": 3,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate_raw": {
+          "n": 1,
+          "chars": 3,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "candidate_post": {
+          "n": 1,
+          "chars": 3,
+          "errors": 0,
+          "cer": 0,
+          "exact": 1,
+          "exact_count": 1,
+          "empty": 0,
+          "content_cer": 0,
+          "content_exact": 1
+        },
+        "browser": {
+          "production": {
+            "n": 1,
+            "chars": 3,
+            "errors": 0,
+            "cer": 0,
+            "exact": 1,
+            "exact_count": 1,
+            "empty": 0,
+            "content_cer": 0,
+            "content_exact": 1
+          },
+          "candidate": {
+            "n": 1,
+            "chars": 3,
+            "errors": 0,
+            "cer": 0,
+            "exact": 1,
+            "exact_count": 1,
+            "empty": 0,
+            "content_cer": 0,
+            "content_exact": 1
+          },
+          "jpegCandidate": {
+            "n": 1,
+            "chars": 3,
+            "errors": 0,
+            "cer": 0,
+            "exact": 1,
+            "exact_count": 1,
+            "empty": 0,
+            "content_cer": 0,
+            "content_exact": 1
+          }
+        }
+      }
+    }
+  },
+  "paired": {
+    "test": {
+      "n": 1219,
+      "improved": 195,
+      "worsened": 28,
+      "same": 996,
+      "error_before": 1278,
+      "error_after": 419,
+      "became_exact": 155,
+      "lost_exact": 18
+    },
+    "browser_test": {
+      "n": 100,
+      "improved": 6,
+      "worsened": 1,
+      "same": 93,
+      "error_before": 97,
+      "error_after": 53,
+      "became_exact": 3,
+      "lost_exact": 1
+    },
+    "browser_jpeg": {
+      "n": 100,
+      "improved": 2,
+      "worsened": 0,
+      "same": 98,
+      "error_before": 53,
+      "error_after": 51,
+      "became_exact": 1,
+      "lost_exact": 0
+    },
+    "validation_threshold_010": {
+      "n": 300,
+      "improved": 12,
+      "worsened": 0,
+      "same": 288,
+      "error_before": 314,
+      "error_after": 165,
+      "became_exact": 10,
+      "lost_exact": 0
+    },
+    "validation_gray_padding": {
+      "n": 300,
+      "improved": 44,
+      "worsened": 9,
+      "same": 247,
+      "error_before": 314,
+      "error_after": 257,
+      "became_exact": 39,
+      "lost_exact": 3
+    }
+  },
+  "postprocess": {
+    "production": {
+      "raw_to_lexicon": {
+        "n": 1219,
+        "improved": 219,
+        "worsened": 38,
+        "same": 962,
+        "error_before": 1461,
+        "error_after": 1247,
+        "became_exact": 165,
+        "lost_exact": 24
+      },
+      "lexicon_to_final": {
+        "n": 1219,
+        "improved": 5,
+        "worsened": 21,
+        "same": 1193,
+        "error_before": 1247,
+        "error_after": 1278,
+        "became_exact": 4,
+        "lost_exact": 8
+      },
+      "quote_stripping": [
+        {
+          "id": 1128,
+          "reference": "\"L'abruti de tout à l'heure m'a promis qu'il me libérerait au bout d'un mois.\"",
+          "post": "\"L'abruti de m'a promis qu'il me libérerait au bout d'un mois. \"",
+          "text": "L'abruti de m'a promis qu'il me libérerait au bout d'un mois."
+        },
+        {
+          "id": 2971,
+          "reference": "\"Homme... ique\", c'est tout ce que j'ai pu saisir.",
+          "post": "\"Homme... Ique\", c'est tout ce que j'ai pu saisir.",
+          "text": "Homme... Ique, c'est tout ce que j'ai pu saisir."
+        },
+        {
+          "id": 3647,
+          "reference": "Vous n'avez toujours pas compris ce que signifie \"être pirate\" !",
+          "post": "Vous n'avez toujours pas compris ce que signifie \"être pirate\" !",
+          "text": "Vous n'avez toujours pas compris ce que signifie être pirate !"
+        },
+        {
+          "id": 4379,
+          "reference": "Je vais continuer de remplir mon rôle de \"gardien de la forêt\".",
+          "post": "Je vais continuer de remplir mon rôle de \"gardien de la forêt\".",
+          "text": "Je vais continuer de remplir mon rôle de gardien de la forêt."
+        },
+        {
+          "id": 4392,
+          "reference": "Tu mettras la main sur ce \"One Piece\"...",
+          "post": "Tu mettras la main sur ce \"One Piece\"...",
+          "text": "Tu mettras la main sur ce One Piece..."
+        },
+        {
+          "id": 822,
+          "reference": "Cela veut dire que vous allez emprunter la route de \"Grand Line\" ?",
+          "post": "Cela veut dire que vous allez emprunter la route de \"Grand Line\" ?",
+          "text": "Cela veut dire que vous allez emprunter la route de Grand Line ?"
+        },
+        {
+          "id": 6952,
+          "reference": "Je vais faire de toi l'homme qui a capturé \"Kuro le machiavélique\" !",
+          "post": "Je vais faire de toi l'homme qui a capturé \"Kuro le machiavélique\" !",
+          "text": "Je vais faire de toi l'homme qui a capturé Kuro le machiavélique !"
+        },
+        {
+          "id": 6662,
+          "reference": "Lorsque je dirai \"Jango\" tu nous laisseras passer.",
+          "post": "Lorsque je dirai \"ango\" tu nous laisseras passer.",
+          "text": "Lorsque je dirai ango tu nous laisseras passer."
+        },
+        {
+          "id": 6293,
+          "reference": "\"Bonjour Klahadoll !\"",
+          "post": "\"Bonnour Klahadoll !\"",
+          "text": "Bonnour Klahadoll !"
+        },
+        {
+          "id": 2274,
+          "reference": "À vous de jouer mes braves !! Préparez la \"Special Baggy Ball\" !!",
+          "post": "À vous de jouer mes braves !! Préparez la \"Special Baggy Ball\" !!",
+          "text": "À vous de jouer mes braves !! Préparez la Special Baggy Ball !!"
+        },
+        {
+          "id": 787,
+          "reference": "\"Alors même si je dois y laisser la vie, je n'aurai aucun regret.\"",
+          "post": "\"Alors même si je dois y laisser la vie, je n'aurai aucun regret. \"",
+          "text": "Alors même si je dois y laisser la vie, je n'aurai aucun regret."
+        },
+        {
+          "id": 4205,
+          "reference": "Le... le \"One Piece\" ?!",
+          "post": "Le... Le \"One Piece\" ?!",
+          "text": "Le... Le One Piece ?!"
+        },
+        {
+          "id": 2322,
+          "reference": "Qu'est-ce que tu veux dire par \"prête\" ? Prête à tuer de sang-froid ?",
+          "post": "Qu'est-ce que tu veux dire par \"prête\" ? Prête à tuer de sang-froid ?",
+          "text": "Qu'est-ce que tu veux dire par prête ? Prête à tuer de sang-froid ?"
+        },
+        {
+          "id": 821,
+          "reference": "Dites Luffy, si vous partez à la poursuite du \"One Piece\"...",
+          "post": "Dites Luffy, si vous partez à la poursuite du \"One Piece...",
+          "text": "Dites Luffy, si vous partez à la poursuite du One Piece..."
+        },
+        {
+          "id": 282,
+          "reference": "Un trésor marin appelé aussi \"fruit du démon\" !!",
+          "post": "un trésor marin appelé aussi \"fruit du démon\" !!",
+          "text": "un trésor marin appelé aussi fruit du démon !!"
+        },
+        {
+          "id": 5647,
+          "reference": "Quand je dirai \"Jango\" vous vous relèverez doucement...",
+          "post": "Quand je dirai \"Jango\" vous vous relèverez Doucement...",
+          "text": "Quand je dirai Jango vous vous relèverez Doucement..."
+        },
+        {
+          "id": 4206,
+          "reference": "Je compte bien y trouver le \"One Piece\" !!",
+          "post": "Je compte bien y trouver le \"One Piece\" !!",
+          "text": "Je compte bien y trouver le One Piece !!"
+        },
+        {
+          "id": 786,
+          "reference": "\"C'est moi et moi seul qui ai décidé de devenir Roi des Pirates.\"",
+          "post": "\"C'est moi et moi seul qui ai décidé de devenir roi des pirates. \"",
+          "text": "C'est moi et moi seul qui ai décidé de devenir roi des pirates."
+        },
+        {
+          "id": 824,
+          "reference": "Vous savez qu'on l'appelle aussi le \"cimetière des pirates\"...",
+          "post": "Vous savez qu'on l'appelle aussi le 'cimetière des pirates\"...",
+          "text": "Vous savez qu'on l'appelle aussi le 'cimetière des pirates..."
+        }
+      ]
+    },
+    "candidate": {
+      "raw_to_lexicon": {
+        "n": 1219,
+        "improved": 149,
+        "worsened": 31,
+        "same": 1039,
+        "error_before": 529,
+        "error_after": 388,
+        "became_exact": 111,
+        "lost_exact": 24
+      },
+      "lexicon_to_final": {
+        "n": 1219,
+        "improved": 4,
+        "worsened": 20,
+        "same": 1195,
+        "error_before": 388,
+        "error_after": 419,
+        "became_exact": 2,
+        "lost_exact": 9
+      },
+      "quote_stripping": [
+        {
+          "id": 1128,
+          "reference": "\"L'abruti de tout à l'heure m'a promis qu'il me libérerait au bout d'un mois.\"",
+          "post": "\"L'abruti de tout à l'heure m'a promis qu'il me libérerait au bout d'un mois. \"",
+          "text": "L'abruti de tout à l'heure m'a promis qu'il me libérerait au bout d'un mois."
+        },
+        {
+          "id": 2971,
+          "reference": "\"Homme... ique\", c'est tout ce que j'ai pu saisir.",
+          "post": "\"Homme... Ique\", c'est tout ce que j'ai pu saisir.",
+          "text": "Homme... Ique, c'est tout ce que j'ai pu saisir."
+        },
+        {
+          "id": 3647,
+          "reference": "Vous n'avez toujours pas compris ce que signifie \"être pirate\" !",
+          "post": "Vous n'avez toujours pas compris ce que signifie \"être pirate\" !",
+          "text": "Vous n'avez toujours pas compris ce que signifie être pirate !"
+        },
+        {
+          "id": 4379,
+          "reference": "Je vais continuer de remplir mon rôle de \"gardien de la forêt\".",
+          "post": "Je vais continuer de remplir mon rôle de \"gardien de la forêt\".",
+          "text": "Je vais continuer de remplir mon rôle de gardien de la forêt."
+        },
+        {
+          "id": 4392,
+          "reference": "Tu mettras la main sur ce \"One Piece\"...",
+          "post": "Tu mettras la main sur ce \"One Piece\"...",
+          "text": "Tu mettras la main sur ce One Piece..."
+        },
+        {
+          "id": 822,
+          "reference": "Cela veut dire que vous allez emprunter la route de \"Grand Line\" ?",
+          "post": "Cela veut dire que vous allez emprunter la route de \"Grand Line\" ?",
+          "text": "Cela veut dire que vous allez emprunter la route de Grand Line ?"
+        },
+        {
+          "id": 6952,
+          "reference": "Je vais faire de toi l'homme qui a capturé \"Kuro le machiavélique\" !",
+          "post": "Je vais faire de toi l'homme qui a capturé \"Kuro le machiavélique\" !",
+          "text": "Je vais faire de toi l'homme qui a capturé Kuro le machiavélique !"
+        },
+        {
+          "id": 6662,
+          "reference": "Lorsque je dirai \"Jango\" tu nous laisseras passer.",
+          "post": "Lorsque je dirai \"ango\" tu nous laisseras passer.",
+          "text": "Lorsque je dirai ango tu nous laisseras passer."
+        },
+        {
+          "id": 6293,
+          "reference": "\"Bonjour Klahadoll !\"",
+          "post": "\"Bonjour Klahadoll !\"",
+          "text": "Bonjour Klahadoll !"
+        },
+        {
+          "id": 2274,
+          "reference": "À vous de jouer mes braves !! Préparez la \"Special Baggy Ball\" !!",
+          "post": "À vous de jouer mes braves !! Préparez la \"Special Baggy Ball\" !!",
+          "text": "À vous de jouer mes braves !! Préparez la Special Baggy Ball !!"
+        },
+        {
+          "id": 787,
+          "reference": "\"Alors même si je dois y laisser la vie, je n'aurai aucun regret.\"",
+          "post": "\"alors même si je dois y laisser la vie, je n'aurai aucun regret. \"",
+          "text": "alors même si je dois y laisser la vie, je n'aurai aucun regret."
+        },
+        {
+          "id": 4205,
+          "reference": "Le... le \"One Piece\" ?!",
+          "post": "Le... Le \"One Piece\" ?!",
+          "text": "Le... Le One Piece ?!"
+        },
+        {
+          "id": 2322,
+          "reference": "Qu'est-ce que tu veux dire par \"prête\" ? Prête à tuer de sang-froid ?",
+          "post": "Qu'est-ce que tu veux dire par \"prête\" ? Prête à tuer de sang-froid ?",
+          "text": "Qu'est-ce que tu veux dire par prête ? Prête à tuer de sang-froid ?"
+        },
+        {
+          "id": 821,
+          "reference": "Dites Luffy, si vous partez à la poursuite du \"One Piece\"...",
+          "post": "Dites Luffy, si vous partez à la poursuite du \"One Piece...",
+          "text": "Dites Luffy, si vous partez à la poursuite du One Piece..."
+        },
+        {
+          "id": 282,
+          "reference": "Un trésor marin appelé aussi \"fruit du démon\" !!",
+          "post": "un trésor marin appelé aussi \"fruit du démon\" !!",
+          "text": "un trésor marin appelé aussi fruit du démon !!"
+        },
+        {
+          "id": 5647,
+          "reference": "Quand je dirai \"Jango\" vous vous relèverez doucement...",
+          "post": "Quand je dirai \"Jango\" vous vous relèverez Doucement...",
+          "text": "Quand je dirai Jango vous vous relèverez Doucement..."
+        },
+        {
+          "id": 4206,
+          "reference": "Je compte bien y trouver le \"One Piece\" !!",
+          "post": "Je compte bien y trouver le \"One Piece\" !!",
+          "text": "Je compte bien y trouver le One Piece !!"
+        },
+        {
+          "id": 786,
+          "reference": "\"C'est moi et moi seul qui ai décidé de devenir Roi des Pirates.\"",
+          "post": "\"C'est moi et moi seul qui ai décidé de devenir roi des pirates. \"",
+          "text": "C'est moi et moi seul qui ai décidé de devenir roi des pirates."
+        },
+        {
+          "id": 824,
+          "reference": "Vous savez qu'on l'appelle aussi le \"cimetière des pirates\"...",
+          "post": "Vous savez qu'on l'appelle aussi le 'cimetière des pirates\"...",
+          "text": "Vous savez qu'on l'appelle aussi le 'cimetière des pirates..."
+        }
+      ]
+    }
+  },
+  "stage": {
+    "val": {
+      "pages": 129,
+      "gt": 1193,
+      "matched": 1177,
+      "permissive": 1186,
+      "missed": 16,
+      "missed_permissive": 7,
+      "recall": 0.9865884325230512,
+      "recall_permissive": 0.9941324392288349,
+      "valid_order_pages": 127,
+      "exact_matched_order_pages": 111,
+      "unmatched_predictions": 2,
+      "unmatched_predictions_permissive": 2,
+      "recovered_bubbles": [
+        {
+          "id": 1377,
+          "reference": "Qu'est-ce que tu dis ?! Le fils du colonel m'a promis que si je tenais un mois, il me libérerait..."
+        },
+        {
+          "id": 1666,
+          "reference": "Le colonel Morgan a perdu !!"
+        },
+        {
+          "id": 2240,
+          "reference": "C'est parti !"
+        },
+        {
+          "id": 3122,
+          "reference": "N°2 de la bande à Baggy Chef d'état-major Cabaji l'acrobate"
+        },
+        {
+          "id": 3828,
+          "reference": "Gyahhhh !!"
+        },
+        {
+          "id": 4185,
+          "reference": "Vingt ans, une éternité..."
+        },
+        {
+          "id": 6197,
+          "reference": "Han, han... je dois..."
+        },
+        {
+          "id": 7235,
+          "reference": "Ne t'inquiète pas pour eux."
+        },
+        {
+          "id": 8201,
+          "reference": "Les gars, empêchez Sanji de se mettre en rogne !"
+        }
+      ]
+    },
+    "test": {
+      "pages": 129,
+      "gt": 1221,
+      "matched": 1209,
+      "permissive": 1217,
+      "missed": 12,
+      "missed_permissive": 4,
+      "recall": 0.9901719901719902,
+      "recall_permissive": 0.9967239967239967,
+      "valid_order_pages": 129,
+      "exact_matched_order_pages": 114,
+      "unmatched_predictions": 6,
+      "unmatched_predictions_permissive": 9,
+      "recovered_bubbles": [
+        {
+          "id": 659,
+          "reference": "..."
+        },
+        {
+          "id": 938,
+          "reference": "Ce n'est pas bien de s'en prendre aux enfants."
+        },
+        {
+          "id": 1966,
+          "reference": "Hff"
+        },
+        {
+          "id": 2853,
+          "reference": "Ouaf ! Ouaf !"
+        },
+        {
+          "id": 3929,
+          "reference": "!"
+        },
+        {
+          "id": 4461,
+          "reference": "Piment, Carotte, vous n'êtes que deux ?"
+        },
+        {
+          "id": 4592,
+          "reference": "Qu'avez-vous fait du capitaine Usopp ?"
+        },
+        {
+          "id": 4616,
+          "reference": "Qu'est-ce qu'il va y faire ?"
+        }
+      ]
+    },
+    "missing_bubbles": {
+      "n": 12,
+      "reference_characters": 209,
+      "ids": [
+        659,
+        894,
+        938,
+        1966,
+        2853,
+        3175,
+        3929,
+        4461,
+        4592,
+        4616,
+        6516,
+        7005
+      ]
+    },
+    "common_test_subset": {
+      "n": 1219,
+      "matched": 1207,
+      "variants": {
+        "production": {
+          "gt_crops": {
+            "n": 1219,
+            "chars": 40130,
+            "errors": 1278,
+            "cer": 0.03184649887864441,
+            "exact": 0.7202625102543068,
+            "exact_count": 878,
+            "empty": 70,
+            "content_cer": 0.028479967480501002,
+            "content_exact": 0.7809680065627563
+          },
+          "predicted_crops_with_misses": {
+            "n": 1219,
+            "chars": 40130,
+            "errors": 1576,
+            "cer": 0.03927236481435335,
+            "exact": 0.70467596390484,
+            "exact_count": 859,
+            "empty": 85,
+            "content_cer": 0.03523792586570463,
+            "content_exact": 0.7579983593109105
+          },
+          "matched_gt_crops": {
+            "n": 1207,
+            "chars": 39921,
+            "errors": 1261,
+            "cer": 0.03158738508554395,
+            "exact": 0.7224523612261806,
+            "exact_count": 872,
+            "empty": 69,
+            "content_cer": 0.028269363364743737,
+            "content_exact": 0.7829328914664457
+          },
+          "matched_predicted_crops": {
+            "n": 1207,
+            "chars": 39921,
+            "errors": 1367,
+            "cer": 0.03424262919265549,
+            "exact": 0.7116818558409279,
+            "exact_count": 859,
+            "empty": 73,
+            "content_cer": 0.030261242626216194,
+            "content_exact": 0.7655343827671914
+          },
+          "crop_geometry_change": {
+            "n": 1207,
+            "improved": 72,
+            "worsened": 99,
+            "same": 1036,
+            "error_before": 1261,
+            "error_after": 1367,
+            "became_exact": 47,
+            "lost_exact": 60
+          }
+        },
+        "candidate": {
+          "gt_crops": {
+            "n": 1219,
+            "chars": 40130,
+            "errors": 419,
+            "cer": 0.010441066533765263,
+            "exact": 0.8326497128794094,
+            "exact_count": 1015,
+            "empty": 3,
+            "content_cer": 0.007494728284342369,
+            "content_exact": 0.8958162428219852
+          },
+          "predicted_crops_with_misses": {
+            "n": 1219,
+            "chars": 40130,
+            "errors": 646,
+            "cer": 0.016097682531771743,
+            "exact": 0.8351107465135357,
+            "exact_count": 1018,
+            "empty": 14,
+            "content_cer": 0.013058611315769417,
+            "content_exact": 0.8917145200984413
+          },
+          "matched_gt_crops": {
+            "n": 1207,
+            "chars": 39921,
+            "errors": 416,
+            "cer": 0.010420580646777386,
+            "exact": 0.8334714167357083,
+            "exact_count": 1006,
+            "empty": 3,
+            "content_cer": 0.007507852600934651,
+            "content_exact": 0.8956089478044739
+          },
+          "matched_predicted_crops": {
+            "n": 1207,
+            "chars": 39921,
+            "errors": 437,
+            "cer": 0.010946619573657975,
+            "exact": 0.8434134217067109,
+            "exact_count": 1018,
+            "empty": 2,
+            "content_cer": 0.007967517045889834,
+            "content_exact": 0.9005799502899752
+          },
+          "crop_geometry_change": {
+            "n": 1207,
+            "improved": 43,
+            "worsened": 39,
+            "same": 1125,
+            "error_before": 416,
+            "error_after": 437,
+            "became_exact": 30,
+            "lost_exact": 18
+          }
+        }
+      }
+    },
+    "page_order_eligible": 129,
+    "extra_page_gt": [
+      {
+        "id": 5122,
+        "reference": "Zzz"
+      },
+      {
+        "id": 5123,
+        "reference": "Zzz"
+      }
+    ]
+  },
+  "review": {
+    "ordinary_test_failures": [
+      {
+        "id": 705,
+        "reference": "Même si... en vérité j'ai un rêve.",
+        "raw": "Même si... en vérité j'ai un rêve.",
+        "post": "Même si... En vérité j'ai un rêve.",
+        "text": "Même si... En vérité j'ai un rêve.",
+        "confidence": 0.9913389752892887,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 3
+      },
+      {
+        "id": 8416,
+        "reference": "Tu sais à qui tu viens de casser la figure ? À un lieutenant de la Marine !!",
+        "raw": "Tu sais à qui tu viens de casser la figure ? à un lieutenant de la marine !!",
+        "post": "Tu sais à qui tu viens de casser la figure ? À un lieutenant de la marine !!",
+        "text": "Tu sais à qui tu viens de casser la figure ? À un lieutenant de la marine !!",
+        "confidence": 0.9873307033589012,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 5
+      },
+      {
+        "id": 1128,
+        "reference": "\"L'abruti de tout à l'heure m'a promis qu'il me libérerait au bout d'un mois.\"",
+        "raw": "\"L'abruti de tout à l'heure m'a promis qu'il me libérerait au bout d'un mois.\"",
+        "post": "\"L'abruti de tout à l'heure m'a promis qu'il me libérerait au bout d'un mois. \"",
+        "text": "L'abruti de tout à l'heure m'a promis qu'il me libérerait au bout d'un mois.",
+        "confidence": 0.9653347455538236,
+        "errors": 2,
+        "content_errors": 2,
+        "lines": 7
+      },
+      {
+        "id": 5053,
+        "reference": "Si on m'avait dit que son majordome était en réalité l'implacable Capitaine Kuro !!",
+        "raw": "Si on m'avait dit que son majordome était en réalité l'implacable capitaine Kuro !!",
+        "post": "Si on m'avait dit que son majordome était en réalité l'implacable capitaine Kuro !!",
+        "text": "Si on m'avait dit que son majordome était en réalité l'implacable capitaine Kuro !!",
+        "confidence": 0.9873073948435036,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 9
+      },
+      {
+        "id": 1542,
+        "reference": "Luffy, Zoro, faites vite !!",
+        "raw": "Luffy, Zoro, Faites vite !!",
+        "post": "Luffy, Zoro, Faites vite !!",
+        "text": "Luffy, Zoro, Faites vite !!",
+        "confidence": 0.9516088719721194,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 4
+      },
+      {
+        "id": 2971,
+        "reference": "\"Homme... ique\", c'est tout ce que j'ai pu saisir.",
+        "raw": "\"Homme... ique\", c'est tout ce que j'ai pu saisir.",
+        "post": "\"Homme... Ique\", c'est tout ce que j'ai pu saisir.",
+        "text": "Homme... Ique, c'est tout ce que j'ai pu saisir.",
+        "confidence": 0.9683897292613983,
+        "errors": 3,
+        "content_errors": 2,
+        "lines": 5
+      },
+      {
+        "id": 2477,
+        "reference": "Ha, ha, ha , ha !!",
+        "raw": "Ha, ha, ha, ha !!",
+        "post": "Ha, ha, ha, ha !!",
+        "text": "Ha, ha, ha, ha !!",
+        "confidence": 0.9773250783191008,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 3
+      },
+      {
+        "id": 1968,
+        "reference": "La carte de Grand Line !!",
+        "raw": "La carte de grand line !!",
+        "post": "La carte de grand Line !!",
+        "text": "La carte de grand Line !!",
+        "confidence": 0.9939422583580018,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 3
+      },
+      {
+        "id": 5750,
+        "reference": "!!",
+        "raw": "!",
+        "post": "!",
+        "text": "!",
+        "confidence": 0.9999983310699463,
+        "errors": 1,
+        "content_errors": 1,
+        "lines": 1
+      },
+      {
+        "id": 6332,
+        "reference": "Qu... quoi ?!",
+        "raw": "Qu... quoi ?!",
+        "post": "Qu... Quoi ?!",
+        "text": "Qu... Quoi ?!",
+        "confidence": 0.9660634215061481,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 2
+      },
+      {
+        "id": 5495,
+        "reference": "C'est un cadeau pour vous de la part de la patronne.",
+        "raw": "Pour vous de la part de la patronne.",
+        "post": "Pour vous de la part de la patronne.",
+        "text": "Pour vous de la part de la patronne.",
+        "confidence": 0.9797094547086291,
+        "errors": 17,
+        "content_errors": 16,
+        "lines": 3
+      },
+      {
+        "id": 3740,
+        "reference": "Je... je n'arrive plus à nager...",
+        "raw": "Je... Je n'arrive plus à nager...",
+        "post": "Je... Je n'arrive plus à nager...",
+        "text": "Je... Je n'arrive plus à nager...",
+        "confidence": 0.9763880245613329,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 4
+      },
+      {
+        "id": 3647,
+        "reference": "Vous n'avez toujours pas compris ce que signifie \"être pirate\" !",
+        "raw": "Vous n'avez toujours pas compris ce que signifie \"être pirate\" !",
+        "post": "Vous n'avez toujours pas compris ce que signifie \"être pirate\" !",
+        "text": "Vous n'avez toujours pas compris ce que signifie être pirate !",
+        "confidence": 0.9765204065479338,
+        "errors": 2,
+        "content_errors": 2,
+        "lines": 5
+      },
+      {
+        "id": 5361,
+        "reference": "Écarte-toi tout de suite de mademoiselle Kaya !!",
+        "raw": "Écartetoi tout de suite de mademoiselle Kaya !!",
+        "post": "Écartetoi tout de suite de mademoiselle Kaya !!",
+        "text": "Écartetoi tout de suite de mademoiselle Kaya !!",
+        "confidence": 0.9688380563512762,
+        "errors": 1,
+        "content_errors": 1,
+        "lines": 6
+      },
+      {
+        "id": 8175,
+        "reference": "Gum Gum...",
+        "raw": "Gum gum...",
+        "post": "Gum gum...",
+        "text": "Gum gum...",
+        "confidence": 0.9627297878265381,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 2
+      },
+      {
+        "id": 2118,
+        "reference": "Il s'agit de la carte de Grand Line, je viens juste de la voler !",
+        "raw": "Il s'agit de la carte de grand line, je viens juste de la voler !",
+        "post": "Il s'agit de la carte de grand Line, je viens juste de la voler !",
+        "text": "Il s'agit de la carte de grand Line, je viens juste de la voler !",
+        "confidence": 0.9888791441917419,
+        "errors": 1,
+        "content_errors": 0,
+        "lines": 5
+      },
+      {
+        "id": 2617,
+        "reference": "Comment en est-on arrivés là ?!",
+        "raw": "Comment en est-on arri-ves là ?",
+        "post": "Comment en est-on arri-ves là ?",
+        "text": "Comment en est-on arri-ves là ?",
+        "confidence": 0.9497234725183056,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 5
+      }
+    ],
+    "remaining_test_errors": [
+      {
+        "id": 3931,
+        "reference": "Ils sont très remontés ! Si par mégarde nous leur disons que nous sommes des pirates ou des voleurs, ils nous tueront !",
+        "production": "Ils sont très remontés ! Si par mégarde nous leur disons que nous sommes des pirates ou des voleurs,",
+        "candidate": "Ils sont très remontés ! Si par mégarde nous leur disons que nous sommes des pirates ou des voleurs,",
+        "confidence": 0.9827679216861724,
+        "errors": 19,
+        "content_errors": 18,
+        "lines": 6
+      },
+      {
+        "id": 5495,
+        "reference": "C'est un cadeau pour vous de la part de la patronne.",
+        "production": "Part de la patronne.",
+        "candidate": "Pour vous de la part de la patronne.",
+        "confidence": 0.9797094547086291,
+        "errors": 17,
+        "content_errors": 16,
+        "lines": 3
+      },
+      {
+        "id": 3034,
+        "reference": "Mon trésor à moi, c'est cette ville et ses habitants !!",
+        "production": "Mon c'est cette ville et ses habitants !!",
+        "candidate": "Mon c'est cette ville et ses habitants !!",
+        "confidence": 0.992502295389408,
+        "errors": 14,
+        "content_errors": 14,
+        "lines": 4
+      },
+      {
+        "id": 714,
+        "reference": "Hé... Hé, hé...",
+        "production": "Hé... Hé, hé. . Hé, hé...",
+        "candidate": "Hé... Hé, hé. . Hé, hé...",
+        "confidence": 0.9326290041208267,
+        "errors": 10,
+        "content_errors": 9,
+        "lines": 4
+      },
+      {
+        "id": 4619,
+        "reference": "Si, au contraire, il est plein de bons sentiments !",
+        "production": "Contraire, il est plein de bons sentiments !",
+        "candidate": "Contraire, il est plein de bons sentiments !",
+        "confidence": 0.9986415207386017,
+        "errors": 8,
+        "content_errors": 7,
+        "lines": 4
+      },
+      {
+        "id": 1121,
+        "reference": "Venez tous le voir, l'exécution sera publique !",
+        "production": "Tous le voir, l'exécution sera publique !",
+        "candidate": "Tous le voir, l'exécution sera publique !",
+        "confidence": 0.9825418867715975,
+        "errors": 7,
+        "content_errors": 6,
+        "lines": 3
+      },
+      {
+        "id": 4201,
+        "reference": "J'étais prêt à tout pour dénicher un nouveau trésor !!",
+        "production": "J'étais prêt à tout pour dénicher un nouveau ouveau trésor !!",
+        "candidate": "J'étais prêt à tout pour dénicher un nouveau ouveau trésor !!",
+        "confidence": 0.9781274433995857,
+        "errors": 7,
+        "content_errors": 7,
+        "lines": 6
+      },
+      {
+        "id": 2531,
+        "reference": "Schlof",
+        "production": "bBb",
+        "candidate": "i",
+        "confidence": 0.6631134748458862,
+        "errors": 6,
+        "content_errors": 6,
+        "lines": 1
+      },
+      {
+        "id": 1337,
+        "reference": "Moi je deviendrai un soldat de la Marine juste et droit ! Tout comme Luffy souhaite devenir le Roi des Pirates !!",
+        "production": "Moi je deviendrai un soldat de la marine juste et droit tout comme Luffy souhaite devenir le roi des pirates !!",
+        "candidate": "Moi je deviendrai un soldat de la marine juste et droit tout comme Luffy souhaite devenir le roi des pirates !!",
+        "confidence": 0.9806178652488433,
+        "errors": 6,
+        "content_errors": 1,
+        "lines": 6
+      },
+      {
+        "id": 765,
+        "reference": "Aaah !!",
+        "production": "aah !!",
+        "candidate": "Ha",
+        "confidence": 0.8099439740180969,
+        "errors": 6,
+        "content_errors": 5,
+        "lines": 3
+      },
+      {
+        "id": 6676,
+        "reference": "Kling",
+        "production": "",
+        "candidate": "",
+        "confidence": 0,
+        "errors": 5,
+        "content_errors": 5,
+        "lines": 1
+      },
+      {
+        "id": 5499,
+        "reference": "Kwiit",
+        "production": "f",
+        "candidate": "Aa",
+        "confidence": 0.34685152272383374,
+        "errors": 5,
+        "content_errors": 5,
+        "lines": 1
+      },
+      {
+        "id": 8157,
+        "reference": "Criii",
+        "production": "igp",
+        "candidate": "a",
+        "confidence": 0.6366504430770874,
+        "errors": 5,
+        "content_errors": 5,
+        "lines": 1
+      },
+      {
+        "id": 8158,
+        "reference": "Criii",
+        "production": "Pri",
+        "candidate": "",
+        "confidence": 0,
+        "errors": 5,
+        "content_errors": 5,
+        "lines": 1
+      },
+      {
+        "id": 7258,
+        "reference": "Hé, hé !",
+        "production": "Hé, ! HHé,",
+        "candidate": "Hé ! Hé,",
+        "confidence": 0.9309377755437579,
+        "errors": 5,
+        "content_errors": 2,
+        "lines": 2
+      },
+      {
+        "id": 2619,
+        "reference": "Défaite des deux adversaires. (À cause du manque de sens commun de kaguya !) ",
+        "production": "Défaite desdeux adver- saires. (À cause du manque de sens commun de Kaguya !",
+        "candidate": "Défaite desdeux adver- saires. (À cause du manque de sens commun de Kaguya !",
+        "confidence": 0.9695487461592022,
+        "errors": 5,
+        "content_errors": 4,
+        "lines": 9
+      },
+      {
+        "id": 5755,
+        "reference": "Kwiit",
+        "production": "R",
+        "candidate": "Ka",
+        "confidence": 0.7991356551647186,
+        "errors": 4,
+        "content_errors": 4,
+        "lines": 1
+      },
+      {
+        "id": 3732,
+        "reference": "Aaahhhh !!",
+        "production": "Aaahhhh !!",
+        "candidate": "Aaahhh",
+        "confidence": 0.8029103790010724,
+        "errors": 4,
+        "content_errors": 3,
+        "lines": 1
+      },
+      {
+        "id": 6201,
+        "reference": "C'est le moment ou jamais ! Je dois en profiter pour réveiller Luffy !",
+        "production": "C'est le moment ou jamais ! Je dois enprofiter. Pour réveiller",
+        "candidate": "C'est le moment ou Jamais ! Je dois enprofiter Pour réveillerLuffy !",
+        "confidence": 0.9184828903248061,
+        "errors": 4,
+        "content_errors": 2,
+        "lines": 8
+      },
+      {
+        "id": 2711,
+        "reference": "Grooaaar !!",
+        "production": "Groohhhpi",
+        "candidate": "Grooaar",
+        "confidence": 0.9190874014581952,
+        "errors": 4,
+        "content_errors": 3,
+        "lines": 1
+      },
+      {
+        "id": 3643,
+        "reference": "Comment ça je n'ai pas complètement tort ?! C'est l'essence de la piraterie !!",
+        "production": "Comment ça je n'ai pas complètement tort ? Il c'est l'essence de la piraterie !!",
+        "candidate": "Comment ça je n'ai pas complètement tort ? Il c'est l'essence de la piraterie !!",
+        "confidence": 0.988572189441094,
+        "errors": 4,
+        "content_errors": 3,
+        "lines": 6
+      },
+      {
+        "id": 1265,
+        "reference": "Espèce de traître !!",
+        "production": "Espèce de traître !",
+        "candidate": "Espèce de de traître !",
+        "confidence": 0.9975954294204712,
+        "errors": 4,
+        "content_errors": 4,
+        "lines": 3
+      },
+      {
+        "id": 786,
+        "reference": "\"C'est moi et moi seul qui ai décidé de devenir Roi des Pirates.\"",
+        "production": "C'est moi et moi seul qui ai décidé de devenir roi des pirates.",
+        "candidate": "C'est moi et moi seul qui ai décidé de devenir roi des pirates.",
+        "confidence": 0.9797372992222125,
+        "errors": 4,
+        "content_errors": 2,
+        "lines": 8
+      },
+      {
+        "id": 2971,
+        "reference": "\"Homme... ique\", c'est tout ce que j'ai pu saisir.",
+        "production": "Homme... Ique, c'est tout ce que j'ai pu saisir.",
+        "candidate": "Homme... Ique, c'est tout ce que j'ai pu saisir.",
+        "confidence": 0.9683897292613983,
+        "errors": 3,
+        "content_errors": 2,
+        "lines": 5
+      },
+      {
+        "id": 2617,
+        "reference": "Comment en est-on arrivés là ?!",
+        "production": "Comment en est-on arrives là ?",
+        "candidate": "Comment en est-on arri-ves là ?",
+        "confidence": 0.9497234725183056,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 5
+      },
+      {
+        "id": 8174,
+        "reference": "Frrch",
+        "production": "Rrr",
+        "candidate": "Fiah",
+        "confidence": 0.5837925374507904,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 1
+      },
+      {
+        "id": 4397,
+        "reference": "Le fier équipage reprit la mer en direction de Grand Lire.",
+        "production": "le fier équipage reprit la mer er direction de Grand Line.",
+        "candidate": "le fier équipage reprit la mer er direction de Grand Line.",
+        "confidence": 0.9534388102334121,
+        "errors": 3,
+        "content_errors": 2,
+        "lines": 4
+      },
+      {
+        "id": 3661,
+        "reference": "Sap...",
+        "production": "Sap",
+        "candidate": "Saph,",
+        "confidence": 0.7925806760787963,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 2
+      },
+      {
+        "id": 287,
+        "reference": "MEUH",
+        "production": "MeMh",
+        "candidate": "Meuh",
+        "confidence": 0.9616449177265167,
+        "errors": 3,
+        "content_errors": 0,
+        "lines": 1
+      },
+      {
+        "id": 5868,
+        "reference": "J'admetts que tu ne te défends pas trop mal...",
+        "production": "J'aomets que tu ne te défenos pas trop mal...",
+        "candidate": "J'aomets que tu ne te défenos pas trop mal...",
+        "confidence": 0.976707312795851,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 3
+      },
+      {
+        "id": 2476,
+        "reference": "Tu as un sacré sens de l'humour, gamin ! Mais ça ne vous empêchera pas de mourir tous les trois !",
+        "production": "Tu as un sacré sens de l'humour gamin ! Mais ça ne vous empèchera pas de mourir tous les trois !!",
+        "candidate": "Tu as un sacré sens de l'humour gamin ! Mais ça ne vous empèchera pas de mourir tous les trois !!",
+        "confidence": 0.9791003570114214,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 9
+      },
+      {
+        "id": 2304,
+        "reference": "Gloup",
+        "production": "l",
+        "candidate": "Gooy",
+        "confidence": 0.802759200334549,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 3
+      },
+      {
+        "id": 6850,
+        "reference": "Fwom",
+        "production": "brr",
+        "candidate": "aoo",
+        "confidence": 0.5504968961079916,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 1
+      },
+      {
+        "id": 436,
+        "reference": "L'attaaaque !!",
+        "production": "à l'attaaa",
+        "candidate": "À l'attaaaque !!",
+        "confidence": 0.9806355200707912,
+        "errors": 3,
+        "content_errors": 2,
+        "lines": 3
+      },
+      {
+        "id": 6170,
+        "reference": "Comment peut-il continuer de dormir dans un moment pareil ?!",
+        "production": "Commentpeut-ilcontinuer de dormir dans un momentpareil ?!",
+        "candidate": "Commentpeut-ilcontinuer de dormir dans un momentpareil ?!",
+        "confidence": 0.9872511478892544,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 7
+      },
+      {
+        "id": 6690,
+        "reference": "Tu vas me lâcher oui, triple idiot !!",
+        "production": "Tu vas me triple ioiot !!",
+        "candidate": "Tu vas me lâcher Oui, triple toiot !!",
+        "confidence": 0.9732894994117118,
+        "errors": 3,
+        "content_errors": 2,
+        "lines": 4
+      },
+      {
+        "id": 610,
+        "reference": "Je... je vais tout reprendre depuis le début !! Mais... je vous en prie...",
+        "production": "Je... Je vais tout reprendre depuis le début !! Mais. . Je vous en prie...",
+        "candidate": "Je... Je vais tout reprendre depuis le début !! Mais. . Je vous en prie...",
+        "confidence": 0.9705726716616382,
+        "errors": 3,
+        "content_errors": 1,
+        "lines": 7
+      },
+      {
+        "id": 2546,
+        "reference": "Aïe !",
+        "production": "ïe",
+        "candidate": "Aie",
+        "confidence": 0.9889721274375916,
+        "errors": 3,
+        "content_errors": 2,
+        "lines": 1
+      },
+      {
+        "id": 5097,
+        "reference": "Ploc",
+        "production": "Zlil",
+        "candidate": "uo",
+        "confidence": 0.7898459434509277,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 1
+      },
+      {
+        "id": 6662,
+        "reference": "Lorsque je dirai \"Jango\" tu nous laisseras passer.",
+        "production": "Lorsque je dirai ango tu nous laisseras passer.",
+        "candidate": "Lorsque je dirai ango tu nous laisseras passer.",
+        "confidence": 0.9815201807995232,
+        "errors": 3,
+        "content_errors": 3,
+        "lines": 5
+      }
+    ],
+    "validation_line_recovery": [
+      {
+        "id": 2606,
+        "reference": "Il est fou ce chien ! Tu vas me lâcher !!",
+        "baseline": "Fou ce chien ! Tu vas me lâcher !!",
+        "threshold_010": "Il est fou ce chien ! Tu vas me lâcher !!",
+        "lines_before": 4,
+        "lines_after": 5,
+        "errors_before": 8,
+        "errors_after": 0
+      },
+      {
+        "id": 4427,
+        "reference": "Ils vont tous nous tuer !! Les pirates sont là !!",
+        "baseline": "Tous nous tuer !! Les pirates sont là !!",
+        "threshold_010": "Ils vont tous nous tuer !! Les pirates sont là !!",
+        "lines_before": 4,
+        "lines_after": 5,
+        "errors_before": 10,
+        "errors_after": 0
+      },
+      {
+        "id": 4347,
+        "reference": "Cette idée me trottait...",
+        "baseline": "Idée me trottait...",
+        "threshold_010": "Cette idée me trottait...",
+        "lines_before": 2,
+        "lines_after": 3,
+        "errors_before": 7,
+        "errors_after": 0
+      },
+      {
+        "id": 5568,
+        "reference": "Quoi ?! Tu te serais trompé de plage !!",
+        "baseline": "Te serais trompé de plage !!",
+        "threshold_010": "Quoi ?! Tu te serais trompé de plage !!",
+        "lines_before": 3,
+        "lines_after": 4,
+        "errors_before": 11,
+        "errors_after": 0
+      },
+      {
+        "id": 5556,
+        "reference": "Capitaine, il y a deux petits bateaux accostés là-bas !",
+        "baseline": "A deux petits bateaux accostés là-bas !",
+        "threshold_010": "Capitaine, il y a deux petits bateaux accostés là-bas !",
+        "lines_before": 4,
+        "lines_after": 5,
+        "errors_before": 17,
+        "errors_after": 0
+      },
+      {
+        "id": 8148,
+        "reference": "D'ôter cette mouche de votre assiette pour pouvoir finir votre soupe !",
+        "baseline": "D'ôter cette mouche de votre assiette pour pouvoir finir votre soupe !",
+        "threshold_010": "D'ôter cette mouche de votre assiette pour pouvoir finir votre soupe !",
+        "lines_before": 6,
+        "lines_after": 7,
+        "errors_before": 0,
+        "errors_after": 0
+      },
+      {
+        "id": 3562,
+        "reference": "Spof",
+        "baseline": "Spof",
+        "threshold_010": "Spof",
+        "lines_before": 0,
+        "lines_after": 1,
+        "errors_before": 0,
+        "errors_after": 0
+      },
+      {
+        "id": 4195,
+        "reference": "Il est tout aussi inutile d'essayer de le briser, je n'y survivrai pas !!",
+        "baseline": "Il est tout d'essayer de le briser, je n'y survivrai pas !!",
+        "threshold_010": "Il est tout aussi inutile d'essayer de le briser, je n'y survivrai pas !!",
+        "lines_before": 6,
+        "lines_after": 7,
+        "errors_before": 14,
+        "errors_after": 0
+      },
+      {
+        "id": 3334,
+        "reference": "Ça t'amuse tant de triturer ma blessure ?!",
+        "baseline": "Ça t'amuse tant de blessure ?!",
+        "threshold_010": "Ça t'amuse tant de triturer ma blessure ?!",
+        "lines_before": 3,
+        "lines_after": 4,
+        "errors_before": 12,
+        "errors_after": 0
+      },
+      {
+        "id": 7236,
+        "reference": "Je n'en ai peut-être pas l'air mais je suis un homme de parole.",
+        "baseline": "Je n'en ai peut-être pas l'air mais je suis un homme de parole.",
+        "threshold_010": "Je n'en ai peut-être pas l'air mais je suis un homme de parole.",
+        "lines_before": 6,
+        "lines_after": 7,
+        "errors_before": 0,
+        "errors_after": 0
+      },
+      {
+        "id": 4254,
+        "reference": "C'est un attachement profond à une certaine chose.",
+        "baseline": "C'est un attachement profond à chose.",
+        "threshold_010": "C'est un attachement profond à une certaine chose.",
+        "lines_before": 4,
+        "lines_after": 5,
+        "errors_before": 13,
+        "errors_after": 0
+      },
+      {
+        "id": 2779,
+        "reference": "\"Quiconque tombe amoureux en premier perd\" est une règle absolue ! ",
+        "baseline": "Quiconque est une règle absolue.",
+        "threshold_010": "Quiconque tombe amoureux en premier perd est une règle absolue",
+        "lines_before": 3,
+        "lines_after": 5,
+        "errors_before": 35,
+        "errors_after": 4
+      },
+      {
+        "id": 6171,
+        "reference": "Cette petite peste a le don de m'énerver ! Elle va voir de quel bois je me chauffe...",
+        "baseline": "Cette petite peste a le don de m'énerver ! Elle va voir je me chauffe...",
+        "threshold_010": "Cette petite peste a le don de m'énerver ! Elle va voir de quel bois je me chauffe...",
+        "lines_before": 6,
+        "lines_after": 7,
+        "errors_before": 13,
+        "errors_after": 0
+      },
+      {
+        "id": 3828,
+        "reference": "Gyahhhh !!",
+        "baseline": "Gyahh !!",
+        "threshold_010": "GYahhhh !!",
+        "lines_before": 6,
+        "lines_after": 8,
+        "errors_before": 2,
+        "errors_after": 1
+      },
+      {
+        "id": 4099,
+        "reference": "Je te répète que tu ne trouveras personne à part des bêtes féroces et des monstres !",
+        "baseline": "Je te répète que tu ne trouveras personne à part des bêtes féroces et des monstres !",
+        "threshold_010": "Je te répète que tu ne trouveras personne à part des bêtes féroces et des monstres !",
+        "lines_before": 10,
+        "lines_after": 11,
+        "errors_before": 0,
+        "errors_after": 0
+      },
+      {
+        "id": 5562,
+        "reference": "Vous n'entendez pas...",
+        "baseline": "Vous Pas...",
+        "threshold_010": "Vous n'entendez pas...",
+        "lines_before": 2,
+        "lines_after": 3,
+        "errors_before": 12,
+        "errors_after": 0
+      }
+    ],
+    "native_empty_candidate": [
+      {
+        "id": 6676,
+        "reference": "Kling",
+        "lines": 1
+      },
+      {
+        "id": 8158,
+        "reference": "Criii",
+        "lines": 1
+      },
+      {
+        "id": 6775,
+        "reference": "?!!",
+        "lines": 1
+      }
+    ],
+    "native_candidate_max_width": [
+      {
+        "id": 284,
+        "reference": "Celui qui le mange voit son corps devenir élastique, comme du caoutchouc ! Mais en contrepartie il devient incapable de nager, et cela pour toute sa vie !!",
+        "text": "Celui qui le mange voit son corps devenir élastique, comme du caoutchouc ! Mais en contrepartie il devient incapable de nager, et cela pour toute sa vie !!",
+        "errors": 0
+      },
+      {
+        "id": 4086,
+        "reference": "Ce serait encore mieux si on y trouvait de quoi faire des provisions. Nami n'a pas entièrement tort lorsqu'elle nous reproche de ne pas suffisamment penser au lendemain.",
+        "text": "Ce serait encore mieux si on y trouvait de quoi faire des provisions. Nami n'a pas entièrement tort lorsqu'elle nous reproche de ne pas suffisamment penser au lendemain.",
+        "errors": 0
+      }
+    ],
+    "confidence_diagnostic": {
+      "protocol": "Descriptive only, uncalibrated mean CTC confidence on test GT crops. Thresholds are not selected or validated acceptance rules; missing bubbles are outside this population.",
+      "thresholds": [
+        {
+          "threshold": 0,
+          "coverage": 1,
+          "n": 1219,
+          "chars": 40130,
+          "errors": 419,
+          "cer": 0.010441066533765263,
+          "exact": 0.8326497128794094,
+          "exact_count": 1015,
+          "empty": 3,
+          "content_cer": 0.007494728284342369,
+          "content_exact": 0.8958162428219852
+        },
+        {
+          "threshold": 0.9,
+          "coverage": 0.9688269073010665,
+          "n": 1181,
+          "chars": 39955,
+          "errors": 353,
+          "cer": 0.00883493930672006,
+          "exact": 0.8450465707027942,
+          "exact_count": 998,
+          "empty": 0,
+          "content_cer": 0.005970758592534,
+          "content_exact": 0.90770533446232
+        },
+        {
+          "threshold": 0.95,
+          "coverage": 0.9228876127973749,
+          "n": 1125,
+          "chars": 39158,
+          "errors": 301,
+          "cer": 0.007686807293528781,
+          "exact": 0.8586666666666667,
+          "exact_count": 966,
+          "empty": 0,
+          "content_cer": 0.005203996669442132,
+          "content_exact": 0.9164444444444444
+        },
+        {
+          "threshold": 0.98,
+          "coverage": 0.623461853978671,
+          "n": 760,
+          "chars": 24711,
+          "errors": 147,
+          "cer": 0.005948767755250698,
+          "exact": 0.9013157894736842,
+          "exact_count": 685,
+          "empty": 0,
+          "content_cer": 0.003998351195383347,
+          "content_exact": 0.9447368421052632
+        },
+        {
+          "threshold": 0.99,
+          "coverage": 0.3527481542247744,
+          "n": 430,
+          "chars": 8859,
+          "errors": 52,
+          "cer": 0.005869736990630997,
+          "exact": 0.9372093023255814,
+          "exact_count": 403,
+          "empty": 0,
+          "content_cer": 0.004397130293913446,
+          "content_exact": 0.9627906976744186
+        },
+        {
+          "threshold": 0.995,
+          "coverage": 0.20344544708777687,
+          "n": 248,
+          "chars": 3148,
+          "errors": 21,
+          "cer": 0.006670902160101652,
+          "exact": 0.9596774193548387,
+          "exact_count": 238,
+          "empty": 0,
+          "content_cer": 0.00556282722513089,
+          "content_exact": 0.967741935483871
+        },
+        {
+          "threshold": 0.999,
+          "coverage": 0.07547169811320754,
+          "n": 92,
+          "chars": 414,
+          "errors": 5,
+          "cer": 0.012077294685990338,
+          "exact": 0.9565217391304348,
+          "exact_count": 88,
+          "empty": 0,
+          "content_cer": 0.01,
+          "content_exact": 0.9565217391304348
+        }
+      ]
+    },
+    "order_examples": [
+      {
+        "id": 356,
+        "ground_truth": [
+          785,
+          786,
+          787,
+          788,
+          789,
+          790,
+          791,
+          792,
+          793,
+          794
+        ],
+        "with_gt_boxes": [
+          786,
+          785,
+          787,
+          788,
+          789,
+          790,
+          791,
+          792,
+          793,
+          794
+        ],
+        "score": {
+          "pairs": 45,
+          "inversions": 1,
+          "exact": false
+        }
+      },
+      {
+        "id": 372,
+        "ground_truth": [
+          937,
+          938,
+          939,
+          940,
+          941,
+          942,
+          1220,
+          1221,
+          1222,
+          1223,
+          1224,
+          1225
+        ],
+        "with_gt_boxes": [
+          937,
+          938,
+          939,
+          941,
+          940,
+          942,
+          1220,
+          1221,
+          1222,
+          1223,
+          1224,
+          1225
+        ],
+        "score": {
+          "pairs": 66,
+          "inversions": 1,
+          "exact": false
+        }
+      },
+      {
+        "id": 476,
+        "ground_truth": [
+          1963,
+          1964,
+          1965,
+          1966,
+          1967,
+          1968,
+          1969,
+          1970,
+          1971,
+          1972,
+          1973
+        ],
+        "with_gt_boxes": [
+          1963,
+          1964,
+          1966,
+          1967,
+          1965,
+          1968,
+          1969,
+          1970,
+          1971,
+          1972,
+          1973
+        ],
+        "score": {
+          "pairs": 55,
+          "inversions": 2,
+          "exact": false
+        }
+      },
+      {
+        "id": 566,
+        "ground_truth": [
+          2266,
+          2267,
+          2268,
+          2269,
+          2270,
+          2271,
+          2272,
+          2273,
+          2274,
+          2275
+        ],
+        "with_gt_boxes": [
+          2266,
+          2267,
+          2268,
+          2270,
+          2269,
+          2271,
+          2272,
+          2273,
+          2274,
+          2275
+        ],
+        "score": {
+          "pairs": 45,
+          "inversions": 1,
+          "exact": false
+        }
+      },
+      {
+        "id": 629,
+        "ground_truth": [
+          2846,
+          2847,
+          2848,
+          2849,
+          2850,
+          2851,
+          2852,
+          2853,
+          2854,
+          2855,
+          2856
+        ],
+        "with_gt_boxes": [
+          2846,
+          2848,
+          2847,
+          2849,
+          2850,
+          2851,
+          2852,
+          2853,
+          2854,
+          2855,
+          2856
+        ],
+        "score": {
+          "pairs": 55,
+          "inversions": 1,
+          "exact": false
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "git_head": "21d9a111f84e3d83c61d7436282de0532b0441d6",
+    "node": "v26.11.1",
+    "source_sha256": {
+      "frontend/src/workers/ocr.worker.js": "003275ce5165c5bc963568cc8ff4566c77dc5c4df26276c8aa91a75436bc7145",
+      "frontend/src/workers/detection.worker.js": "b8f0dac21b835920ec8e8b114aa053e3db1ecf4052295cd46de0a916b2f0b54f",
+      "frontend/src/lib/ocr-utils.js": "b60843f47efd731b3a11a097e2e9347121cf3a84af62f59dc294585b374e1243",
+      "frontend/src/lib/utils.js": "5e1f7e04821d8c2898fe99b98921ccbb05c0331ea060ce3c44c07fe7a7db0d6b",
+      "packages/shared/src/model-registry.json": "7701e2ddab866360ed301929be7bd2efaca7cf04f7b3bbf27fe376d03229d173"
+    },
+    "result_sha256": {
+      "ablation_val_300.jsonl": "05c801a2bd5f7e5e3de41c51fa2c0b48d9cef6cabc78d2f1eb3d61da215d3edd",
+      "select_val_300.jsonl": "74c94ad74f5ead4fc7a4d566b0ded99de7b483fc417845d5f8c16be34334d3bf",
+      "confirm_test_all.jsonl": "cf433d647e146daf185ad2cbd73d2e2e824a8abe5307fcb4e8b8e7f8251dbd53",
+      "pages.jsonl": "e2274dcb3f223a7f9a77d1eb33bd8761a0a3dc22aaa2c2bda4faedcfb6f710e0",
+      "page_ocr_test.jsonl": "fd99131cd76b9f9ea67804b557d4f3c442cade54fec97b9ac598ca780af65ae8",
+      "browser_test_100.json": "ca60ae98de9332aff7f68ad81169348265741ed1b3987fa51726845bcdc45063",
+      "browser_parity.json": "81a5148ce767bdf1f461f47706f8562702335f237ce997d331c99c171e15e852",
+      "router.json": "1f87c09603a92eb8ce257be52f97b929b78194b08d227e6c31aa01e529d18f41"
+    }
+  }
+}
