@@ -13,7 +13,7 @@ Pinned revision: `3d5181ce138e7d92132a741f1e54c3a9e602e129`
 - Split: test held-out by page
 - Date: 2026-07-01
 - Samples: 1128
-- Hardware: Modal NVIDIA H100
+- Hardware: NVIDIA H100
 - Protocol: Strict full-generation transcription with the published prompt; whitespace-normalized CER and WER, exact match, blank-rate and multiline-rate over every held-out sample.
 - Evidence: https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/blob/3d5181ce138e7d92132a741f1e54c3a9e602e129/benchmark_test.json
 

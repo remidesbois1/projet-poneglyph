@@ -279,7 +279,6 @@ def main():
         hooks.on_start(
             status="running",
             hf_repo=hf_repo_id(),
-            modal_volume_name=os.getenv("PONEGLYPH_MODAL_VOLUME_NAME"),
             runpod_pod_id=os.getenv("RUNPOD_POD_ID"),
         )
         print(f"Starting Surya bubble OCR pipeline on provider: {training_provider()}.", flush=True)

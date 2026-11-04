@@ -22,12 +22,10 @@ export const OCR_MODELS = Object.freeze({
     falconWebgpu: defineModel('falconWebgpu', { name: 'Falcon OCR', scope: 'bubble', runtime: 'browser', engine: 'onnx', size: '620 Mo' }),
     poneglyphLocal: defineModel('poneglyphLocal', { name: 'LightOnOCR 2', scope: 'bubble', runtime: 'local', engine: 'tauri', localModel: 'text', size: '2 Go' }),
     suryaLocal: defineModel('suryaLocal', { name: 'Surya OCR 2', scope: 'bubble', runtime: 'local', engine: 'tauri', localModel: 'surya', size: '1,3 Go' }),
-    lighton: defineModel('lighton', { name: 'LightOnOCR 2', scope: 'bubble', runtime: 'cloud', engine: 'modal', sandbox: false }),
     deepseek: defineModel('deepseek', { name: DEEPSEEK_LABEL, scope: 'bubble', runtime: 'cloud', engine: 'deepseek' }),
     lighton3Webgpu: defineModel('lighton3Webgpu', { name: 'LightOnOCR 3 BBox', scope: 'page', runtime: 'browser', engine: 'onnx', size: '1,7 Go', preserveTranscript: true }),
     lighton2BboxLocal: defineModel('lighton2BboxLocal', { name: 'LightOnOCR 2 BBox', scope: 'page', runtime: 'local', engine: 'tauri', localModel: 'bbox', size: '2 Go' }),
     suryaBboxLocal: defineModel('suryaBboxLocal', { name: 'Surya OCR 2 BBox', scope: 'page', runtime: 'local', engine: 'tauri', localModel: 'suryaBbox', size: '1,3 Go' }),
-    lighton2BboxCloud: defineModel('lighton2BboxCloud', { name: 'LightOnOCR 2 BBox', scope: 'page', runtime: 'cloud', engine: 'modal', sandbox: false }),
     geminiPage: defineModel('geminiPage', { name: 'Gemini', scope: 'page', runtime: 'cloud', engine: 'gemini', configKey: 'model_ocr', sandbox: false }),
     chatgptPage: defineModel('chatgptPage', { name: 'ChatGPT', scope: 'page', runtime: 'cloud', engine: 'chatgpt', configKey: 'model_chatgpt_ocr' }),
     deepseekPage: defineModel('deepseekPage', { name: DEEPSEEK_LABEL, scope: 'page', runtime: 'cloud', engine: 'deepseek' }),
@@ -35,7 +33,7 @@ export const OCR_MODELS = Object.freeze({
 
 export const DEFAULT_OCR_MODEL_KEYS = Object.freeze(['ppocrv6Line']);
 
-/** Modal services bill Poneglyph's quota and the sandbox never offered Gemini page reading. */
+/** The sandbox never offered Gemini page reading. */
 export function isSelectableOcrModel(model, isSandbox = false) {
     return Boolean(model && (!isSandbox || model.sandbox));
 }

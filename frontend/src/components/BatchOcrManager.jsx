@@ -8,22 +8,20 @@ import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
 import { getAdminHierarchy, getBubblesForPage, createBubble, validateBubble } from '@/lib/api';
 import { getProxiedImageUrl, cropImage } from '@/lib/utils';
 import { capitalizeOcrSentenceStarts } from '@/lib/ocr-utils';
-import { postOcrImage } from '@/lib/ocrProxyClient';
 import { rallyPageBubblesToYolo } from '@/lib/ocrBboxFusion';
-import { OCR_MODELS, OCR_RUNTIME_LABELS } from '@/lib/ocrModels';
+import { OCR_MODELS } from '@/lib/ocrModels';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
     ArrowLeft, Play, Loader2, CheckCircle2, AlertTriangle,
-    SkipForward, Zap, X, Wand2, Cpu, CloudLightning,
+    SkipForward, Zap, X, Wand2,
     Search, ChevronRight, Check
 } from "lucide-react";
 
@@ -82,37 +80,16 @@ function imageToJpegBlob(img) {
     });
 }
 
-async function runLightOnClassic(img, rect, provider, tauriLocalOcr) {
+async function runLightOnClassic(img, rect, tauriLocalOcr) {
     const blob = await cropImage(img, rect);
-    if (provider === 'local') {
-        const data = await tauriLocalOcr.runLocalTextOcrBlob(blob);
-        return capitalizeOcrSentenceStarts(data?.text);
-    }
-
-    const response = await postOcrImage('/api/local_lighton', blob);
-    if (!response.ok) throw new Error("Erreur Poneglyph");
-    const data = await response.json();
-    return capitalizeOcrSentenceStarts(data.text);
+    const data = await tauriLocalOcr.runLocalTextOcrBlob(blob);
+    return capitalizeOcrSentenceStarts(data?.text);
 }
 
 async function runSuryaClassic(img, rect, tauriLocalOcr) {
     const blob = await cropImage(img, rect);
     const data = await tauriLocalOcr.runLocalSuryaOcrBlob(blob);
     return capitalizeOcrSentenceStarts(data?.text);
-}
-
-async function runPoneglyphBBox(jpegBlob, provider, tauriLocalOcr) {
-    if (provider === 'local') {
-        return tauriLocalOcr.runLocalOcrBlob(jpegBlob);
-    }
-
-    return postOcrImage('/api/poneglyph_one_shot', jpegBlob).then(r => {
-        if (!r.ok) throw new Error("Erreur API Poneglyph");
-        return r.json();
-    }).then(data => {
-        if (data.error) throw new Error(data.error);
-        return data;
-    });
 }
 
 function loadImageLocal(src) {
@@ -150,27 +127,27 @@ function getReviewTextBySource(item, source) {
     return '';
 }
 
-function getReviewSources(item, providerLabel) {
+function getReviewSources(item) {
     const sources = [];
 
     if (item.rallied) {
         sources.push({
             key: 'poneglyph',
-            label: `${BBOX_MODEL_NAME} (${providerLabel})`,
+            label: BBOX_MODEL_NAME,
             text: item.poneglyphText || '',
         });
     }
 
     sources.push({
         key: 'lighton',
-        label: `${TEXT_MODEL_NAME} (${providerLabel})`,
+        label: TEXT_MODEL_NAME,
         text: item.lightonText || '',
     });
 
     if (item.suryaEnabled) {
         sources.push({
             key: 'surya',
-            label: `${SURYA_MODEL_NAME} (${OCR_RUNTIME_LABELS.local})`,
+            label: SURYA_MODEL_NAME,
             text: item.suryaText || '',
         });
     }
@@ -432,7 +409,6 @@ export default function BatchOcrManager() {
     const [customReviewTexts, setCustomReviewTexts] = useState({});
     const [stats, setStats] = useState({ autoValidated: 0, totalReview: 0, errors: 0 });
     const [processingReview, setProcessingReview] = useState(false);
-    const [ocrProvider, setOcrProvider] = useState('modal');
 
     const startRequestedRef = useRef(false);
     const abortRef = useRef(false);
@@ -444,16 +420,10 @@ export default function BatchOcrManager() {
         getAdminHierarchy().then(({ data }) => setHierarchy(data || [])).catch(console.error);
     }, []);
 
-    useEffect(() => {
-        if (detectionStatus === 'ready' && startRequestedRef.current) {
-            startRequestedRef.current = false;
-            startProcessing();
-        }
-    }, [detectionStatus]);
 
     useEffect(() => {
         if (phase === 'review' && reviewQueue.length === 0) {
-            setPhase('done');
+            queueMicrotask(() => setPhase('done'));
         }
     }, [reviewQueue.length, phase]);
 
@@ -494,21 +464,13 @@ export default function BatchOcrManager() {
     };
 
     const canUseLocalBatch = Boolean(tauriLocalOcr.canRunLocalOcr && tauriLocalOcr.canRunLocalTextOcr);
-    const canUseSuryaBatch = Boolean(ocrProvider === 'local' && tauriLocalOcr.localSuryaModelStatus?.ready);
+    const canUseSuryaBatch = Boolean(tauriLocalOcr.localSuryaModelStatus?.ready);
 
     const getLocalBatchDisabledReason = () => {
-        if (!tauriLocalOcr.isTauri) return "App desktop non detectee.";
+        if (!tauriLocalOcr.isTauri) return "Application desktop non détectée.";
         if (!tauriLocalOcr.localModelStatus?.ready) return `Chargez le modèle ${BBOX_MODEL_NAME}.`;
         if (!tauriLocalOcr.localTextModelStatus?.ready) return `Chargez le modèle ${TEXT_MODEL_NAME}.`;
-        return "Inference locale indisponible.";
-    };
-
-    const handleProviderChange = (value) => {
-        if (value === 'local' && !canUseLocalBatch) {
-            toast.error(getLocalBatchDisabledReason());
-            return;
-        }
-        setOcrProvider(value);
+        return "Inférence locale indisponible.";
     };
 
     const handleStart = () => {
@@ -516,7 +478,7 @@ export default function BatchOcrManager() {
             toast.error("Veuillez sélectionner un chapitre.");
             return;
         }
-        if (ocrProvider === 'local' && !canUseLocalBatch) {
+        if (!canUseLocalBatch) {
             toast.error(getLocalBatchDisabledReason());
             return;
         }
@@ -583,6 +545,13 @@ export default function BatchOcrManager() {
         }
     };
 
+    useEffect(() => {
+        if (detectionStatus === 'ready' && startRequestedRef.current) {
+            startRequestedRef.current = false;
+            startProcessing();
+        }
+    }, [detectionStatus]);
+
     const processPage = async (page) => {
         const imageUrl = getProxiedImageUrl(page.url_image);
         const img = await loadImageLocal(imageUrl);
@@ -608,8 +577,8 @@ export default function BatchOcrManager() {
                 console.error('YOLO failed:', e);
                 return [];
             }),
-            runPoneglyphBBox(jpegBlob, ocrProvider, tauriLocalOcr).catch(e => {
-                console.error('Poneglyph failed:', e);
+            tauriLocalOcr.runLocalOcrBlob(jpegBlob).catch(e => {
+                console.error(`${BBOX_MODEL_NAME} failed:`, e);
                 return { bubbles: [] };
             })
         ]);
@@ -618,7 +587,7 @@ export default function BatchOcrManager() {
             ...bubble,
             content: capitalizeOcrSentenceStarts(bubble.content)
         }));
-        const useSuryaBatch = Boolean(ocrProvider === 'local' && tauriLocalOcr.localSuryaModelStatus?.ready);
+        const useSuryaBatch = Boolean(tauriLocalOcr.localSuryaModelStatus?.ready);
 
         console.log(`[Batch] Page ${page.numero_page}: YOLO=${yoloBoxes.length} bubbles, Poneglyph=${poneglyphBubbles.length} bubbles`);
         console.log(`[Batch] Page ${page.numero_page}: img=${img.naturalWidth}x${img.naturalHeight}`);
@@ -642,29 +611,18 @@ export default function BatchOcrManager() {
 
         console.log(`[Batch] Page ${page.numero_page}: rallied=${matches.length}, unmatched_yolo=${unmatchedYoloIndices.length}`);
 
-        let lightonTexts = [];
-        if (ocrProvider === 'local') {
-            for (const box of yoloBoxes) {
-                if (box.w <= 0 || box.h <= 0) {
-                    lightonTexts.push('');
-                    continue;
-                }
-                try {
-                    lightonTexts.push(await runLightOnClassic(img, box, ocrProvider, tauriLocalOcr));
-                } catch (e) {
-                    console.error('Poneglyph failed:', e);
-                    lightonTexts.push('');
-                }
+        const lightonTexts = [];
+        for (const box of yoloBoxes) {
+            if (box.w <= 0 || box.h <= 0) {
+                lightonTexts.push('');
+                continue;
             }
-        } else {
-            const lightonPromises = yoloBoxes.map((box) => {
-                if (box.w <= 0 || box.h <= 0) return Promise.resolve('');
-                return runLightOnClassic(img, box, ocrProvider, tauriLocalOcr).catch(e => {
-                    console.error('Poneglyph failed:', e);
-                    return '';
-                });
-            });
-            lightonTexts = await Promise.all(lightonPromises);
+            try {
+                lightonTexts.push(await runLightOnClassic(img, box, tauriLocalOcr));
+            } catch (e) {
+                console.error(`${TEXT_MODEL_NAME} failed:`, e);
+                lightonTexts.push('');
+            }
         }
 
         let suryaTexts = [];
@@ -931,8 +889,7 @@ export default function BatchOcrManager() {
     };
 
     const chapters = getAllChapters();
-    const providerLabel = ocrProvider === 'local' ? OCR_RUNTIME_LABELS.local : OCR_RUNTIME_LABELS.cloud;
-    const voterLabel = canUseSuryaBatch ? `${providerLabel} + ${SURYA_MODEL_NAME}` : providerLabel;
+    const votersLabel = [BBOX_MODEL_NAME, TEXT_MODEL_NAME, ...(canUseSuryaBatch ? [SURYA_MODEL_NAME] : [])].join(' + ');
     const hasSuryaReview = reviewQueue.some(item => item.suryaEnabled && item.suryaText);
 
     const totalReviewed = stats.totalReview - reviewQueue.length;
@@ -971,43 +928,30 @@ export default function BatchOcrManager() {
                                 Configuration
                             </CardTitle>
                             <CardDescription className="text-slate-400">
-                                Sélectionnez un chapitre. YOLO détecte les bulles, {BBOX_MODEL_NAME} + {TEXT_MODEL_NAME} font l&apos;OCR, avec {SURYA_MODEL_NAME} en troisième voteur quand il est chargé. Les résultats concordants sont auto-validés.
+                                Sélectionnez un chapitre. Dans l&apos;application desktop, YOLO détecte les bulles, {BBOX_MODEL_NAME} + {TEXT_MODEL_NAME} font l&apos;OCR, avec {SURYA_MODEL_NAME} en troisième voteur quand il est chargé. Les résultats concordants sont auto-validés.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4 p-5">
-                            <div className="grid gap-4 md:grid-cols-[1fr_180px] md:items-end">
-                                <div>
-                                    <label className="mb-1.5 block text-sm font-medium text-slate-200">Chapitre</label>
-                                    <ChapterCombobox chapters={chapters} value={selectedChapterId} onChange={setSelectedChapterId} />
-                                </div>
-                                <div>
-                                    <label className="mb-1.5 block text-sm font-medium text-slate-200">OCR</label>
-                                    <Select value={ocrProvider} onValueChange={handleProviderChange}>
-                                        <SelectTrigger className="poneglyph-input h-10 border-white/14 bg-[#040d18]/70">
-                                            <SelectValue placeholder="Source OCR" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="modal">
-                                                <span className="inline-flex items-center gap-2"><CloudLightning className="h-3.5 w-3.5" /> {OCR_RUNTIME_LABELS.cloud}</span>
-                                            </SelectItem>
-                                            <SelectItem value="local" disabled={!canUseLocalBatch}>
-                                                <span className="inline-flex items-center gap-2"><Cpu className="h-3.5 w-3.5" /> {OCR_RUNTIME_LABELS.local}</span>
-                                            </SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                            <div>
+                                <label className="mb-1.5 block text-sm font-medium text-slate-200">Chapitre</label>
+                                <ChapterCombobox chapters={chapters} value={selectedChapterId} onChange={setSelectedChapterId} />
                             </div>
 
                             <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                                <div className="flex flex-wrap items-center gap-2 text-xs">
-                                    <span className="font-semibold text-slate-400">État des modèles :</span>
-                                    <Badge variant="outline" className="border-white/12 bg-white/8 text-slate-200">Provider : {voterLabel}</Badge>
-                                    {tauriLocalOcr.isTauri && <Badge variant="outline" className={tauriLocalOcr.localSuryaModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>{SURYA_MODEL_NAME} {tauriLocalOcr.localSuryaModelStatus?.ready ? "chargé" : "non chargé"}</Badge>}
-                                    {tauriLocalOcr.isTauri && <Badge variant="outline" className={tauriLocalOcr.localModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>{BBOX_MODEL_NAME} {tauriLocalOcr.localModelStatus?.ready ? "chargé" : "non chargé"}</Badge>}
-                                    {tauriLocalOcr.isTauri && <Badge variant="outline" className={tauriLocalOcr.localTextModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>{TEXT_MODEL_NAME} {tauriLocalOcr.localTextModelStatus?.ready ? "chargé" : "non chargé"}</Badge>}
-                                </div>
-                                {tauriLocalOcr.isTauri && !canUseLocalBatch && (
-                                    <p className="mt-2 text-[11px] text-slate-400">Mode local disponible quand {BBOX_MODEL_NAME} et {TEXT_MODEL_NAME} sont tous les deux chargés.</p>
+                                {tauriLocalOcr.isTauri ? (
+                                    <>
+                                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                                            <span className="font-semibold text-slate-400">État des modèles :</span>
+                                            <Badge variant="outline" className={tauriLocalOcr.localSuryaModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>{SURYA_MODEL_NAME} {tauriLocalOcr.localSuryaModelStatus?.ready ? "chargé" : "non chargé"}</Badge>
+                                            <Badge variant="outline" className={tauriLocalOcr.localModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>{BBOX_MODEL_NAME} {tauriLocalOcr.localModelStatus?.ready ? "chargé" : "non chargé"}</Badge>
+                                            <Badge variant="outline" className={tauriLocalOcr.localTextModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>{TEXT_MODEL_NAME} {tauriLocalOcr.localTextModelStatus?.ready ? "chargé" : "non chargé"}</Badge>
+                                        </div>
+                                        {!canUseLocalBatch && (
+                                            <p className="mt-2 text-[11px] text-slate-400">{getLocalBatchDisabledReason()}</p>
+                                        )}
+                                    </>
+                                ) : (
+                                    <p className="text-xs text-slate-400">Le batch OCR s&apos;exécute dans l&apos;application desktop, avec {BBOX_MODEL_NAME} et {TEXT_MODEL_NAME} chargés.</p>
                                 )}
                             </div>
 
@@ -1026,7 +970,7 @@ export default function BatchOcrManager() {
                             ) : (
                                 <Button
                                     onClick={handleStart}
-                                    disabled={!selectedChapterId || (ocrProvider === 'local' && !canUseLocalBatch)}
+                                    disabled={!selectedChapterId || !canUseLocalBatch}
                                     className="w-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 sm:w-auto"
                                 >
                                     <Play className="mr-2 h-4 w-4" />
@@ -1045,7 +989,7 @@ export default function BatchOcrManager() {
                                 <Loader2 className="h-5 w-5 animate-spin text-indigo-400" />
                                 Traitement en cours
                             </CardTitle>
-                            <CardDescription className="text-slate-400">Page {progress.current} / {progress.total} · {voterLabel}</CardDescription>
+                            <CardDescription className="text-slate-400">Page {progress.current} / {progress.total} · {votersLabel}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4 p-5">
                             <Progress value={(progress.current / progress.total) * 100} />
@@ -1150,7 +1094,7 @@ export default function BatchOcrManager() {
                             const item = currentReviewItem;
                             const itemKey = getReviewItemKey(item);
                             const customText = customReviewTexts[itemKey] ?? getSuggestedReviewText(item);
-                            const reviewSources = getReviewSources(item, providerLabel);
+                            const reviewSources = getReviewSources(item);
                             const diffModel = buildDiffModel(reviewSources);
 
                             return (

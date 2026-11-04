@@ -1,6 +1,6 @@
 # Fine-tuning LightOnOCR-2-1B pour Projet Poneglyph
 
-Ce répertoire contient les scripts nécessaires pour fine-tuner LightOnOCR-2-1B sur le dataset de manga et l'utiliser avec Modal.
+Ce répertoire contient les scripts nécessaires pour fine-tuner LightOnOCR-2-1B sur le dataset de manga.
 
 ## Prérequis
 - Nvidia RTX 3090 (24GB VRAM) ou supérieure

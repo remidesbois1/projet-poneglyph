@@ -81,11 +81,9 @@ describe('local desktop models', () => {
 });
 
 describe('model availability', () => {
-    it('hides Modal and Gemini page reading in the sandbox but keeps DeepSeek', async () => {
+    it('hides Gemini page reading in the sandbox but keeps DeepSeek', async () => {
         const { result } = await renderModels({ isSandbox: true, allowPageModels: true });
         const keys = keysOf(result);
-        expect(keys).not.toContain('lighton');
-        expect(keys).not.toContain('lighton2BboxCloud');
         expect(keys).not.toContain('geminiPage');
         expect(keys).toEqual(expect.arrayContaining(['deepseek', 'deepseekPage']));
     });

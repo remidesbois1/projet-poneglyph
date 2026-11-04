@@ -26,7 +26,7 @@ Generated from model registry v1 on 2026-10-30.
 - Published version: `Remidesbois/LightonOCR-2-1b-poneglyph@3d5181ce138e7d92132a741f1e54c3a9e602e129`
 - Result: CER 0,424 % · WER 1,405 % · Exact match 92,55 %
 - Evaluation: Poneglyph validated single-bubble crops, test held-out by page, 1128 samples, 2026-07-01
-- Hardware: Modal NVIDIA H100
+- Hardware: NVIDIA H100
 - Protocol and evidence: Strict full-generation transcription with the published prompt; whitespace-normalized CER and WER, exact match, blank-rate and multiline-rate over every held-out sample. https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/blob/3d5181ce138e7d92132a741f1e54c3a9e602e129/benchmark_test.json
 
 ## Surya OCR 2 Poneglyph

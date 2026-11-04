@@ -53,27 +53,27 @@ function editedAnnotation(options) {
 describe('sandbox OCR selection', () => {
     beforeEach(() => { localStorage.clear(); workerContext.value = { modelStatus: 'idle', activeModelKey: 'ppocrv6Line' }; });
 
-    it('filters saved Modal models while retaining local selections', () => {
-        localStorage.setItem('selectedOcrModelKeys', JSON.stringify(['lighton', 'suryaLocal']));
+    it('filters saved models the sandbox does not offer while retaining local selections', () => {
+        localStorage.setItem('selectedOcrModelKeys', JSON.stringify(['geminiPage', 'suryaLocal']));
         const { result } = renderHook(() => useAnnotationOCR({ isSandbox: true }));
         expect(result.current.selectedOcrModelKeys).toEqual(['suryaLocal']);
-        act(() => result.current.toggleOcrModel('lighton'));
+        act(() => result.current.toggleOcrModel('geminiPage'));
         expect(result.current.selectedOcrModelKeys).toEqual(['suryaLocal']);
         act(() => result.current.toggleOcrModel('ppocrv6Line'));
-        expect(JSON.parse(localStorage.getItem('selectedOcrModelKeys'))).toEqual(['lighton', 'suryaLocal']);
+        expect(JSON.parse(localStorage.getItem('selectedOcrModelKeys'))).toEqual(['geminiPage', 'suryaLocal']);
         expect(JSON.parse(localStorage.getItem('sandboxSelectedOcrModelKeys'))).toEqual(['suryaLocal', 'ppocrv6Line']);
     });
 
-    it('falls back to browser OCR when only a Modal model was saved', () => {
-        localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['lighton']));
+    it('falls back to browser OCR when only a model missing from the sandbox was saved', () => {
+        localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['geminiPage']));
         const { result } = renderHook(() => useAnnotationOCR({ isSandbox: true }));
         expect(result.current.selectedOcrModelKeys).toEqual(['ppocrv6Line']);
     });
 
-    it('keeps Modal selection available outside the sandbox', () => {
-        localStorage.setItem('selectedOcrModelKeys', JSON.stringify(['lighton']));
+    it('keeps Gemini page selection available outside the sandbox', () => {
+        localStorage.setItem('selectedOcrModelKeys', JSON.stringify(['geminiPage']));
         const { result } = renderHook(() => useAnnotationOCR({ isSandbox: false }));
-        expect(result.current.selectedOcrModelKeys).toEqual(['lighton']);
+        expect(result.current.selectedOcrModelKeys).toEqual(['geminiPage']);
     });
 });
 

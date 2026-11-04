@@ -12,7 +12,6 @@ import { getDeepSeekApiKey } from '@/lib/deepseekConfig';
 import { generateOneShotBubbles } from '@/lib/geminiClient';
 import { capitalizeOcrSentenceStarts } from '@/lib/ocr-utils';
 import { DEFAULT_OCR_MODEL_KEYS, OCR_MODELS, getOcrModelLabel, getOcrModelName, isSelectableOcrModel } from '@/lib/ocrModels';
-import { postOcrImage } from '@/lib/ocrProxyClient';
 import { cropImage, cropImageBitmap } from '@/lib/utils';
 
 const GEMINI_KEY_STORAGE_KEY = 'google_api_key';
@@ -259,11 +258,6 @@ export function useOcrModels({ isSandbox = false, allowPageModels = false } = {}
                 const result = await runtime.run(await cropImage(image, area));
                 return result?.text || '';
             }
-            case 'modal': {
-                const response = await postOcrImage('/api/local_lighton', await cropImage(image, area));
-                if (!response.ok) throw new Error('service indisponible.');
-                return (await response.json()).text || '';
-            }
             case 'deepseek': {
                 const result = await analyzeDeepSeekBubble(image, area, getDeepSeekApiKey(), { signal });
                 signal?.throwIfAborted();
@@ -295,14 +289,6 @@ export function useOcrModels({ isSandbox = false, allowPageModels = false } = {}
                 const result = await runtime.run(await pageJpeg());
                 if (result?.error) throw new Error(result.error);
                 bubbles = result?.bubbles;
-                break;
-            }
-            case 'modal': {
-                const response = await postOcrImage('/api/poneglyph_one_shot', await pageJpeg());
-                if (!response.ok) throw new Error('service indisponible.');
-                const data = await response.json();
-                if (data.error) throw new Error(data.error);
-                bubbles = data.bubbles;
                 break;
             }
             case 'gemini': {

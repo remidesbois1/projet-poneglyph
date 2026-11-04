@@ -39,7 +39,7 @@ test('frontend marketing surfaces do not contain legacy CER claims', () => {
     const files = [
         'frontend/src/context/WorkerContext.jsx',
         'frontend/src/components/LandingPageClient.jsx',
-        'frontend/src/components/AnnotateOcrModelSelector.jsx',
+        'frontend/src/lib/ocrModels.js',
         'frontend/src/components/ModelBenchmarkRegistry.jsx',
     ];
     const source = files.map(file => fs.readFileSync(path.join(rootDir, file), 'utf8')).join('\n');

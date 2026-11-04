@@ -9,7 +9,7 @@ except ImportError:  # pragma: no cover - local dry installs may omit python-dot
     load_dotenv = None
 
 
-VALID_TRAINING_PROVIDERS = {"local", "runpod", "modal"}
+VALID_TRAINING_PROVIDERS = {"local", "runpod"}
 
 
 def load_training_dotenv(script_dir: Path) -> None:

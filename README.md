@@ -28,7 +28,7 @@ Le logiciel peut gérer plusieurs séries. Les résultats publiés dans ce READM
 | `backend/` | API applicative et publique, imports, stockage, recherche et modération | Node.js, Express, Supabase, PostgreSQL, stockage objet R2 compatible S3 |
 | `frontend/src-tauri/` | Application Windows et séparation entre l’interface distante et les commandes locales | Tauri 2, Rust |
 | `desktop_backend/` | Serveur OCR local lancé et supervisé par Tauri | FastAPI, PyTorch, Transformers |
-| `docker_scripts/` | Export des données, entraînement, évaluation et publication des modèles | Python, Docker, Modal |
+| `docker_scripts/` | Export des données, entraînement, évaluation et publication des modèles | Python, Docker |
 | `shared/` et `scripts/` | Registre des modèles, limites communes et génération des documents | JSON, Node.js |
 | `docs/` et `documentation/` | Protocoles, expériences, confidentialité et résultats générés | Markdown |
 
@@ -85,18 +85,18 @@ Les valeurs ci-dessous sont générées depuis `shared/model-registry.json`. Cha
 <summary>Afficher les résultats publiés</summary>
 
 <!-- model-registry:start -->
-> Tableau généré depuis `shared/model-registry.json` (registre v1, 2026-10-30). Les protocoles complets sont publiés dans [la fiche de provenance](documentation/generated/model-benchmarks.md).
+> Tableau généré depuis `shared/model-registry.json` (registre v1, 2026-11-03). Les protocoles complets sont publiés dans [la fiche de provenance](documentation/generated/model-benchmarks.md).
 
 | Modèle | Résultat publié | Dataset et split | Date et échantillons | Matériel | Version et preuve |
 |---|---|---|---|---|---|
 | LightOnOCR 3 Poneglyph · WebGPU | CER WebGPU 0,394 % · WER WebGPU 1,410 % · Exact match WebGPU 92,25 % | Poneglyph frozen Surya single-bubble crops — test held out by page, previously evaluated for Surya and native LightOnOCR-3 | 2026-10-13 · 1 612 | NVIDIA GeForce RTX 5090 32 GB / Chromium WebGPU (Blackwell) | [dd066c12c4dc](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph/tree/dd066c12c4dcc990d71ebc78136e9c7c21c36522) · [source](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph/blob/dd066c12c4dcc990d71ebc78136e9c7c21c36522/onnx/webgpu_metrics.json) |
-| PP-OCRv6 Bubble Line | CER 1,451 % · Exact match 75,96 % | Poneglyph validated bubbles reconstructed from detected text lines — test held-out by page | 2026-06-29 · 1 219 | Not recorded; offline scoring over pinned predictions | [10b932d4aadc](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/tree/10b932d4aadca2830850ccf5951116597404bef8) · [source](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/blob/10b932d4aadca2830850ccf5951116597404bef8/postprocess_official_metrics.json) |
-| LightOnOCR Poneglyph | CER 0,424 % · WER 1,405 % · Exact match 92,55 % | Poneglyph validated single-bubble crops — test held-out by page | 2026-07-01 · 1 128 | Modal NVIDIA H100 | [3d5181ce138e](https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/tree/3d5181ce138e7d92132a741f1e54c3a9e602e129) · [source](https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/blob/3d5181ce138e7d92132a741f1e54c3a9e602e129/benchmark_test.json) |
+| PP-OCRv6 Bubble Line | CER 0,904 % · Exact match 85,01 % | Poneglyph validated reference bubble crops reconstructed from production-detected text lines — historical test held out by page, previously evaluated and inspected | 2026-11-03 · 1 221 | NVIDIA GeForce RTX 4090 24 GB, native PyTorch 2.8.0 CUDA FP32 | [a6dddec384c7](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/tree/a6dddec384c76a1ac3c2125f92403e775a3929d7) · [source](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/blob/a6dddec384c76a1ac3c2125f92403e775a3929d7/metrics/retraining_20261103.json) |
+| LightOnOCR Poneglyph | CER 0,424 % · WER 1,405 % · Exact match 92,55 % | Poneglyph validated single-bubble crops — test held-out by page | 2026-07-01 · 1 128 | NVIDIA H100 | [3d5181ce138e](https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/tree/3d5181ce138e7d92132a741f1e54c3a9e602e129) · [source](https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/blob/3d5181ce138e7d92132a741f1e54c3a9e602e129/benchmark_test.json) |
 | Surya OCR 2 Poneglyph | CER 0,465 % · WER 1,823 % · Exact match 91,19 % · Token limit 0,00 % | Poneglyph validated single-bubble crops — test held-out by page | 2026-10-30 · 1 691 | NVIDIA RTX 5090 32 GB | [24a589633c9c](https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/tree/24a589633c9c4b57663bfc019b132f11b45f9eb8) · [source](https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/blob/24a589633c9c4b57663bfc019b132f11b45f9eb8/benchmark_test.json) |
 | Surya OCR 2 Poneglyph BBox | CER 1,49 % · WER 3,44 % · Mean IoU 92,36 % · Detection rate 98,38 % · F1@IoU 0.5 98,36 % · F1@IoU 0.75 96,67 % · Combined score 97,220 % · Avg inference 2,75 | Poneglyph validated full pages with text-zone bounding boxes — test held-out by page | 2026-09-09 · 166 | NVIDIA GeForce RTX 5090 32 GB | [671cfe636722](https://huggingface.co/Remidesbois/surya-ocr-2-poneglyph-bbox/tree/671cfe63672286ccfe629079a8d57f7ed967f3d5) · [source](https://huggingface.co/Remidesbois/surya-ocr-2-poneglyph-bbox/blob/671cfe63672286ccfe629079a8d57f7ed967f3d5/benchmark_surya_bbox.json) |
 | LightOnOCR 2 Poneglyph BBox | Page CER 5,61 % · Global mean IoU 65,00 % · F1@IoU 0.3 91,29 % · F1@IoU 0.5 79,62 % · F1@IoU 0.75 41,75 % · Exact bubble text 90,63 % · Bubble-text CER 1,15 % · Corrected combined score 82,571 % · Avg inference 6,18 | Poneglyph validated full pages with text-zone bounding boxes — test held-out by page | 2026-09-09 · 221 | NVIDIA GeForce RTX 5090 32 GB | [fb35b7f4f99b](https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph-bbox/tree/fb35b7f4f99b282d5c2867d5cf23e66df0d03925) · [source](https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph-bbox/blob/fb35b7f4f99b282d5c2867d5cf23e66df0d03925/benchmark_lighton_bbox_corrected.json) |
 | ReaderNet Panel Detector | mAP50 99,44 % · mAP50-95 98,39 % | Poneglyph weighted polygon panel dataset — validation held out by page | 2026-08-21 · 257 | NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb | [d97d4cd2903a](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/tree/d97d4cd2903a7ebe49276a5269c4f3b7df608be7) · [source](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/d97d4cd2903a7ebe49276a5269c4f3b7df608be7/metrics/panel_detector_metrics.json) |
-| Poneglyph ReaderNet | Exact panel 95,65 % · Bubble position accuracy 96,62 % · Bubble assignment accuracy 100,00 % | Poneglyph polygon panels with bubbles from the shared YOLO26n detector — validation held out by page | 2026-08-27 · 138 | CPU offline ONNX scoring | [d97d4cd2903a](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/tree/d97d4cd2903a7ebe49276a5269c4f3b7df608be7) · [source](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/d97d4cd2903a7ebe49276a5269c4f3b7df608be7/metrics/shared_detector_comparison.json) |
+| Poneglyph ReaderNet | Exact panel 95,65 % · Bubble position accuracy 96,62 % · Bubble assignment accuracy 100,00 % | Poneglyph polygon panels with bubbles from the shared YOLO26n detector — validation held out by page | 2026-08-27 · 138 | CPU offline ONNX scoring | [0f3cc90737d9](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/tree/0f3cc90737d90d8c3810b7397c923a2fc7be24e9) · [source](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/0f3cc90737d90d8c3810b7397c923a2fc7be24e9/metrics/shared_detector_comparison.json) |
 | LightOnOCR 3 Poneglyph BBox | Native CER 1,07 % · Native WER 2,22 % · Exact bubble text 90,22 % · Exact page text 40,21 % · F1@IoU 0.5 98,75 % | Poneglyph validated full pages with text-zone bounding boxes — frozen test, previously evaluated and inspected | 2026-10-12 · 189 | NVIDIA GeForce RTX 5090 32 GB | [41570a243115](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph-bbox/tree/41570a243115f8ed723c8fc8b761a5aa7735aa03) · [source](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph-bbox/blob/41570a243115f8ed723c8fc8b761a5aa7735aa03/benchmark_native.json) |
 <!-- model-registry:end -->
 
@@ -163,7 +163,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3001/api
 ```
 
-Les traitements qui manipulent les pages nécessitent notamment `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` et `R2_PAGES_BUCKET_NAME`. La recherche sémantique distante utilise `VOYAGE_API_KEY` et `GOOGLE_API_KEY`. Les routes OCR distantes possèdent leurs propres secrets et quotas ; consulter `backend/sql/` avant de les activer.
+Les traitements qui manipulent les pages nécessitent notamment `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` et `R2_PAGES_BUCKET_NAME`. La recherche sémantique distante utilise `VOYAGE_API_KEY` et `GOOGLE_API_KEY`.
 
 ### Reconstruction des descriptions avec Astra
 
@@ -272,7 +272,7 @@ Les pipelines d’export, d’entraînement, d’évaluation et de publication s
 | Expériences sur l’ordre de lecture | [`documentation/reading_order_experiments.md`](documentation/reading_order_experiments.md) |
 | Provenance des benchmarks | [`documentation/generated/model-benchmarks.md`](documentation/generated/model-benchmarks.md) |
 | Backend OCR de l’application de bureau | [`desktop_backend/README.md`](desktop_backend/README.md) |
-| Entraînement sur Modal | [`docker_scripts/MODAL_TRAINING.md`](docker_scripts/MODAL_TRAINING.md) |
+| Suivi des entraînements | [`docker_scripts/TRAINING_JOBS.md`](docker_scripts/TRAINING_JOBS.md) |
 | Confidentialité de la télémétrie de recherche | [`docs/search-telemetry-privacy.md`](docs/search-telemetry-privacy.md) |
 
 ## Sécurité et données

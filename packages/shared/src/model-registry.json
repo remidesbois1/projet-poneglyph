@@ -78,7 +78,7 @@
         "split": "test held-out by page",
         "date": "2026-07-01",
         "sample_count": 1128,
-        "hardware": "Modal NVIDIA H100",
+        "hardware": "NVIDIA H100",
         "protocol": "Strict full-generation transcription with the published prompt; whitespace-normalized CER and WER, exact match, blank-rate and multiline-rate over every held-out sample.",
         "source_url": "https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/blob/3d5181ce138e7d92132a741f1e54c3a9e602e129/benchmark_test.json",
         "primary_metric": "cer",

@@ -35,10 +35,6 @@ class LocalTrainingProvider(TrainingProviderHooks):
     provider = "local"
 
 
-class ModalTrainingProvider(TrainingProviderHooks):
-    provider = "modal"
-
-
 class RunPodTrainingProvider(TrainingProviderHooks):
     provider = "runpod"
 
@@ -76,6 +72,4 @@ def provider_from_env(*, job_id: str | None = None, kind: str | None = None) -> 
     provider = training_provider()
     if provider == "runpod":
         return RunPodTrainingProvider(job_id=job_id, kind=kind)
-    if provider == "modal":
-        return ModalTrainingProvider(job_id=job_id, kind=kind)
     return LocalTrainingProvider(job_id=job_id, kind=kind)

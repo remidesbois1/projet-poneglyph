@@ -50,7 +50,7 @@ Les résultats ne sont comparables qu’à protocole et tâche identiques. Un ma
 - Split : test held-out by page
 - Date : 2026-07-01
 - Échantillons : 1 128
-- Matériel : Modal NVIDIA H100
+- Matériel : NVIDIA H100
 - Protocole : Strict full-generation transcription with the published prompt; whitespace-normalized CER and WER, exact match, blank-rate and multiline-rate over every held-out sample.
 - Preuve : [artefact figé](https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/blob/3d5181ce138e7d92132a741f1e54c3a9e602e129/benchmark_test.json)
 

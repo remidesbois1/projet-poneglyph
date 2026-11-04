@@ -13,10 +13,7 @@ CREATE TABLE IF NOT EXISTS public.training_jobs (
         'failed',
         'cancelled'
     )),
-    provider text NOT NULL DEFAULT 'modal' CHECK (provider IN ('modal', 'runpod', 'local')),
-    modal_function_name text,
-    modal_call_id text,
-    modal_volume_name text,
+    provider text NOT NULL DEFAULT 'local' CHECK (provider IN ('runpod', 'local')),
     runpod_pod_id text,
     hf_repo text,
     params_json jsonb NOT NULL DEFAULT '{}'::jsonb,
