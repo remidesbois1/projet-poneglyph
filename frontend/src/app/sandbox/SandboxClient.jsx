@@ -6,15 +6,8 @@ import Image from 'next/image';
 import { arrayMove } from '@dnd-kit/sortable';
 import { useAnnotationInteractions } from '@/hooks/useAnnotationInteractions';
 import { useAnnotationOCR } from '@/hooks/useAnnotationOCR';
-import { useDeepSeekPageOcr } from '@/hooks/useDeepSeekPageOcr';
-import { useLighton3PageOcr } from '@/hooks/useLighton3PageOcr';
 import { useAnnotationDetection } from '@/hooks/useAnnotationDetection';
 import { useAnnotationMetadata } from '@/hooks/useAnnotationMetadata';
-import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
-import { useAiModelConfig } from '@/hooks/useAiModelConfig';
-import { capitalizeOcrSentenceStarts } from '@/lib/ocr-utils';
-import { getChatGptStatus, runChatGptPageOcr } from '@/lib/chatGptDesktop';
-import { reconcileOcrBubblesWithYolo } from '@/lib/ocrBboxFusion';
 import { Dialog } from "@/components/ui/dialog";
 import {
     ArrowLeft,
@@ -131,7 +124,7 @@ function SandboxGuide({ open, stepIndex, onStepChange, onClose, targets, isMobil
                 target: 'editorSidebar',
                 eyebrow: '01 · Piloter l’analyse',
                 title: 'Le panneau de contrôle',
-                description: 'Choisissez un moteur OCR, chargez les modèles locaux et lancez la détection automatique ou une analyse complète de la page.',
+                description: 'Cochez les modèles OCR, chargez-les, puis lancez l’OCR de la page : chaque bulle détectée s’ouvre ensuite pour validation.',
             },
             {
                 target: 'canvas',
@@ -157,7 +150,7 @@ function SandboxGuide({ open, stepIndex, onStepChange, onClose, targets, isMobil
             target: 'editorToolbar',
             eyebrow: '01 · Repérer l’écran',
             title: 'Votre page est prête',
-            description: 'Cette barre rappelle la source et le format de la page. Sur ordinateur, le panneau de contrôle permet aussi de choisir un moteur et de lancer les analyses.',
+            description: 'Cette barre rappelle la source et le format de la page. Sur ordinateur, le panneau de contrôle permet aussi de choisir les modèles et de lancer l’OCR de la page.',
         },
         {
             target: 'canvas',
@@ -325,17 +318,6 @@ function SandboxGuide({ open, stepIndex, onStepChange, onClose, targets, isMobil
     );
 }
 
-function imageElementToJpegBlob(img) {
-    return new Promise((resolve) => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob(resolve, 'image/jpeg', 0.92);
-    });
-}
-
 export default function SandboxClient() {
     const [page, setPage] = useState(null);
     const [existingBubbles, setExistingBubbles] = useState([]);
@@ -350,10 +332,6 @@ export default function SandboxClient() {
     const [showDescModal, setShowDescModal] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [imageUrl, setImageUrl] = useState(null);
-    const [isPoneglyphLoading, setIsPoneglyphLoading] = useState(false);
-    const [isChatGptLoading, setIsChatGptLoading] = useState(false);
-    const [chatGptDesktopAvailable, setChatGptDesktopAvailable] = useState(false);
-    const [poneglyphRunMode, setPoneglyphRunMode] = useState(null);
     const [isGuideOpen, setIsGuideOpen] = useState(false);
     const [guideStep, setGuideStep] = useState(0);
     const [sampleLoadState, setSampleLoadState] = useState({});
@@ -365,8 +343,6 @@ export default function SandboxClient() {
     const editorSidebarRef = useRef(null);
     const editorCanvasRef = useRef(null);
     const annotationSidebarRef = useRef(null);
-    const tauriLocalOcr = useTauriLocalOcrContext();
-    const aiModelConfig = useAiModelConfig();
 
     const guideTargets = {
         editorToolbar: editorToolbarRef,
@@ -374,14 +350,6 @@ export default function SandboxClient() {
         canvas: editorCanvasRef,
         annotations: annotationSidebarRef,
     };
-
-    useEffect(() => {
-        let cancelled = false;
-        getChatGptStatus().then(status => {
-            if (!cancelled) setChatGptDesktopAvailable(status.available);
-        });
-        return () => { cancelled = true; };
-    }, []);
 
     const [isMobile, setIsMobile] = useState(false);
 
@@ -491,55 +459,33 @@ export default function SandboxClient() {
     });
 
     const {
-        preferLocalOCR, toggleOcrPreference, activeModelKey,
-        modelStatus, loadModel, switchModel, downloadProgress, runLocalOcr,
-        runBackgroundOcr, handleRetryWithCloud, selectedOcrModelKeys, toggleOcrModel,
-        hasDeepSeekKey, handleRetryWithDeepSeek
+        models: ocrModels, toggleOcrModel, prepareSelectedModels, refreshModelAccess,
+        pageModels, runPageModel, runLocalOcr, runBackgroundOcr,
+        handleRetryWithCloud, handleRetryWithDeepSeek
     } = useAnnotationOCR({
         imageRef, pageId: imageUrl, rectangle, pendingAnnotation, setPendingAnnotation,
         setIsSubmitting, setLoadingText, setIsModalOpen, setOcrSource,
-        setDebugImageUrl, setShowApiKeyModal, isSandbox: true
+        setDebugImageUrl, setShowApiKeyModal, isSandbox: true, allowPageModels: true
     });
 
     const {
         isAutoDetecting, setIsAutoDetecting, queueLength, detectionStatus,
-        loadDetectionModel, detectionProgress, downloadStats, handleExecuteDetection,
-        processNextBubble, detectBubbles
+        loadDetectionModel, detectionProgress, isPageOcrRunning, runPageOcr,
+        cancelPageOcr, processNextBubble
     } = useAnnotationDetection({
-        imageRef, pageId: 'sandbox', setRectangle, setPendingAnnotation, setDebugImageUrl,
-        runLocalOcr, runBackgroundOcr, setIsSubmitting, setLoadingText
+        imageRef, pageId: imageUrl, existingBubbles, setRectangle, setPendingAnnotation, setDebugImageUrl,
+        runLocalOcr, runBackgroundOcr, runPageModel, pageModels
     });
 
-    const { handleLighton3OneShot, isLighton3Loading, lighton3State, cancelLighton3 } = useLighton3PageOcr({
-        imageRef, contextKey: imageUrl, canRun: Boolean(page && imageUrl),
-        busy: isSubmitting || isAutoDetecting || isPoneglyphLoading || isChatGptLoading,
-        onApply: (bubbles, { isCurrent }) => {
-            if (!isCurrent()) return;
-            const runId = crypto.randomUUID();
-            setExistingBubbles(previous => [...previous, ...bubbles.map((bubble, index) => ({
-                ...bubble, id: `sandbox-lighton3-${runId}-${index}`, id_page: 'sandbox',
-                statut: 'Proposé', id_user_createur: 'sandbox-user', order: previous.length + index + 1,
-            }))]);
-            toast.success(`${bubbles.length} zones LightOnOCR 3 ajoutées à la sandbox.`);
-        },
-    });
+    const prepareOcrModels = () => {
+        loadDetectionModel();
+        prepareSelectedModels();
+    };
 
-    const { handleDeepSeekOneShot, isDeepSeekLoading } = useDeepSeekPageOcr({
-        imageRef, contextKey: imageUrl, canRun: Boolean(page && imageUrl),
-        busy: isSubmitting || isAutoDetecting || isPoneglyphLoading || isChatGptLoading || isLighton3Loading,
-        detectionStatus, detectBubbles,
-        onConfigure: () => setShowApiKeyModal(true),
-        onApply: (bubbles, { isCurrent }) => {
-            if (!isCurrent()) return;
-            const runId = crypto.randomUUID();
-            setExistingBubbles(previous => [...previous, ...bubbles.map((bubble, index) => ({
-                id: `sandbox-deepseek-${runId}-${index}`, id_page: 'sandbox',
-                x: bubble.x, y: bubble.y, w: bubble.w, h: bubble.h, texte_propose: bubble.content,
-                statut: 'Proposé', id_user_createur: 'sandbox-user', order: previous.length + index + 1,
-            }))]);
-            toast.success(`${bubbles.length} bulles DeepSeek ajoutées à la sandbox.`);
-        },
-    });
+    // Keys and the ChatGPT session are edited in the API dialog.
+    useEffect(() => {
+        if (!showApiKeyModal) void refreshModelAccess();
+    }, [refreshModelAccess, showApiKeyModal]);
 
     const {
         isDrawing, startPoint, endPoint, mousePos, isShiftPressed,
@@ -548,7 +494,7 @@ export default function SandboxClient() {
     } = useAnnotationInteractions({
         containerRef, imageRef, imageDimensions, existingBubbles, setExistingBubbles,
         pendingAnnotation, setPendingAnnotation, setRectangle, canEdit: true, canEditBubble: canEditSandboxBubble, isMobile,
-        pageStatus: 'not_started', isSubmitting: isSubmitting || isDeepSeekLoading, showApiKeyModal, showDescModal,
+        pageStatus: 'not_started', isSubmitting: isSubmitting || isPageOcrRunning, showApiKeyModal, showDescModal,
         onUpdateGeometry: (targetId, geometry) => {
             setExistingBubbles(prev => prev.map(b => b.id === targetId ? { ...b, ...geometry } : b));
             toast.success("Position mise à jour");
@@ -563,7 +509,7 @@ export default function SandboxClient() {
             setDebugImageUrl(null);
             runLocalOcr(analysisData);
         }
-    }, [rectangle, isAutoDetecting, activeModelKey]);
+    }, [rectangle, isAutoDetecting]);
 
     const handleSaveApiKey = (key) => {
         localStorage.setItem('google_api_key', key);
@@ -626,228 +572,6 @@ export default function SandboxClient() {
                 const newOrder = arrayMove(bubbles, oldIndex, newIndex);
                 return newOrder.map((b, index) => ({ ...b, order: index + 1 }));
             });
-        }
-    };
-
-    const handleLocalBBoxOcr = async (localEngine = 'poneglyph') => {
-        if (!imageRef.current) return;
-
-        const isSuryaBBoxLocal = localEngine === 'surya_bbox';
-        const runMode = isSuryaBBoxLocal ? 'surya-bbox-local' : 'local';
-        const modelLabel = isSuryaBBoxLocal ? 'Surya-BBox' : 'Poneglyph-BBox';
-        const serviceLabel = `${modelLabel} - Local`;
-        setIsPoneglyphLoading(true);
-        setPoneglyphRunMode(runMode);
-
-        try {
-            if (isSuryaBBoxLocal && !tauriLocalOcr.canRunLocalSuryaBBoxOcr) {
-                throw new Error("Le modele Surya-BBox doit etre charge avant de lancer l'inference locale.");
-            }
-            if (!isSuryaBBoxLocal && !tauriLocalOcr.canRunLocalOcr) {
-                throw new Error("Le modele Poneglyph-BBox doit etre charge avant de lancer l'inference locale.");
-            }
-
-            let yoloPromise = Promise.resolve(null);
-            if (detectionStatus === 'ready') {
-                yoloPromise = fetch(imageRef.current.src)
-                    .then(r => r.blob())
-                    .then(b => detectBubbles(b))
-                    .catch(e => {
-                        console.error('YOLO Failed', e);
-                        return null;
-                    });
-            }
-
-            const imageBlob = await imageElementToJpegBlob(imageRef.current);
-            if (!imageBlob) throw new Error("Impossible de convertir l'image.");
-
-            const extractionPromise = isSuryaBBoxLocal
-                ? tauriLocalOcr.runLocalSuryaBBoxOcrBlob(imageBlob)
-                : tauriLocalOcr.runLocalOcrBlob(imageBlob);
-
-            const [apiResponse, yoloBoxes] = await Promise.all([
-                extractionPromise,
-                yoloPromise
-            ]);
-
-            if (apiResponse?.elapsed_ms) {
-                toast.success(`${modelLabel} - Local termine en ${apiResponse.elapsed_ms} ms.`);
-            }
-
-            if (apiResponse?.error) {
-                throw new Error(apiResponse.error);
-            }
-
-            if (!apiResponse?.bubbles || !Array.isArray(apiResponse.bubbles)) {
-                throw new Error("Format de reponse invalide.");
-            }
-
-            const h = imageRef.current.naturalHeight;
-            const w = imageRef.current.naturalWidth;
-            const baseId = Date.now();
-
-            const newBubbles = apiResponse.bubbles.map((bubble, index) => {
-                const [x1, y1, x2, y2] = bubble.bbox;
-                let poneglyphBox = {
-                    id: `sandbox-poneglyph-${runMode}-${baseId}-${index}`,
-                    id_page: 'sandbox',
-                    x: Math.round((x1 / 1000) * w),
-                    y: Math.round((y1 / 1000) * h),
-                    w: Math.round(((x2 - x1) / 1000) * w),
-                    h: Math.round(((y2 - y1) / 1000) * h),
-                    texte_propose: capitalizeOcrSentenceStarts(bubble.content),
-                    statut: 'Proposé',
-                    id_user_createur: 'sandbox-user',
-                    order: existingBubbles.length + index + 1
-                };
-
-                if (detectionStatus === 'ready' && yoloBoxes) {
-                    let bestYoloBox = null;
-                    let bestIou = 0;
-                    for (const yBox of yoloBoxes) {
-                        const ix1 = Math.max(poneglyphBox.x, yBox.x);
-                        const iy1 = Math.max(poneglyphBox.y, yBox.y);
-                        const ix2 = Math.min(poneglyphBox.x + poneglyphBox.w, yBox.x + yBox.w);
-                        const iy2 = Math.min(poneglyphBox.y + poneglyphBox.h, yBox.y + yBox.h);
-
-                        if (ix2 < ix1 || iy2 < iy1) continue;
-                        const intersection = (ix2 - ix1) * (iy2 - iy1);
-                        const areaP = poneglyphBox.w * poneglyphBox.h;
-                        const areaY = yBox.w * yBox.h;
-                        const iou = intersection / (areaP + areaY - intersection);
-
-                        if (iou > 0.05 && iou > bestIou) {
-                            bestIou = iou;
-                            bestYoloBox = yBox;
-                        }
-                    }
-
-                    if (bestYoloBox) {
-                        poneglyphBox.x = Math.round(bestYoloBox.x);
-                        poneglyphBox.y = Math.round(bestYoloBox.y);
-                        poneglyphBox.w = Math.round(bestYoloBox.w);
-                        poneglyphBox.h = Math.round(bestYoloBox.h);
-                    }
-                }
-
-                return poneglyphBox;
-            });
-
-            if (newBubbles.length === 0) {
-                toast.error("Aucune bulle detectee.");
-                return;
-            }
-
-            setExistingBubbles(prev => [...prev, ...newBubbles].sort((a, b) => (a.order || 0) - (b.order || 0)));
-            toast.success(`${newBubbles.length} bulles ${modelLabel} creees dans la sandbox.`);
-        } catch (error) {
-            console.error(error);
-            toast.error(`${serviceLabel} indisponible : ${error.message}`);
-        } finally {
-            setIsPoneglyphLoading(false);
-            setPoneglyphRunMode(null);
-        }
-    };
-
-    const handleOneShotLocalPoneglyph = () => {
-        if (!tauriLocalOcr.canRunLocalOcr) {
-            const reason = !tauriLocalOcr.isTauri
-                ? "App desktop non detectee."
-                : tauriLocalOcr.isDownloadingLocalModel
-                    ? "Telechargement du modele Poneglyph-BBox en cours."
-                    : !tauriLocalOcr.localModelStatus?.installed
-                        ? "Telechargez le modele Poneglyph-BBox d'abord."
-                        : !tauriLocalOcr.localModelStatus?.ready
-                            ? "Chargez le modele Poneglyph-BBox en VRAM d'abord."
-                            : "Poneglyph-BBox indisponible.";
-            toast.error(reason);
-            return;
-        }
-
-        return handleLocalBBoxOcr();
-    };
-
-    const handleOneShotLocalSuryaBbox = () => {
-        if (!tauriLocalOcr.canRunLocalSuryaBBoxOcr) {
-            const connectionState = tauriLocalOcr.localConnectionState?.status;
-            const reason = !tauriLocalOcr.isTauri
-                ? "App desktop non detectee."
-                : connectionState === 'reconnecting'
-                    ? "Serveur OCR local en reconnexion."
-                    : ['offline', 'unavailable'].includes(connectionState)
-                        ? "Serveur OCR local hors ligne."
-                        : tauriLocalOcr.isDownloadingLocalSuryaBBoxModel
-                            ? "Telechargement du modele Surya-BBox en cours."
-                            : !tauriLocalOcr.localSuryaBBoxModelStatus?.installed
-                                ? "Telechargez le modele Surya-BBox d'abord."
-                                : tauriLocalOcr.localSuryaBBoxModelStatus?.error
-                                    ? tauriLocalOcr.localSuryaBBoxModelStatus.error
-                                    : !tauriLocalOcr.localSuryaBBoxModelStatus?.ready
-                                        ? "Chargez le modele Surya-BBox en VRAM d'abord."
-                                        : "Surya-BBox indisponible.";
-            toast.error(reason);
-            return;
-        }
-
-        return handleLocalBBoxOcr('surya_bbox');
-    };
-
-    const handleChatGptOneShot = async () => {
-        if (!imageRef.current) return;
-        setIsChatGptLoading(true);
-        try {
-            const auth = await getChatGptStatus();
-            if (!auth.available) throw new Error(`${aiModelConfig.model_chatgpt_ocr} est disponible uniquement dans l'application desktop.`);
-            if (!auth.connected) {
-                setShowApiKeyModal(true);
-                toast.info(`Connectez votre compte ChatGPT pour utiliser ${aiModelConfig.model_chatgpt_ocr}.`);
-                return;
-            }
-            const yoloPromise = detectionStatus === 'ready'
-                ? fetch(imageRef.current.src)
-                    .then(response => response.blob())
-                    .then(blob => detectBubbles(blob))
-                    .catch(error => {
-                        console.error('YOLO Failed', error);
-                        return null;
-                    })
-                : Promise.resolve(null);
-            const imageBlob = await imageElementToJpegBlob(imageRef.current);
-            if (!imageBlob) throw new Error("Impossible de convertir l'image.");
-            const [result, yoloBoxes] = await Promise.all([
-                runChatGptPageOcr(imageBlob, {
-                    model: aiModelConfig.model_chatgpt_ocr,
-                    fastMode: aiModelConfig.chatgpt_fast_mode,
-                }),
-                yoloPromise,
-            ]);
-            if (!Array.isArray(result?.bubbles)) throw new Error('Format de réponse OCR invalide.');
-            const imageWidth = imageRef.current.naturalWidth;
-            const imageHeight = imageRef.current.naturalHeight;
-            const baseId = Date.now();
-            const reconciledBubbles = reconcileOcrBubblesWithYolo(result.bubbles, yoloBoxes, imageWidth, imageHeight);
-            const newBubbles = reconciledBubbles.map((bubble, index) => {
-                return {
-                    id: `sandbox-chatgpt-${baseId}-${index}`,
-                    id_page: 'sandbox',
-                    x: bubble.x,
-                    y: bubble.y,
-                    w: bubble.w,
-                    h: bubble.h,
-                    texte_propose: capitalizeOcrSentenceStarts(bubble.content),
-                    statut: 'Proposé',
-                    id_user_createur: 'sandbox-user',
-                    order: existingBubbles.length + index + 1,
-                };
-            });
-            if (!newBubbles.length) throw new Error('Aucune bulle exploitable détectée.');
-            setExistingBubbles(previous => [...previous, ...newBubbles].sort((a, b) => (a.order || 0) - (b.order || 0)));
-            toast.success(`${newBubbles.length} bulles créées avec ${result.model || aiModelConfig.model_chatgpt_ocr}.`);
-        } catch (error) {
-            console.error(error);
-            toast.error(error?.message || `OCR ${aiModelConfig.model_chatgpt_ocr} indisponible.`);
-        } finally {
-            setIsChatGptLoading(false);
         }
     };
 
@@ -970,79 +694,21 @@ export default function SandboxClient() {
                     isGuest={false}
                     role="Admin"
                     isSandbox={true}
-                    preferLocalOCR={preferLocalOCR}
-                    toggleOcrPreference={toggleOcrPreference}
-                    activeModelKey={activeModelKey}
-                    switchModel={switchModel}
-                    modelStatus={modelStatus}
-                    loadModel={loadModel}
-                    downloadProgress={downloadProgress}
-                    geminiKey={null}
-                    hasDeepSeekKey={hasDeepSeekKey}
-                    handleDeepSeekOneShot={handleDeepSeekOneShot}
-                    isDeepSeekLoading={isDeepSeekLoading}
-                    selectedOcrModelKeys={selectedOcrModelKeys}
+                    ocrModels={ocrModels}
                     toggleOcrModel={toggleOcrModel}
+                    onPrepareModels={prepareOcrModels}
                     detectionStatus={detectionStatus}
-                    loadDetectionModel={loadDetectionModel}
                     detectionProgress={detectionProgress}
-                    downloadStats={downloadStats}
-                    handleExecuteDetection={handleExecuteDetection}
+                    canRunPageOcr={Boolean(imageUrl)}
+                    isPageOcrRunning={isPageOcrRunning}
+                    isReviewingPage={isAutoDetecting}
+                    reviewRemaining={queueLength}
+                    onRunPageOcr={runPageOcr}
+                    onCancelPageOcr={cancelPageOcr}
                     isSubmitting={isSubmitting}
-                    isAutoDetecting={isAutoDetecting}
-                    queueLength={queueLength}
                     setShowDescModal={() => { }}
                     setShowApiKeyModal={setShowApiKeyModal}
                     handleSubmitPage={() => { }}
-                    handleChatGptOneShot={handleChatGptOneShot}
-                    isChatGptLoading={isChatGptLoading}
-                    chatGptDesktopAvailable={chatGptDesktopAvailable}
-                    geminiFullPageModel={aiModelConfig.model_ocr}
-                    chatGptFullPageModel={aiModelConfig.model_chatgpt_ocr}
-                    isPoneglyphLoading={isPoneglyphLoading}
-                    poneglyphRunMode={poneglyphRunMode}
-                    handleOneShotLocalPoneglyph={handleOneShotLocalPoneglyph}
-                    handleOneShotLocalSuryaBbox={handleOneShotLocalSuryaBbox}
-                    handleLighton3OneShot={handleLighton3OneShot}
-                    isLighton3Loading={isLighton3Loading}
-                    lighton3State={lighton3State}
-                    cancelLighton3={cancelLighton3}
-                    isTauri={tauriLocalOcr.isTauri}
-                    localModelStatus={tauriLocalOcr.localModelStatus}
-                    localTextModelStatus={tauriLocalOcr.localTextModelStatus}
-                    localSuryaModelStatus={tauriLocalOcr.localSuryaModelStatus}
-                    localSuryaBBoxModelStatus={tauriLocalOcr.localSuryaBBoxModelStatus}
-                    isDownloadingLocalModel={tauriLocalOcr.isDownloadingLocalModel}
-                    isDownloadingLocalTextModel={tauriLocalOcr.isDownloadingLocalTextModel}
-                    isDownloadingLocalSuryaModel={tauriLocalOcr.isDownloadingLocalSuryaModel}
-                    isDownloadingLocalSuryaBBoxModel={tauriLocalOcr.isDownloadingLocalSuryaBBoxModel}
-                    localDownloadState={tauriLocalOcr.localDownloadState}
-                    localTextDownloadState={tauriLocalOcr.localTextDownloadState}
-                    localSuryaDownloadState={tauriLocalOcr.localSuryaDownloadState}
-                    localSuryaBBoxDownloadState={tauriLocalOcr.localSuryaBBoxDownloadState}
-                    localDownloadProgress={tauriLocalOcr.localDownloadProgress}
-                    localTextDownloadProgress={tauriLocalOcr.localTextDownloadProgress}
-                    localSuryaDownloadProgress={tauriLocalOcr.localSuryaDownloadProgress}
-                    localSuryaBBoxDownloadProgress={tauriLocalOcr.localSuryaBBoxDownloadProgress}
-                    localConnectionState={tauriLocalOcr.localConnectionState}
-                    isLoadingLocalModel={tauriLocalOcr.isLoadingLocalModel}
-                    isLoadingLocalTextModel={tauriLocalOcr.isLoadingLocalTextModel}
-                    isLoadingLocalSuryaModel={tauriLocalOcr.isLoadingLocalSuryaModel}
-                    isLoadingLocalSuryaBBoxModel={tauriLocalOcr.isLoadingLocalSuryaBBoxModel}
-                    isLocalInferencing={tauriLocalOcr.isLocalInferencing}
-                    isLocalSuryaBBoxInferencing={tauriLocalOcr.isLocalSuryaBBoxInferencing}
-                    canRunLocalOcr={tauriLocalOcr.canRunLocalOcr}
-                    canRunLocalTextOcr={tauriLocalOcr.canRunLocalTextOcr}
-                    canRunLocalSuryaOcr={tauriLocalOcr.canRunLocalSuryaOcr}
-                    canRunLocalSuryaBBoxOcr={tauriLocalOcr.canRunLocalSuryaBBoxOcr}
-                    downloadLocalModel={tauriLocalOcr.downloadLocalModel}
-                    downloadLocalTextModel={tauriLocalOcr.downloadLocalTextModel}
-                    downloadLocalSuryaModel={tauriLocalOcr.downloadLocalSuryaModel}
-                    downloadLocalSuryaBBoxModel={tauriLocalOcr.downloadLocalSuryaBBoxModel}
-                    loadLocalModel={tauriLocalOcr.loadLocalModel}
-                    loadLocalTextModel={tauriLocalOcr.loadLocalTextModel}
-                    loadLocalSuryaModel={tauriLocalOcr.loadLocalSuryaModel}
-                    loadLocalSuryaBBoxModel={tauriLocalOcr.loadLocalSuryaBBoxModel}
                 />
             </div>
 
@@ -1073,8 +739,8 @@ export default function SandboxClient() {
                             handleMouseMove={handleMouseMove}
                             handleMouseUp={handleMouseUp}
                             imageUrl={imageUrl}
-                            isSubmitting={isSubmitting || isDeepSeekLoading}
-                            loadingText={isDeepSeekLoading ? 'Lecture de la page avec DeepSeek…' : loadingText}
+                            isSubmitting={isSubmitting || isPageOcrRunning}
+                            loadingText={isPageOcrRunning ? 'Lecture de la page…' : loadingText}
                             rectangle={rectangle}
                             pendingAnnotation={pendingAnnotation}
                             isAutoDetecting={isAutoDetecting}
@@ -1125,8 +791,7 @@ export default function SandboxClient() {
                 runLocalOcr={runLocalOcr}
                 handleRetryWithCloud={handleRetryWithCloud}
                 handleRetryWithDeepSeek={handleRetryWithDeepSeek}
-                isSubmitting={isSubmitting || isDeepSeekLoading}
-                selectedOcrModelKeys={selectedOcrModelKeys}
+                isSubmitting={isSubmitting || isPageOcrRunning}
                 isSandbox={true}
             />
 

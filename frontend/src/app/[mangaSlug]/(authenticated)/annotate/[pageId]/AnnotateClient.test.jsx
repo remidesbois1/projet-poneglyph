@@ -4,7 +4,6 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useManga } from '@/context/MangaContext';
-import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
 import { useAnnotationInteractions } from '@/hooks/useAnnotationInteractions';
 import { useAnnotationOCR } from '@/hooks/useAnnotationOCR';
 import { useAnnotationDetection } from '@/hooks/useAnnotationDetection';
@@ -21,10 +20,8 @@ import AnnotateClient from './AnnotateClient';
 vi.mock('next/navigation', () => ({ useParams: vi.fn(), useRouter: vi.fn(), useSearchParams: vi.fn() }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/context/MangaContext', () => ({ useManga: vi.fn() }));
-vi.mock('@/context/TauriLocalOcrContext', () => ({ useTauriLocalOcrContext: vi.fn() }));
 vi.mock('@/hooks/useAnnotationInteractions', () => ({ useAnnotationInteractions: vi.fn() }));
 vi.mock('@/hooks/useAnnotationOCR', () => ({ useAnnotationOCR: vi.fn() }));
-vi.mock('@/hooks/useLighton3PageOcr', () => ({ useLighton3PageOcr: () => ({}) }));
 vi.mock('@/hooks/useAnnotationDetection', () => ({ useAnnotationDetection: vi.fn() }));
 vi.mock('@/hooks/useAnnotationMetadata', () => ({ useAnnotationMetadata: vi.fn() }));
 vi.mock('@/lib/pageImageClient', () => ({ fetchOriginalPageImage: vi.fn() }));
@@ -44,13 +41,6 @@ vi.mock('@/lib/api', () => ({
     savePageDescription: vi.fn(),
     getMetadataSuggestions: vi.fn(),
 }));
-vi.mock('@/lib/geminiClient', () => ({
-    analyzeBubble: vi.fn(),
-    generatePageDescription: vi.fn(),
-    generateGeminiEmbedding: vi.fn(),
-    generateOneShotBubbles: vi.fn(),
-}));
-vi.mock('@/lib/ocrProxyClient', () => ({ postOcrImage: vi.fn() }));
 vi.mock('@/components/ApiKeyForm', () => ({ default: () => null }));
 vi.mock('@/components/AnnotateLeftSidebar', () => ({
     default: ({ page, navContext, goToNext, handlePageStatusChange, canEdit }) => (
@@ -125,7 +115,6 @@ describe('AnnotateClient async states', () => {
             role: 'Admin',
         });
         useManga.mockReturnValue({ mangaSlug: 'one-piece', currentManga: { titre: 'One Piece' } });
-        useTauriLocalOcrContext.mockReturnValue({});
         useAnnotationInteractions.mockReturnValue({
             isDrawing: false,
             startPoint: null,
@@ -140,20 +129,18 @@ describe('AnnotateClient async states', () => {
             handleInteractionStart: vi.fn(),
         });
         useAnnotationOCR.mockReturnValue({
-            preferLocalOCR: false,
-            toggleOcrPreference: vi.fn(),
-            geminiKey: 'key',
-            activeModelKey: 'test',
-            modelStatus: 'ready',
-            loadModel: vi.fn(),
-            switchModel: vi.fn(),
-            downloadProgress: 100,
-            runLocalOcr: vi.fn(),
-            runBackgroundOcr: vi.fn(),
-            ocrResults: [],
-            handleRetryWithCloud: vi.fn(),
+            models: [],
             selectedOcrModelKeys: [],
             toggleOcrModel: vi.fn(),
+            prepareSelectedModels: vi.fn(),
+            refreshModelAccess: vi.fn(),
+            bubbleModels: [],
+            pageModels: [],
+            runPageModel: vi.fn(),
+            runLocalOcr: vi.fn(),
+            runBackgroundOcr: vi.fn(),
+            handleRetryWithCloud: vi.fn(),
+            handleRetryWithDeepSeek: vi.fn(),
         });
         useAnnotationDetection.mockReturnValue({
             isAutoDetecting: false,
@@ -162,10 +149,10 @@ describe('AnnotateClient async states', () => {
             detectionStatus: 'ready',
             loadDetectionModel: vi.fn(),
             detectionProgress: 100,
-            downloadStats: null,
-            handleExecuteDetection: vi.fn(),
+            isPageOcrRunning: false,
+            runPageOcr: vi.fn(),
+            cancelPageOcr: vi.fn(),
             processNextBubble: vi.fn(),
-            detectBubbles: vi.fn(),
         });
         useAnnotationMetadata.mockReturnValue({
             formData: {},

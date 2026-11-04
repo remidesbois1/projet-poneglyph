@@ -3,26 +3,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPageById, getBubblesForPage, createBubble, deleteBubble, submitPageForReview, updatePageStatus, reorderBubbles, savePageDescription, getMetadataSuggestions, getPages } from '@/lib/api';
-import { analyzeBubble, generatePageDescription, generateGeminiEmbedding, generateOneShotBubbles } from '@/lib/geminiClient';
+import { getPageById, getBubblesForPage, deleteBubble, submitPageForReview, updatePageStatus, reorderBubbles, getPages } from '@/lib/api';
 import AiAccessDialog from '@/components/AiAccessDialog';
 import { useAuth } from '@/context/AuthContext';
 import { useManga } from '@/context/MangaContext';
 import { arrayMove } from '@dnd-kit/sortable';
 import { useAnnotationInteractions } from '@/hooks/useAnnotationInteractions';
 import { useAnnotationOCR } from '@/hooks/useAnnotationOCR';
-import { useDeepSeekPageOcr } from '@/hooks/useDeepSeekPageOcr';
-import { useLighton3PageOcr } from '@/hooks/useLighton3PageOcr';
 import { useAnnotationDetection } from '@/hooks/useAnnotationDetection';
 import { useAnnotationMetadata } from '@/hooks/useAnnotationMetadata';
-import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
-import { useAiModelConfig } from '@/hooks/useAiModelConfig';
 import { getProxiedImageUrl } from '@/lib/utils';
 import { fetchOriginalPageImage } from '@/lib/pageImageClient';
-import { capitalizeOcrSentenceStarts } from '@/lib/ocr-utils';
-import { postOcrImage } from '@/lib/ocrProxyClient';
-import { getChatGptStatus, runChatGptPageOcr } from '@/lib/chatGptDesktop';
-import { reconcileOcrBubblesWithYolo } from '@/lib/ocrBboxFusion';
 import { canCreateBubble, canEditBubble, canReorderBubbles } from '@/lib/bubblePermissions';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -78,24 +69,6 @@ function getNearbyChapterPages(
         Math.max(0, currentIndex - behindCount),
         currentIndex + aheadCount + 1
     ).filter(p => normalizePageId(p.id) !== normalizePageId(currentPageId));
-}
-
-function imageElementToJpegBlob(img) {
-    return new Promise((resolve) => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob(resolve, 'image/jpeg', 0.92);
-    });
-}
-
-async function runModalPoneglyph(imageBlob) {
-    const response = await postOcrImage('/api/poneglyph_one_shot', imageBlob);
-
-    if (!response.ok) throw new Error("Erreur API Poneglyph-BBox");
-    return response.json();
 }
 
 function AnnotationLoadingState({ message = 'Chargement de la page…' }) {
@@ -164,11 +137,6 @@ export default function AnnotatePage() {
     const [reviewPage, setReviewPage] = useState(null);
     const [loadingText, setLoadingText] = useState("Analyse en cours...");
     const [pendingAnnotation, setPendingAnnotation] = useState(null);
-    const [isOneShotLoading, setIsOneShotLoading] = useState(false);
-    const [isChatGptLoading, setIsChatGptLoading] = useState(false);
-    const [chatGptDesktopAvailable, setChatGptDesktopAvailable] = useState(false);
-    const [isPoneglyphLoading, setIsPoneglyphLoading] = useState(false);
-    const [poneglyphRunMode, setPoneglyphRunMode] = useState(null);
     const [rectangle, setRectangle] = useState(null);
     const [imageDimensions, setImageDimensions] = useState(null);
     const [ocrSource, setOcrSource] = useState(null);
@@ -183,16 +151,6 @@ export default function AnnotatePage() {
 
     const containerRef = useRef(null);
     const imageRef = useRef(null);
-    const tauriLocalOcr = useTauriLocalOcrContext();
-    const aiModelConfig = useAiModelConfig();
-
-    useEffect(() => {
-        let cancelled = false;
-        getChatGptStatus().then(status => {
-            if (!cancelled) setChatGptDesktopAvailable(status.available);
-        });
-        return () => { cancelled = true; };
-    }, []);
 
     const [chapterPages, setChapterPages] = useState([]);
     const [navContext, setNavContext] = useState({ prev: null, next: null });
@@ -407,36 +365,34 @@ export default function AnnotatePage() {
     });
 
     const {
-        preferLocalOCR, toggleOcrPreference, geminiKey, activeModelKey,
-        modelStatus, loadModel, switchModel, downloadProgress, runLocalOcr,
-        runBackgroundOcr, ocrResults, handleRetryWithCloud,
-        hasDeepSeekKey, handleRetryWithDeepSeek,
-        selectedOcrModelKeys, toggleOcrModel
+        models: ocrModels, toggleOcrModel, prepareSelectedModels, refreshModelAccess,
+        bubbleModels, pageModels, runPageModel, runLocalOcr, runBackgroundOcr,
+        handleRetryWithCloud, handleRetryWithDeepSeek
     } = useAnnotationOCR({
         imageRef, pageId, rectangle, pendingAnnotation, setPendingAnnotation,
         setIsSubmitting, setLoadingText, setIsModalOpen, setOcrSource,
-        setDebugImageUrl, setShowApiKeyModal
+        setDebugImageUrl, setShowApiKeyModal, allowPageModels: !isGuest && role === 'Admin'
     });
 
     const {
         isAutoDetecting, setIsAutoDetecting, queueLength, detectionStatus,
-        loadDetectionModel, detectionProgress, downloadStats, handleExecuteDetection,
-        processNextBubble, detectBubbles
+        loadDetectionModel, detectionProgress, isPageOcrRunning, runPageOcr,
+        cancelPageOcr, processNextBubble
     } = useAnnotationDetection({
-        imageRef, pageId, setRectangle, setPendingAnnotation, setDebugImageUrl,
-        runLocalOcr, runBackgroundOcr, setIsSubmitting, setLoadingText,
+        imageRef, pageId, existingBubbles, setRectangle, setPendingAnnotation, setDebugImageUrl,
+        runLocalOcr, runBackgroundOcr, runPageModel, pageModels,
         detectionDebugEnabled, setDetectionDebugData
     });
 
-    const runDebuggableDetection = useCallback(async (blob) => {
-        const result = await detectBubbles(blob, {
-            debug: detectionDebugEnabled,
-            returnDebug: detectionDebugEnabled
-        });
-        if (!detectionDebugEnabled) return result;
-        setDetectionDebugData(result?.debug || null);
-        return result?.boxes || [];
-    }, [detectBubbles, detectionDebugEnabled]);
+    const prepareOcrModels = useCallback(() => {
+        loadDetectionModel();
+        prepareSelectedModels();
+    }, [loadDetectionModel, prepareSelectedModels]);
+
+    // Keys and the ChatGPT session are edited in the API dialog.
+    useEffect(() => {
+        if (!showApiKeyModal) void refreshModelAccess();
+    }, [refreshModelAccess, showApiKeyModal]);
 
     const setExistingBubblesAndCache = useCallback((updater) => {
         setExistingBubbles(prev => {
@@ -448,64 +404,6 @@ export default function AnnotatePage() {
         });
     }, [cacheBubblesForPage]);
 
-    const { handleLighton3OneShot, isLighton3Loading, lighton3State, cancelLighton3 } = useLighton3PageOcr({
-        imageRef, contextKey: `${pageId}:${user?.id || ''}:${originalImageUrl || ''}`,
-        canRun: !isGuest && role === 'Admin' && canEdit && imageLoadStatus === RESOURCE_STATUS.READY,
-        busy: isSubmitting || isAutoDetecting || isOneShotLoading || isChatGptLoading || isPoneglyphLoading,
-        onApply: async (bubbles, { isCurrent }) => {
-            const targetPageId = pageId, targetGeneration = navGenerationRef.current;
-            const isTargetCurrent = () => isCurrent() && targetGeneration === navGenerationRef.current && String(pageIdRef.current) === String(targetPageId);
-            const created = [];
-            for (const bubble of bubbles) {
-                if (!isTargetCurrent()) break;
-                try {
-                    const response = await createBubble({ id_page: Number(targetPageId),
-                        x: bubble.x, y: bubble.y, w: bubble.w, h: bubble.h, texte_propose: bubble.texte_propose });
-                    created.push(response.data);
-                } catch { /* Successful imports remain visible when a later save fails. */ }
-            }
-            if (!isTargetCurrent()) { bubbleCacheRef.current.delete(normalizePageId(targetPageId)); return; }
-            if (created.length) setExistingBubblesAndCache(previous => sortBubblesForAnnotation([...previous, ...created]));
-            if (created.length === bubbles.length) toast.success(`${created.length} zones créées avec LightOnOCR 3.`);
-            else toast.warning(`LightOnOCR 3 : ${created.length} zones enregistrées sur ${bubbles.length}. Vérifiez les annotations avant de relancer.`);
-        },
-    });
-
-    const { handleDeepSeekOneShot, isDeepSeekLoading } = useDeepSeekPageOcr({
-        imageRef,
-        contextKey: `${pageId}:${user?.id || ''}:${originalImageUrl || ''}`,
-        canRun: !isGuest && role === 'Admin' && canEdit && imageLoadStatus === RESOURCE_STATUS.READY,
-        busy: isSubmitting || isAutoDetecting || isOneShotLoading || isChatGptLoading || isPoneglyphLoading || isLighton3Loading,
-        detectionStatus,
-        detectBubbles: runDebuggableDetection,
-        onConfigure: () => setShowApiKeyModal(true),
-        onApply: async (bubbles, { isCurrent }) => {
-            const targetPageId = pageId;
-            const targetGeneration = navGenerationRef.current;
-            const isTargetCurrent = () => isCurrent() && targetGeneration === navGenerationRef.current && String(pageIdRef.current) === String(targetPageId);
-            const created = [];
-            for (const bubble of bubbles) {
-                if (!isTargetCurrent()) break;
-                try {
-                    const response = await createBubble({
-                        id_page: Number(targetPageId), x: bubble.x, y: bubble.y, w: bubble.w, h: bubble.h,
-                        texte_propose: bubble.content,
-                    });
-                    created.push(response.data);
-                } catch {
-                    // Preserve successful creations and report a partial import; never retry a paid extraction.
-                }
-            }
-            if (!isTargetCurrent()) {
-                bubbleCacheRef.current.delete(normalizePageId(targetPageId));
-                return;
-            }
-            if (created.length) setExistingBubblesAndCache(previous => sortBubblesForAnnotation([...previous, ...created]));
-            if (created.length === bubbles.length) toast.success(`${created.length} bulles créées avec DeepSeek.`);
-            else toast.warning(`DeepSeek : ${created.length} bulles créées sur ${bubbles.length}. Vérifiez les annotations avant de relancer.`);
-        },
-    });
-
     const {
         isDrawing, startPoint, endPoint, mousePos, isShiftPressed,
         hoveredBubble, setHoveredBubble, handleMouseDown, handleMouseMove,
@@ -513,7 +411,7 @@ export default function AnnotatePage() {
     } = useAnnotationInteractions({
         containerRef, imageRef, imageDimensions, existingBubbles, setExistingBubbles: setExistingBubblesAndCache,
         pendingAnnotation, setPendingAnnotation, setRectangle, canEdit, canEditBubble: canEditExistingBubble, isMobile,
-        pageStatus: page?.statut, isSubmitting: isSubmitting || isDeepSeekLoading || isLighton3Loading, showApiKeyModal, showDescModal
+        pageStatus: page?.statut, isSubmitting: isSubmitting || isPageOcrRunning, showApiKeyModal, showDescModal
     });
 
     const fetchBubbles = useCallback(({ force = false } = {}) => {
@@ -665,9 +563,9 @@ export default function AnnotatePage() {
             };
             setPendingAnnotation(analysisData);
             setDebugImageUrl(null);
-            runLocalOcr();
+            runLocalOcr(rectangle);
         }
-    }, [rectangle, pageId, isAutoDetecting, activeModelKey]);
+    }, [rectangle, pageId, isAutoDetecting]);
 
     const handleSaveApiKey = (key) => {
         localStorage.setItem('google_api_key', key);
@@ -789,371 +687,6 @@ export default function AnnotatePage() {
         }
     };
 
-    const handleOneShot = async () => {
-        if (!imageRef.current || isDeepSeekLoading) return;
-        const key = geminiKey || localStorage.getItem('google_api_key');
-        if (!key) {
-            toast.error("Clé API Google requise pour l'extraction One-Shot.");
-            setShowApiKeyModal(true);
-            return;
-        }
-
-        setIsOneShotLoading(true);
-        try {
-            let yoloPromise = Promise.resolve(null);
-            if (detectionStatus === 'ready') {
-                yoloPromise = fetch(imageRef.current.src)
-                    .then(r => r.blob())
-                    .then(b => runDebuggableDetection(b))
-                    .catch(e => {
-                        console.error('YOLO Failed', e);
-                        return null;
-                    });
-            }
-
-            const [result, yoloBoxes] = await Promise.all([
-                generateOneShotBubbles(imageRef.current, key),
-                yoloPromise
-            ]);
-
-            if (!result || !result.data || !Array.isArray(result.data)) {
-                throw new Error("Format de réponse invalide.");
-            }
-
-            const h = imageRef.current.naturalHeight;
-            const w = imageRef.current.naturalWidth;
-            
-            const newBubblesConfig = result.data.reduce((acc, bubble) => {
-                const [x1, y1, x2, y2] = bubble.bbox;
-                let geminiBox = {
-                    id_page: parseInt(pageId, 10),
-                    x: Math.round((x1 / 1000) * w),
-                    y: Math.round((y1 / 1000) * h),
-                    w: Math.round(((x2 - x1) / 1000) * w),
-                    h: Math.round(((y2 - y1) / 1000) * h),
-                    texte_propose: bubble.content
-                };
-
-                if (detectionStatus === 'ready') {
-                    // YOLO is loaded, so we enforce intersection
-                    const boxes = yoloBoxes || [];
-                    let bestYoloBox = null;
-                    let bestIou = 0;
-                    for (const yBox of boxes) {
-                        const x1 = Math.max(geminiBox.x, yBox.x);
-                        const y1 = Math.max(geminiBox.y, yBox.y);
-                        const x2 = Math.min(geminiBox.x + geminiBox.w, yBox.x + yBox.w);
-                        const y2 = Math.min(geminiBox.y + geminiBox.h, yBox.y + yBox.h);
-
-                        if (x2 < x1 || y2 < y1) continue;
-                        const intersection = (x2 - x1) * (y2 - y1);
-                        const areaGemini = geminiBox.w * geminiBox.h;
-                        const areaYolo = yBox.w * yBox.h;
-                        const iou = intersection / (areaGemini + areaYolo - intersection);
-
-                        if (iou > 0.1 && iou > bestIou) {
-                            bestIou = iou;
-                            bestYoloBox = yBox;
-                        }
-                    }
-
-                    if (bestYoloBox) {
-                        geminiBox.x = Math.round(bestYoloBox.x);
-                        geminiBox.y = Math.round(bestYoloBox.y);
-                        geminiBox.w = Math.round(bestYoloBox.w);
-                        geminiBox.h = Math.round(bestYoloBox.h);
-                        acc.push(geminiBox);
-                    }
-                    // If no intersection, we ignore it (inversement logic)
-                } else {
-                    // YOLO not active, keep original Gemini box
-                    acc.push(geminiBox);
-                }
-
-                return acc;
-            }, []);
-
-            if (newBubblesConfig.length === 0) {
-                toast.error("Aucune bulle détectée.");
-                setIsOneShotLoading(false);
-                return;
-            }
-
-            toast.info(`Création de ${newBubblesConfig.length} bulles en cours...`);
-            
-            const createdBubbles = [];
-            const { createBubble } = await import('@/lib/api');
-            for (const bubbleConfig of newBubblesConfig) {
-                try {
-                    const res = await createBubble(bubbleConfig);
-                    createdBubbles.push(res.data);
-                } catch (e) {
-                    console.error("Erreur création bulle One-Shot", e);
-                }
-            }
-            
-            if (createdBubbles.length > 0) {
-                setExistingBubblesAndCache(prev => {
-                    const combined = [...prev, ...createdBubbles];
-                    return combined.sort((a, b) => a.order - b.order);
-                });
-                toast.success(`${createdBubbles.length} bulles créées avec succès.`);
-            } else {
-                toast.error("Échec de la création des bulles.");
-            }
-        } catch (error) {
-            console.error(error);
-            toast.error("Service d'extraction indisponible ou erreur d'API.");
-        } finally {
-            setIsOneShotLoading(false);
-        }
-    };
-
-    const handleChatGptOneShot = async () => {
-        if (!imageRef.current) return;
-        setIsChatGptLoading(true);
-        try {
-            const auth = await getChatGptStatus();
-            if (!auth.available) throw new Error(`${aiModelConfig.model_chatgpt_ocr} est disponible uniquement dans l'application desktop.`);
-            if (!auth.connected) {
-                setShowApiKeyModal(true);
-                toast.info(`Connectez votre compte ChatGPT pour utiliser ${aiModelConfig.model_chatgpt_ocr}.`);
-                return;
-            }
-            const yoloPromise = detectionStatus === 'ready'
-                ? fetch(imageRef.current.src)
-                    .then(response => response.blob())
-                    .then(blob => runDebuggableDetection(blob))
-                    .catch(error => {
-                        console.error('YOLO Failed', error);
-                        return null;
-                    })
-                : Promise.resolve(null);
-            const imageBlob = await imageElementToJpegBlob(imageRef.current);
-            if (!imageBlob) throw new Error("Impossible de convertir l'image.");
-            const [result, yoloBoxes] = await Promise.all([
-                runChatGptPageOcr(imageBlob, {
-                    model: aiModelConfig.model_chatgpt_ocr,
-                    fastMode: aiModelConfig.chatgpt_fast_mode,
-                }),
-                yoloPromise,
-            ]);
-            if (!Array.isArray(result?.bubbles)) throw new Error('Format de réponse OCR invalide.');
-
-            const imageWidth = imageRef.current.naturalWidth;
-            const imageHeight = imageRef.current.naturalHeight;
-            const reconciledBubbles = reconcileOcrBubblesWithYolo(result.bubbles, yoloBoxes, imageWidth, imageHeight);
-            const { createBubble } = await import('@/lib/api');
-            const createdBubbles = [];
-            for (const bubble of reconciledBubbles) {
-                try {
-                    const response = await createBubble({
-                        id_page: parseInt(pageId, 10),
-                        x: bubble.x,
-                        y: bubble.y,
-                        w: bubble.w,
-                        h: bubble.h,
-                        texte_propose: capitalizeOcrSentenceStarts(bubble.content),
-                    });
-                    createdBubbles.push(response.data);
-                } catch (error) {
-                    console.error(`Erreur création bulle ${aiModelConfig.model_chatgpt_ocr}`, error);
-                }
-            }
-            if (!createdBubbles.length) throw new Error('Aucune bulle exploitable détectée.');
-            setExistingBubblesAndCache(previous => [...previous, ...createdBubbles].sort((a, b) => a.order - b.order));
-            toast.success(`${createdBubbles.length} bulles créées avec ${result.model || aiModelConfig.model_chatgpt_ocr}.`);
-        } catch (error) {
-            console.error(error);
-            toast.error(error?.message || `OCR ${aiModelConfig.model_chatgpt_ocr} indisponible.`);
-        } finally {
-            setIsChatGptLoading(false);
-        }
-    };
-
-    const handleOneShotPoneglyph = async ({ preferLocal = false, localEngine = 'lighton' } = {}) => {
-        if (!imageRef.current) return;
-
-        const isSuryaBBoxLocal = preferLocal && localEngine === 'surya_bbox';
-        const runMode = preferLocal ? (isSuryaBBoxLocal ? 'surya-bbox-local' : 'local') : 'modal';
-        const modelLabel = isSuryaBBoxLocal ? 'Surya-BBox' : 'Poneglyph-BBox';
-        const inferenceModeLabel = preferLocal ? 'Local' : 'Modal';
-        const serviceLabel = `${modelLabel} - ${inferenceModeLabel}`;
-        setIsPoneglyphLoading(true);
-        setPoneglyphRunMode(runMode);
-        try {
-            if (preferLocal && isSuryaBBoxLocal && !tauriLocalOcr.canRunLocalSuryaBBoxOcr) {
-                throw new Error("Le modele Surya-BBox doit etre charge avant de lancer l'inference locale.");
-            }
-            if (preferLocal && !isSuryaBBoxLocal && !tauriLocalOcr.canRunLocalOcr) {
-                throw new Error("Le modele Poneglyph-BBox doit etre charge avant de lancer l'inference locale.");
-            }
-
-            let yoloPromise = Promise.resolve(null);
-            if (detectionStatus === 'ready') {
-                yoloPromise = fetch(imageRef.current.src)
-                    .then(r => r.blob())
-                    .then(b => runDebuggableDetection(b))
-                    .catch(e => {
-                        console.error('YOLO Failed', e);
-                        return null;
-                    });
-            }
-
-            const imageBlob = await imageElementToJpegBlob(imageRef.current);
-            if (!imageBlob) throw new Error("Impossible de convertir l'image.");
-
-            const extractionPromise = (async () => {
-                if (preferLocal) {
-                    const localResult = isSuryaBBoxLocal
-                        ? await tauriLocalOcr.runLocalSuryaBBoxOcrBlob(imageBlob)
-                        : await tauriLocalOcr.runLocalOcrBlob(imageBlob);
-                    if (localResult?.elapsed_ms) {
-                        toast.success(`${modelLabel} - Local termine en ${localResult.elapsed_ms} ms.`);
-                    }
-                    return localResult;
-                }
-
-                return runModalPoneglyph(imageBlob);
-            })();
-
-            const [apiResponse, yoloBoxes] = await Promise.all([
-                extractionPromise,
-                yoloPromise
-            ]);
-
-            if (apiResponse.error) {
-                throw new Error(apiResponse.error);
-            }
-
-            if (!apiResponse.bubbles || !Array.isArray(apiResponse.bubbles)) {
-                throw new Error("Format de réponse invalide.");
-            }
-
-            const h = imageRef.current.naturalHeight;
-            const w = imageRef.current.naturalWidth;
-
-            const newBubblesConfig = apiResponse.bubbles.map((bubble) => {
-                const [x1, y1, x2, y2] = bubble.bbox;
-                let poneglyphBox = {
-                    id_page: parseInt(pageId, 10),
-                    x: Math.round((x1 / 1000) * w),
-                    y: Math.round((y1 / 1000) * h),
-                    w: Math.round(((x2 - x1) / 1000) * w),
-                    h: Math.round(((y2 - y1) / 1000) * h),
-                    texte_propose: capitalizeOcrSentenceStarts(bubble.content)
-                };
-
-                if (detectionStatus === 'ready' && yoloBoxes) {
-                    let bestYoloBox = null;
-                    let bestIou = 0;
-                    for (const yBox of yoloBoxes) {
-                        const ix1 = Math.max(poneglyphBox.x, yBox.x);
-                        const iy1 = Math.max(poneglyphBox.y, yBox.y);
-                        const ix2 = Math.min(poneglyphBox.x + poneglyphBox.w, yBox.x + yBox.w);
-                        const iy2 = Math.min(poneglyphBox.y + poneglyphBox.h, yBox.y + yBox.h);
-
-                        if (ix2 < ix1 || iy2 < iy1) continue;
-                        const intersection = (ix2 - ix1) * (iy2 - iy1);
-                        const areaP = poneglyphBox.w * poneglyphBox.h;
-                        const areaY = yBox.w * yBox.h;
-                        const iou = intersection / (areaP + areaY - intersection);
-
-                        if (iou > 0.05 && iou > bestIou) {
-                            bestIou = iou;
-                            bestYoloBox = yBox;
-                        }
-                    }
-
-                    if (bestYoloBox) {
-                        poneglyphBox.x = Math.round(bestYoloBox.x);
-                        poneglyphBox.y = Math.round(bestYoloBox.y);
-                        poneglyphBox.w = Math.round(bestYoloBox.w);
-                        poneglyphBox.h = Math.round(bestYoloBox.h);
-                    }
-                }
-
-                return poneglyphBox;
-            });
-
-            if (newBubblesConfig.length === 0) {
-                toast.error("Aucune bulle détectée.");
-                setIsPoneglyphLoading(false);
-                return;
-            }
-
-            toast.info(`Creation de ${newBubblesConfig.length} bulles ${modelLabel}...`);
-
-            const createdBubbles = [];
-            const { createBubble } = await import('@/lib/api');
-            for (const bubbleConfig of newBubblesConfig) {
-                try {
-                    const res = await createBubble(bubbleConfig);
-                    createdBubbles.push(res.data);
-                } catch (e) {
-                    console.error(`Erreur creation bulle ${modelLabel}`, e);
-                }
-            }
-
-            if (createdBubbles.length > 0) {
-                setExistingBubblesAndCache(prev => {
-                    const combined = [...prev, ...createdBubbles];
-                    return combined.sort((a, b) => a.order - b.order);
-                });
-                toast.success(`${createdBubbles.length} bulles ${modelLabel} creees !`);
-            } else {
-                toast.error("Échec de la création des bulles.");
-            }
-        } catch (error) {
-            console.error(error);
-            toast.error(`${serviceLabel} indisponible : ${error.message}`);
-        } finally {
-            setIsPoneglyphLoading(false);
-            setPoneglyphRunMode(null);
-        }
-    };
-
-    const handleOneShotLocalPoneglyph = () => {
-        if (!tauriLocalOcr.canRunLocalOcr) {
-            const reason = !tauriLocalOcr.isTauri
-                ? "App desktop non detectee."
-                : tauriLocalOcr.isDownloadingLocalModel
-                        ? "Telechargement du modele Poneglyph-BBox en cours."
-                        : !tauriLocalOcr.localModelStatus?.installed
-                            ? "Telechargez le modele Poneglyph-BBox d'abord."
-                            : !tauriLocalOcr.localModelStatus?.ready
-                                ? "Chargez le modele Poneglyph-BBox en VRAM d'abord."
-                            : "Poneglyph-BBox indisponible.";
-            toast.error(reason);
-            return;
-        }
-        return handleOneShotPoneglyph({ preferLocal: true });
-    };
-
-    const handleOneShotLocalSuryaBbox = () => {
-        if (!tauriLocalOcr.canRunLocalSuryaBBoxOcr) {
-            const connectionState = tauriLocalOcr.localConnectionState?.status;
-            const reason = !tauriLocalOcr.isTauri
-                ? "App desktop non detectee."
-                : connectionState === 'reconnecting'
-                    ? "Serveur OCR local en reconnexion."
-                    : ['offline', 'unavailable'].includes(connectionState)
-                        ? "Serveur OCR local hors ligne."
-                        : tauriLocalOcr.isDownloadingLocalSuryaBBoxModel
-                            ? "Telechargement du modele Surya-BBox en cours."
-                            : !tauriLocalOcr.localSuryaBBoxModelStatus?.installed
-                                ? "Telechargez le modele Surya-BBox d'abord."
-                                : tauriLocalOcr.localSuryaBBoxModelStatus?.error
-                                    ? tauriLocalOcr.localSuryaBBoxModelStatus.error
-                                    : !tauriLocalOcr.localSuryaBBoxModelStatus?.ready
-                                        ? "Chargez le modele Surya-BBox en VRAM d'abord."
-                                        : "Surya-BBox indisponible.";
-            toast.error(reason);
-            return;
-        }
-        return handleOneShotPoneglyph({ preferLocal: true, localEngine: 'surya_bbox' });
-    };
-
     if (pageLoadStatus === RESOURCE_STATUS.ERROR) {
         return (
             <AnnotationErrorState
@@ -1191,88 +724,23 @@ export default function AnnotatePage() {
                 goToNext={goToNext}
                 isGuest={isGuest}
                 role={role}
-                preferLocalOCR={preferLocalOCR}
-                toggleOcrPreference={toggleOcrPreference}
-                activeModelKey={activeModelKey}
-                switchModel={switchModel}
-                modelStatus={modelStatus}
-                loadModel={loadModel}
-                downloadProgress={downloadProgress}
-                geminiKey={geminiKey}
-                hasDeepSeekKey={hasDeepSeekKey}
-                selectedOcrModelKeys={selectedOcrModelKeys}
+                ocrModels={ocrModels}
                 toggleOcrModel={toggleOcrModel}
+                onPrepareModels={prepareOcrModels}
                 detectionStatus={detectionStatus}
-                loadDetectionModel={loadDetectionModel}
                 detectionProgress={detectionProgress}
-                downloadStats={downloadStats}
-                handleExecuteDetection={handleExecuteDetection}
+                canRunPageOcr={canEdit && imageLoadStatus === RESOURCE_STATUS.READY}
+                isPageOcrRunning={isPageOcrRunning}
+                isReviewingPage={isAutoDetecting}
+                reviewRemaining={queueLength}
+                onRunPageOcr={runPageOcr}
+                onCancelPageOcr={cancelPageOcr}
                 isSubmitting={isSubmitting}
-                isAutoDetecting={isAutoDetecting}
-                queueLength={queueLength}
                 setShowDescModal={setShowDescModal}
                 setShowApiKeyModal={setShowApiKeyModal}
                 handleSubmitPage={handleSubmitPage}
                 handlePageStatusChange={handlePageStatusChange}
                 isUpdatingPageStatus={isUpdatingPageStatus}
-                handleOneShot={handleOneShot}
-                isOneShotLoading={isOneShotLoading}
-                handleDeepSeekOneShot={handleDeepSeekOneShot}
-                isDeepSeekLoading={isDeepSeekLoading}
-                geminiFullPageModel={aiModelConfig.model_ocr}
-                handleChatGptOneShot={handleChatGptOneShot}
-                isChatGptLoading={isChatGptLoading}
-                chatGptDesktopAvailable={chatGptDesktopAvailable}
-                chatGptFullPageModel={aiModelConfig.model_chatgpt_ocr}
-                handleOneShotPoneglyph={handleOneShotPoneglyph}
-                isPoneglyphLoading={isPoneglyphLoading}
-                poneglyphRunMode={poneglyphRunMode}
-                handleOneShotLocalPoneglyph={handleOneShotLocalPoneglyph}
-                handleOneShotLocalSuryaBbox={handleOneShotLocalSuryaBbox}
-                handleLighton3OneShot={handleLighton3OneShot}
-                isLighton3Loading={isLighton3Loading}
-                lighton3State={lighton3State}
-                cancelLighton3={cancelLighton3}
-                isTauri={tauriLocalOcr.isTauri}
-                isCheckingLocalConnection={tauriLocalOcr.isCheckingLocalConnection}
-                localModelStatus={tauriLocalOcr.localModelStatus}
-                localTextModelStatus={tauriLocalOcr.localTextModelStatus}
-                localSuryaModelStatus={tauriLocalOcr.localSuryaModelStatus}
-                localSuryaBBoxModelStatus={tauriLocalOcr.localSuryaBBoxModelStatus}
-                localHealth={tauriLocalOcr.localHealth}
-                localConnectionState={tauriLocalOcr.localConnectionState}
-                isDownloadingLocalModel={tauriLocalOcr.isDownloadingLocalModel}
-                isDownloadingLocalTextModel={tauriLocalOcr.isDownloadingLocalTextModel}
-                isDownloadingLocalSuryaModel={tauriLocalOcr.isDownloadingLocalSuryaModel}
-                isDownloadingLocalSuryaBBoxModel={tauriLocalOcr.isDownloadingLocalSuryaBBoxModel}
-                localDownloadState={tauriLocalOcr.localDownloadState}
-                localTextDownloadState={tauriLocalOcr.localTextDownloadState}
-                localSuryaDownloadState={tauriLocalOcr.localSuryaDownloadState}
-                localSuryaBBoxDownloadState={tauriLocalOcr.localSuryaBBoxDownloadState}
-                localDownloadProgress={tauriLocalOcr.localDownloadProgress}
-                localTextDownloadProgress={tauriLocalOcr.localTextDownloadProgress}
-                localSuryaDownloadProgress={tauriLocalOcr.localSuryaDownloadProgress}
-                localSuryaBBoxDownloadProgress={tauriLocalOcr.localSuryaBBoxDownloadProgress}
-                isLoadingLocalModel={tauriLocalOcr.isLoadingLocalModel}
-                isLoadingLocalTextModel={tauriLocalOcr.isLoadingLocalTextModel}
-                isLoadingLocalSuryaModel={tauriLocalOcr.isLoadingLocalSuryaModel}
-                isLoadingLocalSuryaBBoxModel={tauriLocalOcr.isLoadingLocalSuryaBBoxModel}
-                isLocalInferencing={tauriLocalOcr.isLocalInferencing}
-                isLocalSuryaBBoxInferencing={tauriLocalOcr.isLocalSuryaBBoxInferencing}
-                localError={tauriLocalOcr.localError}
-                canRunLocalOcr={tauriLocalOcr.canRunLocalOcr}
-                canRunLocalTextOcr={tauriLocalOcr.canRunLocalTextOcr}
-                canRunLocalSuryaOcr={tauriLocalOcr.canRunLocalSuryaOcr}
-                canRunLocalSuryaBBoxOcr={tauriLocalOcr.canRunLocalSuryaBBoxOcr}
-                downloadLocalModel={tauriLocalOcr.downloadLocalModel}
-                downloadLocalTextModel={tauriLocalOcr.downloadLocalTextModel}
-                downloadLocalSuryaModel={tauriLocalOcr.downloadLocalSuryaModel}
-                downloadLocalSuryaBBoxModel={tauriLocalOcr.downloadLocalSuryaBBoxModel}
-                loadLocalModel={tauriLocalOcr.loadLocalModel}
-                loadLocalTextModel={tauriLocalOcr.loadLocalTextModel}
-                loadLocalSuryaModel={tauriLocalOcr.loadLocalSuryaModel}
-                loadLocalSuryaBBoxModel={tauriLocalOcr.loadLocalSuryaBBoxModel}
-                refreshLocalDiagnostics={tauriLocalOcr.refreshLocalDiagnostics}
             />
 
             <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#030a13]">
@@ -1298,7 +766,7 @@ export default function AnnotatePage() {
                                 <FileText size={16} />
                             </Button>
                         )}
-                        <Button variant="default" size="sm" className="h-9" disabled={isDeepSeekLoading || page.statut === 'pending_review' || page.statut === 'completed' || isGuest || role === 'User'} onClick={handleSubmitPage}>
+                        <Button variant="default" size="sm" className="h-9" disabled={isPageOcrRunning || page.statut === 'pending_review' || page.statut === 'completed' || isGuest || role === 'User'} onClick={handleSubmitPage}>
                             <Send size={14} className="mr-2" /> Soumettre
                         </Button>
                     </div>
@@ -1382,8 +850,8 @@ export default function AnnotatePage() {
                             setImageLoadStatus(RESOURCE_STATUS.ERROR);
                             setImageLoadError("Impossible d’afficher l’image de la page.");
                         }}
-                        isSubmitting={isSubmitting || isDeepSeekLoading}
-                        loadingText={isDeepSeekLoading ? 'Lecture de la page avec DeepSeek…' : loadingText}
+                        isSubmitting={isSubmitting || isPageOcrRunning}
+                        loadingText={isPageOcrRunning ? 'Lecture de la page…' : loadingText}
                         rectangle={rectangle}
                         pendingAnnotation={pendingAnnotation}
                         isAutoDetecting={isAutoDetecting}
@@ -1438,8 +906,8 @@ export default function AnnotatePage() {
                 runLocalOcr={runLocalOcr}
                 handleRetryWithCloud={handleRetryWithCloud}
                 handleRetryWithDeepSeek={handleRetryWithDeepSeek}
-                isSubmitting={isSubmitting || isDeepSeekLoading}
-                selectedOcrModelKeys={selectedOcrModelKeys}
+                isSubmitting={isSubmitting || isPageOcrRunning}
+                ocrModelCount={bubbleModels.length}
             />
 
             <Dialog open={showApiKeyModal} onOpenChange={setShowApiKeyModal}>

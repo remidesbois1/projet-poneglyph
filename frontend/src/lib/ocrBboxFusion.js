@@ -18,7 +18,7 @@ function normalizedToPixels(bubble, imageWidth, imageHeight) {
     };
 }
 
-function boxIou(a, b) {
+export function boxIou(a, b) {
     const intersectionWidth = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
     const intersectionHeight = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
     const intersection = intersectionWidth * intersectionHeight;
@@ -26,11 +26,17 @@ function boxIou(a, b) {
     return union > 0 ? intersection / union : 0;
 }
 
-export function reconcileOcrBubblesWithYolo(ocrBubbles, yoloBoxes, imageWidth, imageHeight) {
-    const ocr = (Array.isArray(ocrBubbles) ? ocrBubbles : [])
-        .map((bubble, index) => ({ bubble, index, box: normalizedToPixels(bubble, imageWidth, imageHeight) }))
+/**
+ * Rallies full-page OCR bubbles (`bbox` normalized to 0–1000) onto YOLO boxes, as the batch OCR does:
+ * one-to-one assignment by descending IoU (> 0.05). YOLO is the truth, so page bubbles without a YOLO
+ * match are dropped. Matches come back in YOLO order with the YOLO indices that kept no page text.
+ */
+export function rallyPageBubblesToYolo(pageBubbles, yoloBoxes, imageWidth, imageHeight) {
+    const yoloList = Array.isArray(yoloBoxes) ? yoloBoxes : [];
+    const page = (Array.isArray(pageBubbles) ? pageBubbles : [])
+        .map((bubble, index) => ({ index, text: String(bubble?.content ?? ''), box: normalizedToPixels(bubble, imageWidth, imageHeight) }))
         .filter(item => isFiniteBox(item.box));
-    const yolo = (Array.isArray(yoloBoxes) ? yoloBoxes : [])
+    const yolo = yoloList
         .map((box, index) => ({ index, box: isFiniteBox(box) ? {
             x: Math.round(Number(box.x)),
             y: Math.round(Number(box.y)),
@@ -40,27 +46,27 @@ export function reconcileOcrBubblesWithYolo(ocrBubbles, yoloBoxes, imageWidth, i
         .filter(item => item.box);
 
     const candidates = [];
-    for (const ocrItem of ocr) {
+    for (const pageItem of page) {
         for (const yoloItem of yolo) {
-            const iou = boxIou(ocrItem.box, yoloItem.box);
-            if (iou > MIN_RALLY_IOU) candidates.push({ ocrIndex: ocrItem.index, yoloIndex: yoloItem.index, iou });
+            const iou = boxIou(pageItem.box, yoloItem.box);
+            if (iou > MIN_RALLY_IOU) candidates.push({ pageItem, yoloIndex: yoloItem.index, iou });
         }
     }
     candidates.sort((a, b) => b.iou - a.iou);
 
-    const usedOcr = new Set();
+    const usedPage = new Set();
     const usedYolo = new Set();
-    const matchedYoloByOcr = new Map();
-    for (const candidate of candidates) {
-        if (usedOcr.has(candidate.ocrIndex) || usedYolo.has(candidate.yoloIndex)) continue;
-        usedOcr.add(candidate.ocrIndex);
-        usedYolo.add(candidate.yoloIndex);
-        matchedYoloByOcr.set(candidate.ocrIndex, yolo.find(item => item.index === candidate.yoloIndex)?.box);
+    const matches = [];
+    for (const { pageItem, yoloIndex, iou } of candidates) {
+        if (usedPage.has(pageItem.index) || usedYolo.has(yoloIndex)) continue;
+        usedPage.add(pageItem.index);
+        usedYolo.add(yoloIndex);
+        matches.push({ yoloIndex, pageIndex: pageItem.index, iou, text: pageItem.text });
     }
+    matches.sort((a, b) => a.yoloIndex - b.yoloIndex);
 
-    return ocr.map(item => ({
-        ...item.bubble,
-        ...(matchedYoloByOcr.get(item.index) || item.box),
-        ralliedWithYolo: matchedYoloByOcr.has(item.index),
-    }));
+    return {
+        matches,
+        unmatchedYoloIndices: yoloList.map((_, index) => index).filter(index => !usedYolo.has(index)),
+    };
 }

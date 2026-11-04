@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAnnotationOCR } from './useAnnotationOCR';
-import { analyzeDeepSeekBubble } from '@/lib/deepseekClient';
+import { analyzeDeepSeekBubble, generateDeepSeekOneShotBubbles } from '@/lib/deepseekClient';
 import { analyzeBubble } from '@/lib/geminiClient';
 
 const workerContext = vi.hoisted(() => ({ value: {} }));
@@ -12,8 +12,43 @@ vi.mock('@/context/WorkerContext', async (importOriginal) => ({
     useWorker: () => workerContext.value,
 }));
 vi.mock('@/context/TauriLocalOcrContext', () => ({ useTauriLocalOcrContext: () => ({}) }));
-vi.mock('@/lib/deepseekClient', () => ({ analyzeDeepSeekBubble: vi.fn() }));
-vi.mock('@/lib/geminiClient', () => ({ analyzeBubble: vi.fn() }));
+vi.mock('@/hooks/useAiModelConfig', () => ({ useAiModelConfig: () => aiModelConfig }));
+vi.mock('@/lib/chatGptDesktop', () => ({
+    getChatGptStatus: vi.fn(async () => ({ available: false })),
+    subscribeToChatGptAuth: () => () => {},
+    runChatGptPageOcr: vi.fn(),
+}));
+vi.mock('@/lib/deepseekClient', () => ({ analyzeDeepSeekBubble: vi.fn(), generateDeepSeekOneShotBubbles: vi.fn() }));
+vi.mock('@/lib/geminiClient', () => ({ analyzeBubble: vi.fn(), generateOneShotBubbles: vi.fn() }));
+
+const aiModelConfig = {};
+
+function editorProps(overrides = {}) {
+    return { pageId: '1', imageRef: { current: {} },
+        pendingAnnotation: { id: 'b1', x: 1, y: 2, w: 100, h: 120, texte_propose: 'Existing text' },
+        setPendingAnnotation: vi.fn(), setIsSubmitting: vi.fn(), setLoadingText: vi.fn(),
+        setIsModalOpen: vi.fn(), setOcrSource: vi.fn(), setDebugImageUrl: vi.fn(), setShowApiKeyModal: vi.fn(),
+        ...overrides,
+    };
+}
+
+/** Browser workers that answer each request with the given text per model. */
+function browserWorkers(texts) {
+    const workers = Object.fromEntries(Object.keys(texts).map(key => [key, new EventTarget()]));
+    const runOcr = vi.fn(async (_bitmap, requestId, key) => {
+        queueMicrotask(() => workers[key].dispatchEvent(new MessageEvent('message', {
+            data: { status: 'complete', requestId, text: texts[key] }
+        })));
+    });
+    const modelStates = Object.fromEntries(Object.keys(texts).map(key => [key, { status: 'ready' }]));
+    workerContext.value = { workers, modelStates, loadModel: vi.fn(), runOcr };
+    return runOcr;
+}
+
+/** The annotation the editor ends up showing, from the last updater given to `setPendingAnnotation`. */
+function editedAnnotation(options) {
+    return options.setPendingAnnotation.mock.lastCall[0](options.pendingAnnotation);
+}
 
 describe('sandbox OCR selection', () => {
     beforeEach(() => { localStorage.clear(); workerContext.value = { modelStatus: 'idle', activeModelKey: 'ppocrv6Line' }; });
@@ -43,46 +78,70 @@ describe('sandbox OCR selection', () => {
 });
 
 
-describe('simultaneous browser OCR', () => {
-    it('offers LightOnOCR 3 bubbles and keeps its transcript intact through the annotation flow', async () => {
-        localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['lighton3BubbleWebgpu', 'lighton3Webgpu']));
-        const worker = new EventTarget();
-        const runOcr = vi.fn(async (_bitmap, requestId) => {
-            queueMicrotask(() => worker.dispatchEvent(new MessageEvent('message', {
-                data: { status: 'complete', requestId, text: '"BOUM !" ... oui ?' }
-            })));
-        });
-        workerContext.value = { workers: { lighton3BubbleWebgpu: worker },
-            modelStates: { lighton3BubbleWebgpu: { status: 'ready' } }, activeModelKey: 'ppocrv6Line', runOcr };
-        const { result } = renderHook(() => useAnnotationOCR({ isSandbox: true, imageRef: { current: {} }, setDebugImageUrl: vi.fn() }));
-        expect(result.current.selectedOcrModelKeys).toEqual(['lighton3BubbleWebgpu']);
-        await act(async () => result.current.runBackgroundOcr({ x: 0, y: 0, w: 10, h: 10 }, 'bubble3'));
+describe('bubble OCR in the editor', () => {
+    beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
+
+    it('reads a bubble with bubble models only and keeps the LightOnOCR 3 transcript intact', async () => {
+        localStorage.setItem('selectedOcrModelKeys', JSON.stringify(['lighton3BubbleWebgpu', 'lighton3Webgpu', 'deepseekPage']));
+        const runOcr = browserWorkers({ lighton3BubbleWebgpu: '"BOUM !" ... oui ?', lighton3Webgpu: 'Page model text' });
+        const options = editorProps({ allowPageModels: true });
+        const { result } = renderHook(() => useAnnotationOCR(options));
+        await act(async () => result.current.runLocalOcr({ x: 0, y: 0, w: 10, h: 10 }, 'bubble3'));
+        expect(runOcr).toHaveBeenCalledOnce();
         expect(runOcr.mock.calls[0][2]).toBe('lighton3BubbleWebgpu');
-        expect(result.current.ocrResults.bubble3[0].text).toBe('"BOUM !" ... oui ?');
+        expect(generateDeepSeekOneShotBubbles).not.toHaveBeenCalled();
+        const annotation = editedAnnotation(options);
+        expect(annotation.texte_propose).toBe('"BOUM !" ... oui ?');
+        expect(annotation.ocr_candidates.map(candidate => candidate.modelKey)).toEqual(['lighton3BubbleWebgpu']);
     });
-    it('collects replies from both loaded workers even when Falcon is not active', async () => {
+
+    it('collects replies from both loaded browser models', async () => {
         localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['falconWebgpu', 'ppocrv6Line']));
-        const workers = { falconWebgpu: new EventTarget(), ppocrv6Line: new EventTarget() };
-        const runOcr = vi.fn(async (_bitmap, requestId, key) => {
-            queueMicrotask(() => workers[key].dispatchEvent(new MessageEvent('message', {
-                data: { status: 'complete', requestId, text: key === 'falconWebgpu' ? 'Falcon text' : 'Paddle text' }
-            })));
-        });
-        workerContext.value = { workers, modelStates: { falconWebgpu: { status: 'ready' }, ppocrv6Line: { status: 'ready' } }, activeModelKey: 'ppocrv6Line', runOcr };
-        const { result } = renderHook(() => useAnnotationOCR({ isSandbox: true, imageRef: { current: {} }, setDebugImageUrl: vi.fn() }));
-        await act(async () => { await result.current.runBackgroundOcr({ x: 0, y: 0, w: 10, h: 10 }, 'shared'); });
-        expect(runOcr.mock.calls.map(call => call[2])).toEqual(['falconWebgpu', 'ppocrv6Line']);
-        expect(result.current.ocrResults.shared.map(candidate => candidate.text)).toEqual(['Falcon text', 'Paddle text']);
+        const runOcr = browserWorkers({ falconWebgpu: 'Falcon text', ppocrv6Line: 'Paddle text' });
+        const options = editorProps({ isSandbox: true });
+        const { result } = renderHook(() => useAnnotationOCR(options));
+        await act(async () => result.current.runLocalOcr({ x: 0, y: 0, w: 10, h: 10 }, 'shared'));
+        expect(runOcr.mock.calls.map(call => call[2]).sort()).toEqual(['falconWebgpu', 'ppocrv6Line']);
+        expect(editedAnnotation(options).ocr_candidates.map(candidate => candidate.text).sort()).toEqual(['Falcon text', 'Paddle text']);
+    });
+
+    it('offers page candidates after the bubble model candidates', async () => {
+        localStorage.setItem('selectedOcrModelKeys', JSON.stringify(['ppocrv6Line', 'lighton3Webgpu']));
+        browserWorkers({ ppocrv6Line: 'Bubble text' });
+        const pageCandidates = [{ modelKey: 'lighton3Webgpu', label: 'LightOnOCR 3 BBox · Navigateur', text: 'Page text' }];
+        const options = editorProps({ allowPageModels: true });
+        const { result } = renderHook(() => useAnnotationOCR(options));
+        await act(async () => result.current.runLocalOcr({ x: 0, y: 0, w: 10, h: 10 }, 'detected-1', { pageCandidates }));
+        const annotation = editedAnnotation(options);
+        expect(annotation.ocr_candidates.map(candidate => [candidate.modelKey, candidate.text])).toEqual([
+            ['ppocrv6Line', 'Bubble text'],
+            ['lighton3Webgpu', 'Page text'],
+        ]);
+        expect(annotation.texte_propose).toBe('Bubble text');
+        expect(options.setIsModalOpen).toHaveBeenCalledWith(true);
+    });
+
+    it('opens the editor with the page candidates alone when no bubble model is selected', async () => {
+        localStorage.setItem('selectedOcrModelKeys', JSON.stringify(['lighton3Webgpu']));
+        const runOcr = browserWorkers({ lighton3Webgpu: 'unused' });
+        const pageCandidates = [
+            { modelKey: 'lighton3Webgpu', label: 'LightOnOCR 3 BBox · Navigateur', text: 'Première lecture' },
+            { modelKey: 'deepseekPage', label: 'DeepSeek V4.1 Flash · Cloud', text: 'Seconde lecture' },
+        ];
+        const options = editorProps({ allowPageModels: true });
+        const { result } = renderHook(() => useAnnotationOCR(options));
+        await act(async () => result.current.runLocalOcr({ x: 0, y: 0, w: 10, h: 10 }, 'detected-1', { pageCandidates }));
+        expect(runOcr).not.toHaveBeenCalled();
+        expect(options.setIsModalOpen).toHaveBeenCalledWith(true);
+        const annotation = editedAnnotation(options);
+        expect(annotation.ocr_candidates).toEqual(pageCandidates);
+        expect(annotation.texte_propose).toBe('Première lecture');
     });
 });
 
 describe('DeepSeek bubble OCR', () => {
     function props() {
-        return { pageId: '1', isSandbox: true, imageRef: { current: {} },
-            pendingAnnotation: { id: 'b1', x: 1, y: 2, w: 100, h: 120, texte_propose: 'Existing text' },
-            setPendingAnnotation: vi.fn(), setIsSubmitting: vi.fn(), setLoadingText: vi.fn(),
-            setIsModalOpen: vi.fn(), setOcrSource: vi.fn(), setDebugImageUrl: vi.fn(), setShowApiKeyModal: vi.fn(),
-        };
+        return editorProps({ isSandbox: true });
     }
     beforeEach(() => {
         vi.clearAllMocks();
@@ -112,8 +171,9 @@ describe('DeepSeek bubble OCR', () => {
         await act(async () => result.current.runLocalOcr());
         expect(options.setShowApiKeyModal).toHaveBeenCalledWith(true);
         expect(analyzeDeepSeekBubble).not.toHaveBeenCalled();
-        act(() => { localStorage.setItem('deepseek_api_key', 'sk-key-saved'); window.dispatchEvent(new Event('storage')); });
-        expect(result.current.hasDeepSeekKey).toBe(true);
+        expect(result.current.models.find(model => model.key === 'deepseek').status).toBe('setup');
+        await act(async () => { localStorage.setItem('deepseek_api_key', 'sk-key-saved'); window.dispatchEvent(new Event('storage')); });
+        expect(result.current.models.find(model => model.key === 'deepseek').status).toBe('ready');
         expect(analyzeDeepSeekBubble).not.toHaveBeenCalled();
     });
 

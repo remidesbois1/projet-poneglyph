@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,16 +12,15 @@ import {
     ArrowLeft,
     ChevronLeft,
     ChevronRight,
-    FileText,
-    Settings2,
-    ScanText,
     Download,
+    FileText,
+    KeyRound,
     Loader2,
+    ScanText,
+    Settings2,
 } from 'lucide-react';
-import AnnotateOcrModelSelector from './AnnotateOcrModelSelector';
-import AnnotateBubbleScanner from './AnnotateBubbleScanner';
-import { canDownloadMissingLocalModel } from './localModelRecovery';
-import { DEEPSEEK_LABEL } from '@/lib/deepseekConfig';
+import { OCR_RUNTIME_LABELS } from '@/lib/ocrModels';
+import { cn } from '@/lib/utils';
 
 const PAGE_STATUSES = [
     { value: 'not_started', label: 'Non commencée' },
@@ -29,6 +28,13 @@ const PAGE_STATUSES = [
     { value: 'pending_review', label: 'En revue' },
     { value: 'completed', label: 'Validée' },
 ];
+
+const MODEL_GROUPS = [
+    { scope: 'bubble', title: 'Bulles' },
+    { scope: 'page', title: 'Page entière' },
+];
+
+const STEP_ICONS = { prepare: Download, setup: KeyRound, run: ScanText };
 
 export function formatPageStatus(status, isGuest = false) {
     return (
@@ -41,6 +47,83 @@ export function formatPageStatus(status, isGuest = false) {
     );
 }
 
+function formatPercent(value) {
+    return Number.isFinite(value) ? `${Math.round(value)} %` : null;
+}
+
+function describeModelState(model) {
+    if (model.status === 'loading') return [model.message, formatPercent(model.progress)].filter(Boolean).join(' · ');
+    if (model.message) return model.message;
+    if (model.status === 'download') return ['À télécharger', model.size].filter(Boolean).join(' · ');
+    if (model.status === 'load') return ['À charger', model.size].filter(Boolean).join(' · ');
+    return null;
+}
+
+/** The single page OCR button always shows the next step: load, configure, then run. */
+function getPageOcrStep({ models, detectionStatus, detectionProgress, isRunning, isReviewing, reviewRemaining }) {
+    if (isRunning) return { label: 'OCR en cours…', pending: true };
+    if (isReviewing) {
+        const count = reviewRemaining + 1;
+        return { label: `${count} bulle${count > 1 ? 's' : ''} à vérifier`, pending: true };
+    }
+    const selected = models.filter((model) => model.selected);
+    if (!selected.length) return { label: 'Choisissez un modèle' };
+    if (detectionStatus === 'idle' || selected.some((model) => model.status === 'load' || model.status === 'download')) {
+        return { label: 'Charger les modèles', action: 'prepare' };
+    }
+    if (detectionStatus !== 'ready') {
+        const progress = formatPercent(detectionProgress);
+        return { label: `Chargement du détecteur${progress ? ` · ${progress}` : '…'}`, pending: true };
+    }
+    if (selected.some((model) => model.status === 'loading')) return { label: 'Chargement des modèles…', pending: true };
+    if (selected.some((model) => model.status === 'setup')) return { label: 'Configurer l’accès API', action: 'setup' };
+    if (selected.some((model) => model.status === 'unavailable')) return { label: 'Modèle indisponible' };
+    return { label: 'Lancer l’OCR de la page', action: 'run' };
+}
+
+function OcrModelOption({ model, disabled, onToggle }) {
+    const runtime = OCR_RUNTIME_LABELS[model.runtime];
+    const detail = model.selected && model.status !== 'ready' ? describeModelState(model) : null;
+    const progress = model.selected && model.status === 'loading' && Number.isFinite(model.progress)
+        ? Math.max(0, Math.min(100, Math.round(model.progress)))
+        : null;
+
+    return (
+        <li>
+            <label className="flex min-h-9 cursor-pointer items-center gap-3 rounded-sm text-[13px] text-slate-300 hover:text-white has-[:disabled]:cursor-default has-[:disabled]:hover:text-slate-300">
+                <input
+                    type="checkbox"
+                    aria-label={`${model.name} · ${runtime}`}
+                    checked={model.selected}
+                    disabled={disabled}
+                    onChange={() => onToggle(model.key)}
+                    className="h-4 w-4 shrink-0 cursor-pointer [color-scheme:dark] accent-sky-400 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-400 disabled:cursor-default"
+                />
+                <span className="min-w-0 flex-1 truncate">{model.name}</span>
+                <span className="shrink-0 text-[11px] text-slate-500">{runtime}</span>
+            </label>
+            {detail && (
+                <p
+                    className={cn(
+                        'mb-1.5 ml-7 text-[11px] leading-4',
+                        model.status === 'setup' || model.status === 'unavailable' ? 'text-amber-200/80' : 'text-slate-400'
+                    )}
+                >
+                    {detail}
+                </p>
+            )}
+            {progress !== null && (
+                <progress
+                    aria-label={`Préparation de ${model.name}`}
+                    value={progress}
+                    max={100}
+                    className="mb-2 ml-7 block h-1 w-[calc(100%-1.75rem)] accent-sky-400"
+                />
+            )}
+        </li>
+    );
+}
+
 export default function AnnotateLeftSidebar({
     fromSearch,
     mangaSlug,
@@ -50,248 +133,49 @@ export default function AnnotateLeftSidebar({
     goToPrev,
     goToNext,
     isGuest,
-    preferLocalOCR,
-    toggleOcrPreference,
-    activeModelKey,
-    switchModel,
-    modelStatus,
-    loadModel,
-    downloadProgress,
-    geminiKey,
-    hasDeepSeekKey = false,
-    selectedOcrModelKeys,
+    role,
+    isSandbox = false,
+    ocrModels = [],
     toggleOcrModel,
+    onPrepareModels,
     detectionStatus,
-    loadDetectionModel,
     detectionProgress,
-    downloadStats,
-    handleExecuteDetection,
-    isSubmitting,
-    isAutoDetecting,
-    queueLength,
+    canRunPageOcr = false,
+    isPageOcrRunning = false,
+    isReviewingPage = false,
+    reviewRemaining = 0,
+    onRunPageOcr,
+    onCancelPageOcr,
+    isSubmitting = false,
     setShowDescModal,
     setShowApiKeyModal,
     handleSubmitPage,
     handlePageStatusChange,
     isUpdatingPageStatus,
-    role,
-    isSandbox = false,
-    handleOneShot,
-    isOneShotLoading,
-    handleDeepSeekOneShot,
-    isDeepSeekLoading = false,
-    handleLighton3OneShot,
-    isLighton3Loading = false,
-    lighton3State,
-    cancelLighton3,
-    geminiFullPageModel = 'gemini-2.5-flash-lite',
-    handleChatGptOneShot,
-    isChatGptLoading = false,
-    chatGptDesktopAvailable = false,
-    chatGptFullPageModel = 'gpt-5.6-luna',
-    handleOneShotPoneglyph,
-    isPoneglyphLoading,
-    handleOneShotLocalPoneglyph,
-    handleOneShotLocalSuryaBbox,
-    isTauri = false,
-    localModelStatus = null,
-    localTextModelStatus = null,
-    localSuryaModelStatus = null,
-    localSuryaBBoxModelStatus = null,
-    isDownloadingLocalModel = false,
-    isDownloadingLocalTextModel = false,
-    isDownloadingLocalSuryaModel = false,
-    isDownloadingLocalSuryaBBoxModel = false,
-    localDownloadState = null,
-    localTextDownloadState = null,
-    localSuryaDownloadState = null,
-    localSuryaBBoxDownloadState = null,
-    localDownloadProgress = null,
-    localTextDownloadProgress = null,
-    localSuryaDownloadProgress = null,
-    localSuryaBBoxDownloadProgress = null,
-    localConnectionState = null,
-    isLoadingLocalModel = false,
-    isLoadingLocalTextModel = false,
-    isLoadingLocalSuryaModel = false,
-    isLoadingLocalSuryaBBoxModel = false,
-    isLocalInferencing = false,
-    isLocalSuryaBBoxInferencing = false,
-    canRunLocalOcr = false,
-    canRunLocalTextOcr = false,
-    canRunLocalSuryaOcr = false,
-    canRunLocalSuryaBBoxOcr = false,
-    downloadLocalModel,
-    downloadLocalTextModel,
-    downloadLocalSuryaModel,
-    downloadLocalSuryaBBoxModel,
-    loadLocalModel,
-    loadLocalTextModel,
-    loadLocalSuryaModel,
-    loadLocalSuryaBBoxModel,
 }) {
-    const [selectedEngine, setSelectedEngine] = useState('');
     const isStaff = role === 'Admin' || role === 'Modo';
+    const showOcr = !isGuest && isStaff;
     const canInlineEditStatus =
         role === 'Admin' &&
         page?.statut &&
         handlePageStatusChange &&
         !isSandbox;
-    const connectionUnavailable = [
-        'offline',
-        'reconnecting',
-        'unavailable',
-    ].includes(localConnectionState?.status);
-    const busy = Boolean(
-        isSubmitting ||
-            isAutoDetecting ||
-            isOneShotLoading ||
-            isDeepSeekLoading ||
-            isLighton3Loading ||
-            isChatGptLoading ||
-            isPoneglyphLoading ||
-            isLocalInferencing ||
-            isLocalSuryaBBoxInferencing
-    );
-
-    const localEngine = ({
-        key,
-        label,
-        handler,
-        status,
-        downloading,
-        downloadState,
-        progress,
-        loading,
-        canRun,
-        download,
-        load,
-    }) => {
-        const isDownloading = Boolean(downloading || downloadState?.active);
-        const isLoading = Boolean(loading || status?.loading);
-        const action = canRun
-            ? 'run'
-            : canDownloadMissingLocalModel(status, isDownloading)
-              ? 'download'
-              : status?.installed && !status.ready && !status.error
-                ? 'load'
-                : null;
-        return {
-            key,
-            label,
-            available: isTauri && Boolean(handler),
-            action,
-            handler:
-                action === 'run'
-                    ? handler
-                    : action === 'download'
-                      ? download
-                      : load,
-            preparing: isDownloading || isLoading,
-            progress:
-                isDownloading && Number.isFinite(progress)
-                    ? Math.max(0, Math.min(100, Math.round(progress)))
-                    : null,
-            message: isDownloading
-                ? 'Téléchargement du modèle…'
-                : isLoading
-                  ? 'Chargement du modèle…'
-                  : connectionUnavailable
-                    ? localConnectionState?.status === 'reconnecting'
-                        ? 'Reconnexion au serveur local…'
-                        : 'Serveur local indisponible.'
-                    : status?.error ||
-                      (!action ? 'Modèle indisponible.' : null),
-            disabled:
-                connectionUnavailable || isDownloading || isLoading || !action,
-        };
-    };
-    const engines = [
-        {
-            key: 'lighton3-webgpu', label: 'LightOnOCR 3 · WebGPU',
-            available: Boolean(handleLighton3OneShot), handler: handleLighton3OneShot,
-            action: lighton3State?.status === 'ready' ? 'run' : 'load',
-            preparing: lighton3State?.status === 'loading',
-            disabled: lighton3State?.status === 'loading',
-            progress: lighton3State?.status === 'loading' ? lighton3State.progress || 0 : null,
-            message: lighton3State?.status === 'loading' ? lighton3State.file || 'Préparation du modèle…'
-                : lighton3State?.status === 'error' ? lighton3State.error
-                : lighton3State?.status === 'ready' ? 'Texte et bbox · calcul sur votre GPU.' : 'Environ 1,72 Go · conservés dans le cache du navigateur.',
-        },
-        localEngine({
-            key: 'poneglyph-local',
-            label: 'Poneglyph-BBox · local',
-            handler: handleOneShotLocalPoneglyph,
-            status: localModelStatus,
-            downloading: isDownloadingLocalModel,
-            downloadState: localDownloadState,
-            progress: localDownloadProgress,
-            loading: isLoadingLocalModel,
-            canRun: canRunLocalOcr,
-            download: downloadLocalModel,
-            load: loadLocalModel,
-        }),
-        localEngine({
-            key: 'surya-local',
-            label: 'Surya-BBox · local',
-            handler: handleOneShotLocalSuryaBbox,
-            status: localSuryaBBoxModelStatus,
-            downloading: isDownloadingLocalSuryaBBoxModel,
-            downloadState: localSuryaBBoxDownloadState,
-            progress: localSuryaBBoxDownloadProgress,
-            loading: isLoadingLocalSuryaBBoxModel,
-            canRun: canRunLocalSuryaBBoxOcr,
-            download: downloadLocalSuryaBBoxModel,
-            load: loadLocalSuryaBBoxModel,
-        }),
-        {
-            key: 'poneglyph',
-            label: 'Poneglyph-BBox · en ligne',
-            available: !isSandbox && Boolean(handleOneShotPoneglyph),
-            handler: handleOneShotPoneglyph,
-        },
-        {
-            key: 'gemini',
-            label: 'Gemini',
-            model: geminiFullPageModel,
-            available: Boolean(handleOneShot),
-            handler: handleOneShot,
-        },
-        {
-            key: 'chatgpt',
-            label: 'ChatGPT',
-            model: chatGptFullPageModel,
-            available: chatGptDesktopAvailable && Boolean(handleChatGptOneShot),
-            handler: handleChatGptOneShot,
-        },
-        {
-            key: 'deepseek',
-            label: 'DeepSeek',
-            model: DEEPSEEK_LABEL,
-            available: Boolean(handleDeepSeekOneShot),
-            handler: handleDeepSeekOneShot,
-            message: 'Utilise votre clé personnelle. Appels facturés par DeepSeek.',
-        },
-    ].filter((engine) => engine.available);
-    const engine =
-        engines.find((item) => item.key === selectedEngine) || engines[0];
-    const running =
-        isLighton3Loading ||
-        isDeepSeekLoading ||
-        isOneShotLoading ||
-        isChatGptLoading ||
-        isPoneglyphLoading ||
-        isLocalInferencing ||
-        isLocalSuryaBBoxInferencing;
-    const actionLabel = running
-        ? 'Lecture en cours…'
-        : engine?.preparing
-          ? 'Préparation en cours…'
-          : engine?.action === 'download'
-            ? 'Télécharger le modèle'
-            : engine?.action === 'load'
-              ? 'Charger le modèle'
-              : 'Lire la page entière';
+    const busy = Boolean(isSubmitting || isPageOcrRunning || isReviewingPage);
+    const step = getPageOcrStep({
+        models: ocrModels,
+        detectionStatus,
+        detectionProgress,
+        isRunning: isPageOcrRunning,
+        isReviewing: isReviewingPage,
+        reviewRemaining,
+    });
+    const StepIcon = step.pending ? Loader2 : STEP_ICONS[step.action];
+    const runStep = {
+        prepare: onPrepareModels,
+        setup: () => setShowApiKeyModal(true),
+        run: onRunPageOcr,
+    }[step.action];
+    const stepDisabled = !runStep || step.pending || (step.action === 'run' && (!canRunPageOcr || isSubmitting));
 
     return (
         <aside
@@ -397,176 +281,33 @@ export default function AnnotateLeftSidebar({
             </header>
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                {!isGuest && isStaff && (
-                    <>
-                        {role === 'Admin' && engine && (
-                            <section
-                                aria-labelledby="page-ocr-heading"
-                                className="border-b border-white/10 p-4"
-                            >
-                                <h3
-                                    id="page-ocr-heading"
-                                    className="mb-3 font-medium text-white"
-                                >
-                                    Page entière
-                                </h3>
-                                <Select
-                                    value={engine.key}
-                                    onValueChange={setSelectedEngine}
-                                    disabled={Boolean(running)}
-                                >
-                                    <SelectTrigger
-                                        aria-label="Moteur pour la page entière"
-                                        className="h-10 w-full border-white/15 bg-transparent text-[13px] shadow-none"
-                                    >
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {engines.map((item) => (
-                                            <SelectItem
-                                                key={item.key}
-                                                value={item.key}
-                                            >
-                                                {item.label}
-                                            </SelectItem>
+                {showOcr && (
+                    <section aria-labelledby="page-ocr-heading" className="space-y-4 p-4">
+                        <h3 id="page-ocr-heading" className="font-medium text-white">
+                            OCR de la page
+                        </h3>
+                        {MODEL_GROUPS.map((group) => {
+                            const models = ocrModels.filter((model) => model.scope === group.scope);
+                            if (!models.length) return null;
+                            return (
+                                <fieldset key={group.scope}>
+                                    <legend className="mb-1 text-xs text-slate-400">
+                                        {group.title}
+                                    </legend>
+                                    <ul>
+                                        {models.map((model) => (
+                                            <OcrModelOption
+                                                key={model.key}
+                                                model={model}
+                                                disabled={busy}
+                                                onToggle={toggleOcrModel}
+                                            />
                                         ))}
-                                    </SelectContent>
-                                </Select>
-                                {engine.model && (
-                                    <p className="mt-2 break-words text-xs text-slate-400">
-                                        {engine.model}
-                                    </p>
-                                )}
-                                <Button
-                                    onClick={engine.handler}
-                                    disabled={
-                                        busy ||
-                                        engine.disabled ||
-                                        !engine.handler
-                                    }
-                                    className="mt-3 h-10 w-full bg-[#dbe5ef] text-[13px] font-medium text-[#0b1420] shadow-none hover:bg-[#f1f5f9]"
-                                >
-                                    {running || engine.preparing ? (
-                                        <Loader2 className="animate-spin" />
-                                    ) : engine.action === 'download' ? (
-                                        <Download />
-                                    ) : (
-                                        <ScanText />
-                                    )}
-                                    {actionLabel}
-                                </Button>
-                                {isLighton3Loading && cancelLighton3 && <Button variant="outline" className="mt-2 w-full" onClick={cancelLighton3}>Annuler la lecture</Button>}
-                                {engine.message && (
-                                    <div
-                                        role="status"
-                                        className="mt-3 text-xs leading-relaxed text-slate-400"
-                                    >
-                                        {engine.message}
-                                        {engine.progress !== null &&
-                                            engine.progress !== undefined && (
-                                                <>
-                                                    <span className="ml-1 tabular-nums">
-                                                        {engine.progress}%
-                                                    </span>
-                                                    <progress
-                                                        aria-label="Téléchargement du modèle"
-                                                        value={engine.progress}
-                                                        max={100}
-                                                        className="mt-2 h-1 w-full accent-sky-400"
-                                                    />
-                                                </>
-                                            )}
-                                    </div>
-                                )}
-                            </section>
-                        )}
-
-                        <section
-                            aria-labelledby="bubble-ocr-heading"
-                            className="p-4"
-                        >
-                            <h3
-                                id="bubble-ocr-heading"
-                                className="mb-3 font-medium text-white"
-                            >
-                                Bulles
-                            </h3>
-                            <AnnotateBubbleScanner
-                                detectionStatus={detectionStatus}
-                                loadDetectionModel={loadDetectionModel}
-                                detectionProgress={detectionProgress}
-                                downloadStats={downloadStats}
-                                handleExecuteDetection={handleExecuteDetection}
-                                isSubmitting={busy && !isAutoDetecting}
-                                isAutoDetecting={isAutoDetecting}
-                                queueLength={queueLength}
-                            />
-                            <details className="group mt-4" open>
-                                <summary className="flex cursor-pointer list-none items-center justify-between rounded-sm py-2 text-xs text-slate-400 hover:text-white focus-visible:outline-2 focus-visible:outline-sky-400 [&::-webkit-details-marker]:hidden">
-                                    Moteurs de transcription
-                                    <ChevronRight
-                                        size={14}
-                                        className="transition-transform group-open:rotate-90"
-                                    />
-                                </summary>
-                                <AnnotateOcrModelSelector
-                                    preferLocalOCR={preferLocalOCR}
-                                    toggleOcrPreference={toggleOcrPreference}
-                                    activeModelKey={activeModelKey}
-                                    switchModel={switchModel}
-                                    modelStatus={modelStatus}
-                                    loadModel={loadModel}
-                                    downloadProgress={downloadProgress}
-                                    geminiKey={geminiKey}
-                                    hasDeepSeekKey={hasDeepSeekKey}
-                                    onConfigureDeepSeek={() => setShowApiKeyModal(true)}
-                                    disabled={busy}
-                                    selectedOcrModelKeys={selectedOcrModelKeys}
-                                    toggleOcrModel={toggleOcrModel}
-                                    isSandbox={isSandbox}
-                                    isTauri={isTauri}
-                                    localTextModelStatus={localTextModelStatus}
-                                    localSuryaModelStatus={
-                                        localSuryaModelStatus
-                                    }
-                                    isDownloadingLocalTextModel={
-                                        isDownloadingLocalTextModel
-                                    }
-                                    isDownloadingLocalSuryaModel={
-                                        isDownloadingLocalSuryaModel
-                                    }
-                                    localTextDownloadState={
-                                        localTextDownloadState
-                                    }
-                                    localSuryaDownloadState={
-                                        localSuryaDownloadState
-                                    }
-                                    localTextDownloadProgress={
-                                        localTextDownloadProgress
-                                    }
-                                    localSuryaDownloadProgress={
-                                        localSuryaDownloadProgress
-                                    }
-                                    isLoadingLocalTextModel={
-                                        isLoadingLocalTextModel
-                                    }
-                                    isLoadingLocalSuryaModel={
-                                        isLoadingLocalSuryaModel
-                                    }
-                                    canRunLocalTextOcr={canRunLocalTextOcr}
-                                    canRunLocalSuryaOcr={canRunLocalSuryaOcr}
-                                    downloadLocalTextModel={
-                                        downloadLocalTextModel
-                                    }
-                                    downloadLocalSuryaModel={
-                                        downloadLocalSuryaModel
-                                    }
-                                    loadLocalTextModel={loadLocalTextModel}
-                                    loadLocalSuryaModel={loadLocalSuryaModel}
-                                />
-                            </details>
-                        </section>
-                    </>
+                                    </ul>
+                                </fieldset>
+                            );
+                        })}
+                    </section>
                 )}
                 {role === 'User' && !isGuest && !isSandbox && (
                     <section className="p-4 text-sm leading-relaxed text-slate-300">
@@ -598,28 +339,47 @@ export default function AnnotateLeftSidebar({
                 )}
             </div>
 
-            {!isGuest && isStaff && (
+            {showOcr && (
                 <footer className="shrink-0 border-t border-white/10 p-3">
-                    {!isSandbox && (
+                    <Button
+                        onClick={runStep}
+                        disabled={stepDisabled}
+                        className="h-10 w-full bg-[#dbe5ef] text-[13px] font-medium text-[#0b1420] shadow-none hover:bg-[#f1f5f9]"
+                    >
+                        {StepIcon && <StepIcon className={step.pending ? 'animate-spin' : undefined} />}
+                        {step.label}
+                    </Button>
+                    {isPageOcrRunning && onCancelPageOcr && (
                         <Button
                             variant="ghost"
-                            onClick={() => setShowDescModal(true)}
-                            className="h-10 w-full justify-start text-[13px] text-slate-300 hover:bg-white/5 hover:text-white"
+                            onClick={onCancelPageOcr}
+                            className="mt-1 h-9 w-full text-[13px] text-slate-400 hover:bg-white/5 hover:text-white"
                         >
-                            <FileText />
-                            Métadonnées
-                            <ChevronRight className="ml-auto text-slate-500" />
+                            Annuler
                         </Button>
                     )}
-                    <Button
-                        variant="ghost"
-                        onClick={() => setShowApiKeyModal(true)}
-                        className="h-10 w-full justify-start text-[13px] text-slate-300 hover:bg-white/5 hover:text-white"
-                    >
-                        <Settings2 />
-                        Réglages API
-                        <ChevronRight className="ml-auto text-slate-500" />
-                    </Button>
+                    <div className="mt-3 border-t border-white/[0.06] pt-2">
+                        {!isSandbox && (
+                            <Button
+                                variant="ghost"
+                                onClick={() => setShowDescModal(true)}
+                                className="h-10 w-full justify-start text-[13px] text-slate-300 hover:bg-white/5 hover:text-white"
+                            >
+                                <FileText />
+                                Métadonnées
+                                <ChevronRight className="ml-auto text-slate-500" />
+                            </Button>
+                        )}
+                        <Button
+                            variant="ghost"
+                            onClick={() => setShowApiKeyModal(true)}
+                            className="h-10 w-full justify-start text-[13px] text-slate-300 hover:bg-white/5 hover:text-white"
+                        >
+                            <Settings2 />
+                            Réglages API
+                            <ChevronRight className="ml-auto text-slate-500" />
+                        </Button>
+                    </div>
                     {!isSandbox && (
                         <Button
                             onClick={handleSubmitPage}
@@ -628,7 +388,7 @@ export default function AnnotateLeftSidebar({
                                 page.statut === 'pending_review' ||
                                 page.statut === 'completed'
                             }
-                            className="mt-3 h-10 w-full border border-white/20 bg-transparent text-[13px] font-medium text-slate-200 shadow-none hover:bg-white/10"
+                            className="mt-2 h-10 w-full border border-white/20 bg-transparent text-[13px] font-medium text-slate-200 shadow-none hover:bg-white/10"
                         >
                             {page.statut === 'completed'
                                 ? 'Page validée'

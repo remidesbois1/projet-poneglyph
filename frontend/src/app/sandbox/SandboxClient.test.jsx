@@ -4,14 +4,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAnnotationInteractions } from '@/hooks/useAnnotationInteractions';
 import SandboxClient from './SandboxClient';
 
-vi.mock('@/context/TauriLocalOcrContext', () => ({ useTauriLocalOcrContext: () => ({}) }));
-vi.mock('@/hooks/useAiModelConfig', () => ({ useAiModelConfig: () => ({}) }));
 vi.mock('@/hooks/useAnnotationInteractions', () => ({ useAnnotationInteractions: vi.fn(() => ({})) }));
-vi.mock('@/hooks/useAnnotationOCR', () => ({ useAnnotationOCR: () => ({}) }));
-vi.mock('@/hooks/useLighton3PageOcr', () => ({ useLighton3PageOcr: () => ({}) }));
-vi.mock('@/hooks/useAnnotationDetection', () => ({ useAnnotationDetection: () => ({}) }));
+vi.mock('@/hooks/useAnnotationOCR', () => ({
+    useAnnotationOCR: () => ({
+        models: [],
+        toggleOcrModel: vi.fn(),
+        prepareSelectedModels: vi.fn(),
+        refreshModelAccess: vi.fn(),
+        pageModels: [],
+        runPageModel: vi.fn(),
+        runLocalOcr: vi.fn(),
+        runBackgroundOcr: vi.fn(),
+        handleRetryWithCloud: vi.fn(),
+        handleRetryWithDeepSeek: vi.fn(),
+    }),
+}));
+vi.mock('@/hooks/useAnnotationDetection', () => ({
+    useAnnotationDetection: () => ({
+        isAutoDetecting: false,
+        setIsAutoDetecting: vi.fn(),
+        queueLength: 0,
+        detectionStatus: 'ready',
+        loadDetectionModel: vi.fn(),
+        detectionProgress: 100,
+        isPageOcrRunning: false,
+        runPageOcr: vi.fn(),
+        cancelPageOcr: vi.fn(),
+        processNextBubble: vi.fn(),
+    }),
+}));
 vi.mock('@/hooks/useAnnotationMetadata', () => ({ useAnnotationMetadata: () => ({}) }));
-vi.mock('@/lib/chatGptDesktop', () => ({ getChatGptStatus: async () => ({ available: false }), runChatGptPageOcr: vi.fn() }));
 vi.mock('@/components/AnnotateLeftSidebar', () => ({ default: () => null }));
 vi.mock('@/components/AnnotateCanvas', () => ({ default: () => null }));
 vi.mock('@/components/AnnotateMetadataModal', () => ({ default: () => null }));

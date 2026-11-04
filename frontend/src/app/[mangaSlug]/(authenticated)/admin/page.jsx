@@ -160,7 +160,7 @@ export default function AdminDashboard() {
                             icon={Zap}
                             tint="#8dbbff"
                             title="Batch OCR"
-                            desc="Traitez un chapitre complet automatiquement : détection YOLO, OCR Poneglyph-BBox + Poneglyph, auto-validation des concordances."
+                            desc="Traitez un chapitre complet automatiquement : détection YOLO, OCR LightOnOCR 2 BBox + LightOnOCR 2, auto-validation des concordances."
                             cta="Ouvrir"
                         />
                     </TabsContent>

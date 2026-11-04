@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getPrompt } from '@/lib/promptConfig';
+import { OCR_MODELS } from '@/lib/ocrModels';
 
 const INITIAL_MODEL_STATUS = {
     installed: false,
@@ -27,7 +28,8 @@ const INITIAL_CONNECTION_STATE = {
 
 const TRANSIENT_DIAGNOSTIC_GRACE_MS = 15000;
 const SURYA_BBOX_MODEL_DIR_HINT = 'surya-ocr-2-poneglyph-bbox';
-const SURYA_BBOX_STALE_DESKTOP_MESSAGE = "App desktop a redemarrer/rebuilder pour activer Surya-BBox.";
+const SURYA_BBOX_STALE_DESKTOP_MESSAGE = `Redémarrez ou reconstruisez l’app desktop pour activer ${OCR_MODELS.suryaBboxLocal.name}.`;
+const downloadFailedMessage = (model) => `Téléchargement du modèle ${model.name} impossible.`;
 const SURYA_BBOX_MODEL_ARGS = { model_key: 'surya_bbox', modelKey: 'surya_bbox' };
 
 function getErrorMessage(error) {
@@ -389,7 +391,7 @@ export function useTauriLocalOcr() {
         try {
             const result = await invoke('download_local_model');
             if (!result?.ok) {
-                setLocalError(result?.error || "Telechargement du modele Poneglyph-BBox impossible.");
+                setLocalError(result?.error || downloadFailedMessage(OCR_MODELS.lighton2BboxLocal));
             }
             if (result?.download) {
                 setLocalModelStatus(prev => ({ ...prev, download: result.download }));
@@ -418,7 +420,7 @@ export function useTauriLocalOcr() {
         try {
             const result = await invoke('download_local_text_model');
             if (!result?.ok) {
-                setLocalError(result?.error || "Telechargement du modele Poneglyph impossible.");
+                setLocalError(result?.error || downloadFailedMessage(OCR_MODELS.poneglyphLocal));
             }
             if (result?.download) {
                 setLocalTextModelStatus(prev => ({ ...prev, download: result.download }));
@@ -447,7 +449,7 @@ export function useTauriLocalOcr() {
         try {
             const result = await invoke('download_local_surya_model');
             if (!result?.ok) {
-                setLocalError(result?.error || "Telechargement du modele Surya local impossible.");
+                setLocalError(result?.error || downloadFailedMessage(OCR_MODELS.suryaLocal));
             }
             if (result?.download) {
                 setLocalSuryaModelStatus(prev => ({ ...prev, download: result.download }));
@@ -476,7 +478,7 @@ export function useTauriLocalOcr() {
         try {
             const result = await invoke('download_local_model', SURYA_BBOX_MODEL_ARGS);
             if (!result?.ok) {
-                setLocalError(result?.error || "Telechargement du modele Surya-BBox impossible.");
+                setLocalError(result?.error || downloadFailedMessage(OCR_MODELS.suryaBboxLocal));
             }
             if (result?.model_dir && !String(result.model_dir).replaceAll('\\', '/').toLowerCase().includes(SURYA_BBOX_MODEL_DIR_HINT)) {
                 setLocalError(SURYA_BBOX_STALE_DESKTOP_MESSAGE);

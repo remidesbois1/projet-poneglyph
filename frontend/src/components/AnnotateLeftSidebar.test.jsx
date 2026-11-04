@@ -1,32 +1,51 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AnnotateLeftSidebar, { formatPageStatus } from './AnnotateLeftSidebar';
 
-vi.mock('@/context/WorkerContext', async importOriginal => ({
-    ...await importOriginal(),
-    useWorker: () => ({ modelStates: {} }),
-}));
+const model = (overrides = {}) => ({
+    key: 'lighton-3-browser',
+    name: 'LightOnOCR 3',
+    scope: 'bubble',
+    runtime: 'browser',
+    engine: 'lighton3',
+    size: '1,7 Go',
+    selected: true,
+    status: 'ready',
+    progress: null,
+    message: null,
+    ...overrides,
+});
 
-const editorProps = {
-    mangaSlug: 'one-piece',
-    page: { numero_page: 3, statut: 'in_progress', chapitres: { numero: 1 } },
-    chapterPages: [1, 2, 3],
-    navContext: { prev: null, next: null },
-    role: 'Admin',
-    selectedOcrModelKeys: [],
-    detectionStatus: 'ready',
+const handlers = {
+    toggleOcrModel: vi.fn(),
+    onPrepareModels: vi.fn(),
+    onRunPageOcr: vi.fn(),
+    onCancelPageOcr: vi.fn(),
+    setShowApiKeyModal: vi.fn(),
+    setShowDescModal: vi.fn(),
+    handleSubmitPage: vi.fn(),
 };
 
+const renderSidebar = (props = {}) =>
+    render(
+        <AnnotateLeftSidebar
+            mangaSlug="one-piece"
+            page={{ numero_page: 3, statut: 'in_progress', chapitres: { numero: 1 } }}
+            chapterPages={[1, 2, 3]}
+            navContext={{ prev: null, next: null }}
+            role="Admin"
+            detectionStatus="ready"
+            canRunPageOcr
+            {...handlers}
+            {...props}
+        />
+    );
+
+const nextStep = () => within(document.querySelector('footer')).getAllByRole('button')[0];
+
 describe('AnnotateLeftSidebar', () => {
-    it('excludes Modal engines in the sandbox while retaining local OCR', () => {
-        render(<AnnotateLeftSidebar {...editorProps} isSandbox isTauri
-            handleOneShotPoneglyph={vi.fn()} handleOneShotLocalPoneglyph={vi.fn()}
-            handleOneShotLocalSuryaBbox={vi.fn()} />);
-        expect(screen.queryByText('Poneglyph-BBox · en ligne')).not.toBeInTheDocument();
-        expect(screen.queryByRole('checkbox', { name: /LightOn OCR/ })).not.toBeInTheDocument();
-        expect(screen.getByRole('combobox', { name: 'Moteur pour la page entière' })).toHaveTextContent('Poneglyph-BBox · local');
-        expect(screen.getByRole('checkbox', { name: /PP-OCRv6/ })).toBeInTheDocument();
-        expect(screen.getByRole('checkbox', { name: /Surya · WebGPU/ })).toBeInTheDocument();
+    beforeEach(() => {
+        vi.clearAllMocks();
     });
 
     it('renders the public reader when private workflow metadata is absent', () => {
@@ -48,179 +67,180 @@ describe('AnnotateLeftSidebar', () => {
         expect(formatPageStatus('pending_review')).toBe('En revue');
     });
 
-    it('runs only the chosen full-page engine', async () => {
-        // jsdom does not implement the scrolling used by the Radix select.
-        const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-        HTMLElement.prototype.scrollIntoView = vi.fn();
-        const poneglyph = vi.fn();
-        const gemini = vi.fn();
-        try {
-            render(
-                <AnnotateLeftSidebar
-                    {...editorProps}
-                    handleOneShotPoneglyph={poneglyph}
-                    handleOneShot={gemini}
-                />
-            );
-            fireEvent.keyDown(
-                screen.getByRole('combobox', {
-                    name: 'Moteur pour la page entière',
-                }),
-                { key: 'Enter' }
-            );
-            fireEvent.click(
-                await screen.findByRole('option', { name: 'Gemini' })
-            );
-            fireEvent.click(
-                screen.getByRole('button', { name: 'Lire la page entière' })
-            );
-            expect(gemini).toHaveBeenCalledOnce();
-            expect(poneglyph).not.toHaveBeenCalled();
-        } finally {
-            if (originalScrollIntoView)
-                HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-            else delete HTMLElement.prototype.scrollIntoView;
-        }
+    describe('model list', () => {
+        it('groups bubble and page models under their own fieldsets', () => {
+            renderSidebar({
+                ocrModels: [
+                    model(),
+                    model({ key: 'deepseek-page', name: 'DeepSeek OCR', scope: 'page', runtime: 'cloud' }),
+                ],
+            });
+
+            const bubbles = screen.getByRole('group', { name: 'Bulles' });
+            const page = screen.getByRole('group', { name: 'Page entière' });
+            expect(within(bubbles).getByRole('checkbox', { name: 'LightOnOCR 3 · Navigateur' })).toBeChecked();
+            expect(within(page).getByRole('checkbox', { name: 'DeepSeek OCR · Cloud' })).toBeChecked();
+            expect(within(bubbles).queryByRole('checkbox', { name: /DeepSeek/ })).not.toBeInTheDocument();
+        });
+
+        it('omits the page group when no page model is available', () => {
+            renderSidebar({ ocrModels: [model()] });
+
+            expect(screen.getByRole('group', { name: 'Bulles' })).toBeInTheDocument();
+            expect(screen.queryByRole('group', { name: 'Page entière' })).not.toBeInTheDocument();
+        });
+
+        it('hides the model list from non-staff users', () => {
+            renderSidebar({ role: 'User', ocrModels: [model()] });
+
+            expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: /OCR de la page/ })).not.toBeInTheDocument();
+        });
+
+        it('toggles a model by key', () => {
+            renderSidebar({ ocrModels: [model({ selected: false })] });
+
+            const checkbox = screen.getByRole('checkbox', { name: 'LightOnOCR 3 · Navigateur' });
+            expect(checkbox).not.toBeChecked();
+            fireEvent.click(checkbox);
+
+            expect(handlers.toggleOcrModel).toHaveBeenCalledWith('lighton-3-browser');
+        });
+
+        it('shows the size of a selected model waiting to be loaded', () => {
+            renderSidebar({ ocrModels: [model({ status: 'load', size: '1,7 Go' })] });
+            expect(screen.getByText('À charger · 1,7 Go')).toBeInTheDocument();
+        });
+
+        it('shows the size of a selected model waiting to be downloaded', () => {
+            renderSidebar({ ocrModels: [model({ status: 'download', size: '2 Go' })] });
+            expect(screen.getByText('À télécharger · 2 Go')).toBeInTheDocument();
+        });
+
+        it('shows loading progress of a selected model', () => {
+            renderSidebar({
+                ocrModels: [model({ status: 'loading', progress: 42, message: 'Téléchargement' })],
+            });
+
+            expect(screen.getByText('Téléchargement · 42 %')).toBeInTheDocument();
+            expect(screen.getByRole('progressbar')).toHaveAttribute('value', '42');
+        });
+
+        it('shows the setup requirement of a selected model', () => {
+            renderSidebar({
+                ocrModels: [model({ runtime: 'cloud', status: 'setup', message: 'Clé DeepSeek requise' })],
+            });
+            expect(screen.getByText('Clé DeepSeek requise')).toBeInTheDocument();
+        });
+
+        it('shows no status for unselected models', () => {
+            renderSidebar({
+                ocrModels: [
+                    model({ selected: false, status: 'download', size: '2 Go' }),
+                    model({ key: 'b', name: 'Surya', selected: false, status: 'loading', progress: 42, message: 'Téléchargement' }),
+                ],
+            });
+
+            expect(screen.queryByText(/À télécharger/)).not.toBeInTheDocument();
+            expect(screen.queryByText(/Téléchargement/)).not.toBeInTheDocument();
+            expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+        });
     });
 
-    it('takes a local engine from download to load to execution', () => {
-        const download = vi.fn();
-        const load = vi.fn();
-        const run = vi.fn();
-        const props = {
-            ...editorProps,
-            isTauri: true,
-            handleOneShotLocalPoneglyph: run,
-            downloadLocalModel: download,
-            loadLocalModel: load,
-        };
-        const { rerender } = render(
-            <AnnotateLeftSidebar
-                {...props}
-                localModelStatus={{ installed: false }}
-            />
-        );
-        fireEvent.click(
-            screen.getByRole('button', { name: 'Télécharger le modèle' })
-        );
-        expect(download).toHaveBeenCalledOnce();
-        expect(run).not.toHaveBeenCalled();
+    describe('next-step button', () => {
+        it('asks to choose a model when none is selected', () => {
+            renderSidebar({ ocrModels: [model({ selected: false })] });
 
-        rerender(
-            <AnnotateLeftSidebar
-                {...props}
-                localModelStatus={{ installed: true }}
-            />
-        );
-        fireEvent.click(
-            screen.getByRole('button', { name: 'Charger le modèle' })
-        );
-        expect(load).toHaveBeenCalledOnce();
+            expect(nextStep()).toHaveTextContent('Choisissez un modèle');
+            expect(nextStep()).toBeDisabled();
+        });
 
-        rerender(
-            <AnnotateLeftSidebar
-                {...props}
-                localModelStatus={{ installed: true, ready: true }}
-                canRunLocalOcr
-            />
-        );
-        fireEvent.click(
-            screen.getByRole('button', { name: 'Lire la page entière' })
-        );
-        expect(run).toHaveBeenCalledOnce();
-    });
+        it('loads models when a selected model is not loaded', () => {
+            renderSidebar({ ocrModels: [model({ status: 'load' })] });
 
-    it('shows download progress and prevents execution until the engine is ready', () => {
-        render(
-            <AnnotateLeftSidebar
-                {...editorProps}
-                isTauri
-                handleOneShotLocalSuryaBbox={vi.fn()}
-                isDownloadingLocalSuryaBBoxModel
-                localSuryaBBoxDownloadProgress={42}
-            />
-        );
-        expect(
-            screen.getByRole('button', { name: 'Préparation en cours…' })
-        ).toBeDisabled();
-        expect(screen.getByRole('progressbar')).toHaveAttribute('value', '42');
-    });
+            expect(nextStep()).toHaveTextContent('Charger les modèles');
+            fireEvent.click(nextStep());
+            expect(handlers.onPrepareModels).toHaveBeenCalledTimes(1);
+        });
 
-    it('blocks local execution while the server is offline', () => {
-        render(
-            <AnnotateLeftSidebar
-                {...editorProps}
-                isTauri
-                handleOneShotLocalPoneglyph={vi.fn()}
-                canRunLocalOcr
-                localModelStatus={{ installed: true, ready: true }}
-                localConnectionState={{ status: 'offline' }}
-            />
-        );
-        expect(
-            screen.getByRole('button', { name: 'Lire la page entière' })
-        ).toBeDisabled();
-        expect(screen.getByRole('status')).toHaveTextContent(
-            'Serveur local indisponible.'
-        );
-    });
+        it('loads models when the detector is idle', () => {
+            renderSidebar({ ocrModels: [model()], detectionStatus: 'idle' });
 
-    it('prevents competing actions during full-page OCR', () => {
-        render(
-            <AnnotateLeftSidebar
-                {...editorProps}
-                handleOneShot={vi.fn()}
-                isOneShotLoading
-            />
-        );
-        expect(
-            screen.getByRole('combobox', {
-                name: 'Moteur pour la page entière',
-            })
-        ).toBeDisabled();
-        expect(
-            screen.getByRole('button', { name: 'Lecture en cours…' })
-        ).toBeDisabled();
-        expect(
-            screen.getByRole('button', { name: 'Détecter les bulles' })
-        ).toBeDisabled();
-        expect(
-            screen.getByRole('button', { name: 'Envoyer en validation' })
-        ).toBeDisabled();
-    });
+            expect(nextStep()).toHaveTextContent('Charger les modèles');
+            fireEvent.click(nextStep());
+            expect(handlers.onPrepareModels).toHaveBeenCalledTimes(1);
+        });
 
-    it('offers BYOK DeepSeek in the sandbox without exposing Modal', () => {
-        const configure = vi.fn();
-        render(<AnnotateLeftSidebar {...editorProps} isSandbox selectedOcrModelKeys={['deepseek']} setShowApiKeyModal={configure} handleDeepSeekOneShot={vi.fn()} />);
-        expect(screen.getByRole('checkbox', { name: /DeepSeek/ })).toBeChecked();
-        expect(screen.queryByRole('checkbox', { name: /LightOn OCR/ })).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Configurer la clé DeepSeek' }));
-        expect(configure).toHaveBeenCalledWith(true);
-    });
+        it('waits for the detector with its progress', () => {
+            renderSidebar({ ocrModels: [model()], detectionStatus: 'loading', detectionProgress: 42 });
 
-    it('runs only DeepSeek when selected as the full-page engine', async () => {
-        const oldScroll = HTMLElement.prototype.scrollIntoView;
-        HTMLElement.prototype.scrollIntoView = vi.fn();
-        const deepseek = vi.fn();
-        const gemini = vi.fn();
-        try {
-            render(<AnnotateLeftSidebar {...editorProps} handleOneShot={gemini} handleDeepSeekOneShot={deepseek} />);
-            fireEvent.keyDown(screen.getByRole('combobox', { name: 'Moteur pour la page entière' }), { key: 'Enter' });
-            fireEvent.click(await screen.findByRole('option', { name: 'DeepSeek', exact: true }));
-            fireEvent.click(screen.getByRole('button', { name: 'Lire la page entière' }));
-            expect(deepseek).toHaveBeenCalledOnce();
-            expect(gemini).not.toHaveBeenCalled();
-        } finally {
-            if (oldScroll) HTMLElement.prototype.scrollIntoView = oldScroll;
-            else delete HTMLElement.prototype.scrollIntoView;
-        }
-    });
+            expect(nextStep()).toHaveTextContent('Chargement du détecteur · 42 %');
+            expect(nextStep()).toBeDisabled();
+        });
 
-    it('blocks competing OCR and validation during a DeepSeek page request', () => {
-        render(<AnnotateLeftSidebar {...editorProps} handleDeepSeekOneShot={vi.fn()} isDeepSeekLoading />);
-        expect(screen.getByRole('button', { name: 'Lecture en cours…' })).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Détecter les bulles' })).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Envoyer en validation' })).toBeDisabled();
-        for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toBeDisabled();
+        it('waits while a selected model is loading', () => {
+            renderSidebar({ ocrModels: [model(), model({ key: 'b', name: 'Surya', status: 'loading', progress: 10 })] });
+
+            expect(nextStep()).toHaveTextContent('Chargement des modèles…');
+            expect(nextStep()).toBeDisabled();
+        });
+
+        it('opens API settings when a selected model needs setup', () => {
+            renderSidebar({ ocrModels: [model({ runtime: 'cloud', status: 'setup', message: 'Clé DeepSeek requise' })] });
+
+            expect(nextStep()).toHaveTextContent('Configurer l’accès API');
+            fireEvent.click(nextStep());
+            expect(handlers.setShowApiKeyModal).toHaveBeenCalledWith(true);
+            expect(handlers.onRunPageOcr).not.toHaveBeenCalled();
+        });
+
+        it('is blocked when a selected model is unavailable', () => {
+            renderSidebar({ ocrModels: [model({ status: 'unavailable' })] });
+
+            expect(nextStep()).toHaveTextContent('Modèle indisponible');
+            expect(nextStep()).toBeDisabled();
+        });
+
+        it('runs page OCR when every selected model is ready', () => {
+            renderSidebar({ ocrModels: [model(), model({ key: 'b', selected: false, status: 'download' })] });
+
+            expect(nextStep()).toHaveTextContent('Lancer l’OCR de la page');
+            fireEvent.click(nextStep());
+            expect(handlers.onRunPageOcr).toHaveBeenCalledTimes(1);
+        });
+
+        it('cannot run page OCR when the page is not runnable', () => {
+            renderSidebar({ ocrModels: [model()], canRunPageOcr: false });
+
+            expect(nextStep()).toHaveTextContent('Lancer l’OCR de la page');
+            expect(nextStep()).toBeDisabled();
+        });
+
+        it('cannot run page OCR while submitting', () => {
+            renderSidebar({ ocrModels: [model()], isSubmitting: true });
+
+            expect(nextStep()).toHaveTextContent('Lancer l’OCR de la page');
+            expect(nextStep()).toBeDisabled();
+        });
+
+        it('locks the editor and offers cancellation while page OCR runs', () => {
+            renderSidebar({ ocrModels: [model()], isPageOcrRunning: true });
+
+            expect(nextStep()).toHaveTextContent('OCR en cours…');
+            expect(nextStep()).toBeDisabled();
+            expect(screen.getByRole('checkbox', { name: 'LightOnOCR 3 · Navigateur' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Envoyer en validation' })).toBeDisabled();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+            expect(handlers.onCancelPageOcr).toHaveBeenCalledTimes(1);
+        });
+
+        it('counts the bubbles left to review', () => {
+            renderSidebar({ ocrModels: [model()], isReviewingPage: true, reviewRemaining: 2 });
+
+            expect(nextStep()).toHaveTextContent('3 bulles à vérifier');
+            expect(nextStep()).toBeDisabled();
+            expect(screen.queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument();
+        });
     });
 });

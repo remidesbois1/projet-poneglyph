@@ -65,7 +65,9 @@ page
 | Application de bureau | OCR de pages entières ou de bulles isolées | Tauri, serveur FastAPI local, PyTorch et accélération matérielle lorsqu’elle est disponible |
 | Services distants | OCR de secours, embeddings et réordonnancement | Routes serveur soumises aux contrôles d’accès et aux quotas, fournisseurs configurés par variables d’environnement |
 
-Dans le navigateur, la détection repose sur des modèles distincts pour les cases, les bulles et leur ordre. L’OCR local combine un détecteur de lignes avec un modèle de reconnaissance PP-OCRv6. L’application de bureau ajoute les variantes Poneglyph et Surya destinées aux pages entières et aux bulles isolées. Plus massifs mais potentiellement meilleurs.
+Dans le navigateur, la détection repose sur des modèles distincts pour les cases, les bulles et leur ordre. L’OCR local combine un détecteur de lignes avec un modèle de reconnaissance PP-OCRv6 ; LightOnOCR 3, Surya OCR 2 et Falcon OCR tournent aussi en WebGPU. L’application de bureau ajoute LightOnOCR 2 et Surya OCR 2, en version bulle et en version page entière (BBox). Plus massifs mais potentiellement meilleurs.
+
+Dans l’éditeur d’annotation, l’OCR de la page part toujours de la détection YOLO, qui fixe les bulles et leur ordre de lecture. Les modèles « bulles » lisent chaque bulle détectée ; les modèles « page entière » lisent la page et leurs boîtes sont ralliées aux bulles YOLO, les boîtes sans correspondance étant ignorées. Chaque bulle est ensuite validée avec toutes ses propositions. Une bulle tracée à la main n’utilise que les modèles « bulles ».
 
 ## Recherche
 

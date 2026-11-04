@@ -19,6 +19,14 @@ import {
 import { cn } from '@/lib/utils';
 import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
 import { canDownloadMissingLocalModel } from './localModelRecovery';
+import { OCR_MODELS } from '@/lib/ocrModels';
+
+const MODEL_NAMES = {
+    bbox: OCR_MODELS.lighton2BboxLocal.name,
+    text: OCR_MODELS.poneglyphLocal.name,
+    surya: OCR_MODELS.suryaLocal.name,
+    suryaBBox: OCR_MODELS.suryaBboxLocal.name,
+};
 
 function formatBytes(value) {
     if (!value) return "-";
@@ -250,19 +258,19 @@ export default function LocalOcrStatusIndicator({ align = 'left' }) {
     } else if (loadingActive) {
         summaryLabel = "Chargement";
     } else if (localSuryaModelStatus?.ready) {
-        summaryLabel = "Surya pret";
+        summaryLabel = `${MODEL_NAMES.surya} prêt`;
     } else if (localSuryaBBoxModelStatus?.ready) {
-        summaryLabel = "Surya-BBox pret";
+        summaryLabel = `${MODEL_NAMES.suryaBBox} prêt`;
     } else if (localModelStatus?.ready && localTextModelStatus?.ready) {
-        summaryLabel = "Batch pret";
+        summaryLabel = "Batch prêt";
     } else if (localModelStatus?.ready) {
-        summaryLabel = "Poneglyph-BBox pret";
+        summaryLabel = `${MODEL_NAMES.bbox} prêt`;
     } else if (localTextModelStatus?.ready) {
-        summaryLabel = "Poneglyph pret";
+        summaryLabel = `${MODEL_NAMES.text} prêt`;
     } else if (bboxLoaded || textLoaded || suryaLoaded || suryaBBoxLoaded) {
-        summaryLabel = "Charge";
+        summaryLabel = "Chargé";
     } else if (localModelStatus?.installed || localTextModelStatus?.installed || localSuryaModelStatus?.installed || localSuryaBBoxModelStatus?.installed) {
-        summaryLabel = "Installe";
+        summaryLabel = "Installé";
     }
 
     const isOnline = ['online', 'degraded'].includes(connectionStatus);
@@ -348,10 +356,10 @@ export default function LocalOcrStatusIndicator({ align = 'left' }) {
                         <div className="space-y-2">
                             <SectionLabel>Modèles</SectionLabel>
                             <div className="grid grid-cols-2 gap-2">
-                                <ModelRow label="Poneglyph-BBox" status={localModelStatus} loaded={bboxLoaded} icon={Database} />
-                                <ModelRow label="Poneglyph" status={localTextModelStatus} loaded={textLoaded} icon={Bot} />
-                                <ModelRow label="Surya" status={localSuryaModelStatus} loaded={suryaLoaded} icon={Zap} />
-                                <ModelRow label="Surya-BBox" status={localSuryaBBoxModelStatus} loaded={suryaBBoxLoaded} icon={Cpu} />
+                                <ModelRow label={MODEL_NAMES.bbox} status={localModelStatus} loaded={bboxLoaded} icon={Database} />
+                                <ModelRow label={MODEL_NAMES.text} status={localTextModelStatus} loaded={textLoaded} icon={Bot} />
+                                <ModelRow label={MODEL_NAMES.surya} status={localSuryaModelStatus} loaded={suryaLoaded} icon={Zap} />
+                                <ModelRow label={MODEL_NAMES.suryaBBox} status={localSuryaBBoxModelStatus} loaded={suryaBBoxLoaded} icon={Cpu} />
                             </div>
                         </div>
 
@@ -381,10 +389,10 @@ export default function LocalOcrStatusIndicator({ align = 'left' }) {
 
                         <div className="space-y-2 border-t border-slate-800 pt-3">
                             <SectionLabel>Téléchargements</SectionLabel>
-                            <ProgressLine label="Téléchargement Poneglyph-BBox" active={bboxDownloadActive} state={localDownloadState} percent={downloadPercent} />
-                            <ProgressLine label="Téléchargement Poneglyph" active={textDownloadActive} state={localTextDownloadState} percent={textDownloadPercent} />
-                            <ProgressLine label="Téléchargement Surya" active={suryaDownloadActive} state={localSuryaDownloadState} percent={suryaDownloadPercent} />
-                            <ProgressLine label="Téléchargement Surya-BBox" active={suryaBBoxDownloadActive} state={localSuryaBBoxDownloadState} percent={suryaBBoxDownloadPercent} />
+                            <ProgressLine label={`Téléchargement ${MODEL_NAMES.bbox}`} active={bboxDownloadActive} state={localDownloadState} percent={downloadPercent} />
+                            <ProgressLine label={`Téléchargement ${MODEL_NAMES.text}`} active={textDownloadActive} state={localTextDownloadState} percent={textDownloadPercent} />
+                            <ProgressLine label={`Téléchargement ${MODEL_NAMES.surya}`} active={suryaDownloadActive} state={localSuryaDownloadState} percent={suryaDownloadPercent} />
+                            <ProgressLine label={`Téléchargement ${MODEL_NAMES.suryaBBox}`} active={suryaBBoxDownloadActive} state={localSuryaBBoxDownloadState} percent={suryaBBoxDownloadPercent} />
                         </div>
 
                         <div className="space-y-2 border-t border-slate-800 pt-3">
@@ -394,14 +402,14 @@ export default function LocalOcrStatusIndicator({ align = 'left' }) {
                                     <RefreshCw size={12} className={cn(isCheckingLocalConnection && "animate-spin")} />
                                     Actualiser
                                 </ActionButton>
-                                {canDownload && <ActionButton onClick={downloadLocalModel}><Download size={12} /> Poneglyph-BBox</ActionButton>}
-                                {canLoad && <ActionButton onClick={loadLocalModel} variant="green"><CheckCircle2 size={12} /> Poneglyph-BBox</ActionButton>}
-                                {canDownloadText && <ActionButton onClick={downloadLocalTextModel}><Download size={12} /> Poneglyph</ActionButton>}
-                                {canLoadText && <ActionButton onClick={loadLocalTextModel} variant="green"><CheckCircle2 size={12} /> Poneglyph</ActionButton>}
-                                {canDownloadSurya && <ActionButton onClick={downloadLocalSuryaModel}><Download size={12} /> Surya</ActionButton>}
-                                {canLoadSurya && <ActionButton onClick={loadLocalSuryaModel} variant="green"><CheckCircle2 size={12} /> Surya</ActionButton>}
-                                {canDownloadSuryaBBox && <ActionButton onClick={downloadLocalSuryaBBoxModel}><Download size={12} /> Surya-BBox</ActionButton>}
-                                {canLoadSuryaBBox && <ActionButton onClick={loadLocalSuryaBBoxModel} variant="green"><CheckCircle2 size={12} /> Surya-BBox</ActionButton>}
+                                {canDownload && <ActionButton onClick={downloadLocalModel}><Download size={12} /> {MODEL_NAMES.bbox}</ActionButton>}
+                                {canLoad && <ActionButton onClick={loadLocalModel} variant="green"><CheckCircle2 size={12} /> {MODEL_NAMES.bbox}</ActionButton>}
+                                {canDownloadText && <ActionButton onClick={downloadLocalTextModel}><Download size={12} /> {MODEL_NAMES.text}</ActionButton>}
+                                {canLoadText && <ActionButton onClick={loadLocalTextModel} variant="green"><CheckCircle2 size={12} /> {MODEL_NAMES.text}</ActionButton>}
+                                {canDownloadSurya && <ActionButton onClick={downloadLocalSuryaModel}><Download size={12} /> {MODEL_NAMES.surya}</ActionButton>}
+                                {canLoadSurya && <ActionButton onClick={loadLocalSuryaModel} variant="green"><CheckCircle2 size={12} /> {MODEL_NAMES.surya}</ActionButton>}
+                                {canDownloadSuryaBBox && <ActionButton onClick={downloadLocalSuryaBBoxModel}><Download size={12} /> {MODEL_NAMES.suryaBBox}</ActionButton>}
+                                {canLoadSuryaBBox && <ActionButton onClick={loadLocalSuryaBBoxModel} variant="green"><CheckCircle2 size={12} /> {MODEL_NAMES.suryaBBox}</ActionButton>}
                             </div>
                         </div>
                     </div>

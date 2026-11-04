@@ -24,7 +24,7 @@ export default function AnnotateEditorDialog({
     handleRetryWithCloud,
     handleRetryWithDeepSeek,
     isSubmitting = false,
-    selectedOcrModelKeys = [],
+    ocrModelCount = 0,
     isSandbox = false
 }) {
     const closeEditor = useCallback(() => {
@@ -124,7 +124,7 @@ export default function AnnotateEditorDialog({
                         )}
 
                         <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t border-white/10 pt-4">
-                            {!isSandbox && (
+                            {!isSandbox && ocrModelCount > 0 && (
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -132,7 +132,7 @@ export default function AnnotateEditorDialog({
                                     className="text-xs text-slate-500 hover:text-slate-900"
                                     onClick={() => runLocalOcr()}
                                 >
-                                    <><RotateCcw className="h-3 w-3 mr-1" /> Relancer les modèles OCR ({selectedOcrModelKeys.length})</>
+                                    <><RotateCcw className="h-3 w-3 mr-1" /> Relancer les modèles OCR ({ocrModelCount})</>
                                 </Button>
                             )}
                             {(handleRetryWithCloud || handleRetryWithDeepSeek) && (

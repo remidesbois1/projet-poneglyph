@@ -16,11 +16,13 @@ Saving a key does not execute OCR. DeepSeek uses the account associated with tha
 
 ## Annotation tools
 
-- **Bubble OCR:** select DeepSeek under *Moteurs de transcription*, alone or alongside existing OCR engines. It also appears under *Relire via API* in the bubble editor. The shared `ocr_bubble` prompt is reused.
-- **Page OCR with bounding boxes:** select DeepSeek under *Page entière* and click *Lire la page entière*. The shared `ocr_page_bbox` / `strict_json_suffix` prompts are reused. The whole response must validate before any annotations are imported: `content` is text and `bbox` is `[x1,y1,x2,y2]`, normalized to 0–1000, with positive dimensions. Reading order is preserved.
-- An already-loaded YOLO detector can refine matching boxes, using the existing one-to-one fusion helper. Unmatched OCR boxes are retained. Detector failures do not discard the DeepSeek result.
-- Both modes work in the sandbox. Sandbox annotations remain local. Full-page database creation retains the existing Admin permission gate on the annotation page.
-- Navigating away cancels pending DeepSeek requests. Page identity and image identity are checked again before applying results. Background bubble results are reused during review instead of calling a paid model twice.
+DeepSeek appears twice in the *OCR de la page* list of the annotation sidebar; select either or both.
+
+- **Bulles:** reads each bubble crop with the shared `ocr_bubble` prompt, for page OCR and for hand-drawn boxes. It also appears under *Relire via API* in the bubble editor.
+- **Page entière:** one call reads the whole page with the shared `ocr_page_bbox` / `strict_json_suffix` prompts. The whole response must validate first: `content` is text and `bbox` is `[x1,y1,x2,y2]`, normalized to 0–1000, with positive dimensions.
+- *Lancer l’OCR de la page* runs the YOLO detector, which is the truth: DeepSeek page boxes are rallied one-to-one onto YOLO boxes (IoU > 0.05, as in the batch OCR), unmatched DeepSeek boxes are dropped and the review follows the YOLO reading order. Each bubble then opens in the editor with every candidate; nothing is saved without validation. Hand-drawn boxes only run the bubble models.
+- Without a key, the sidebar button becomes *Configurer l’accès API* and no request is sent. Both modes work in the sandbox, where annotations remain local.
+- Navigating away or cancelling aborts pending DeepSeek requests. Page identity and image identity are checked again before results are used. Background bubble results are reused during review instead of calling a paid model twice.
 
 Gemini descriptions, embeddings, search and import tools are unchanged.
 

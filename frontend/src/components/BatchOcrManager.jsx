@@ -9,6 +9,8 @@ import { getAdminHierarchy, getBubblesForPage, createBubble, validateBubble } fr
 import { getProxiedImageUrl, cropImage } from '@/lib/utils';
 import { capitalizeOcrSentenceStarts } from '@/lib/ocr-utils';
 import { postOcrImage } from '@/lib/ocrProxyClient';
+import { rallyPageBubblesToYolo } from '@/lib/ocrBboxFusion';
+import { OCR_MODELS, OCR_RUNTIME_LABELS } from '@/lib/ocrModels';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -25,67 +27,25 @@ import {
     Search, ChevronRight, Check
 } from "lucide-react";
 
+const BBOX_MODEL_NAME = OCR_MODELS.lighton2BboxLocal.name;
+const TEXT_MODEL_NAME = OCR_MODELS.poneglyphLocal.name;
+const SURYA_MODEL_NAME = OCR_MODELS.suryaLocal.name;
+
+// The batch keeps the bbox model's order: its YOLO pass skips ReaderNet ordering.
 function performRaliement(poneglyphBubbles, yoloBoxes, imgW, imgH) {
-    const candidates = [];
-
-    for (let pi = 0; pi < poneglyphBubbles.length; pi++) {
-        const raw = poneglyphBubbles[pi];
-        const [x1, y1, x2, y2] = raw.bbox;
-        const pBox = {
-            x: Math.round((x1 / 1000) * imgW),
-            y: Math.round((y1 / 1000) * imgH),
-            w: Math.round(((x2 - x1) / 1000) * imgW),
-            h: Math.round(((y2 - y1) / 1000) * imgH),
-            texte_propose: raw.content
-        };
-
-        for (let yi = 0; yi < yoloBoxes.length; yi++) {
-            const yBox = yoloBoxes[yi];
-
-            const ix1 = Math.max(pBox.x, yBox.x);
-            const iy1 = Math.max(pBox.y, yBox.y);
-            const ix2 = Math.min(pBox.x + pBox.w, yBox.x + yBox.w);
-            const iy2 = Math.min(pBox.y + pBox.h, yBox.y + yBox.h);
-
-            if (ix2 < ix1 || iy2 < iy1) continue;
-
-            const intersection = (ix2 - ix1) * (iy2 - iy1);
-            const areaP = pBox.w * pBox.h;
-            const areaY = yBox.w * yBox.h;
-            const iou = intersection / (areaP + areaY - intersection);
-
-            if (iou > 0.05) {
-                candidates.push({ pi, yi, iou, yoloBox: yBox, poneglyphText: pBox.texte_propose || '' });
-            }
-        }
-    }
-
-    candidates.sort((a, b) => b.iou - a.iou);
-
-    const matches = [];
-    const usedPoneglyph = new Set();
-    const usedYolo = new Set();
-
-    for (const c of candidates) {
-        if (usedPoneglyph.has(c.pi) || usedYolo.has(c.yi)) continue;
-        usedPoneglyph.add(c.pi);
-        usedYolo.add(c.yi);
-        matches.push({
-            yoloBoxIndex: c.yi,
-            yoloBox: c.yoloBox,
-            poneglyphText: c.poneglyphText,
-            iou: c.iou,
-            poneglyphIndex: c.pi
-        });
-    }
-
-    matches.sort((a, b) => a.poneglyphIndex - b.poneglyphIndex);
-
-    const unmatchedYoloIndices = yoloBoxes
-        .map((_, i) => i)
-        .filter(i => !usedYolo.has(i));
-
-    return { matches, unmatchedYoloIndices };
+    const { matches, unmatchedYoloIndices } = rallyPageBubblesToYolo(poneglyphBubbles, yoloBoxes, imgW, imgH);
+    return {
+        matches: matches
+            .map(match => ({
+                yoloBoxIndex: match.yoloIndex,
+                yoloBox: yoloBoxes[match.yoloIndex],
+                poneglyphText: match.text,
+                iou: match.iou,
+                poneglyphIndex: match.pageIndex,
+            }))
+            .sort((a, b) => a.poneglyphIndex - b.poneglyphIndex),
+        unmatchedYoloIndices,
+    };
 }
 
 function boxArea(box) {
@@ -196,21 +156,21 @@ function getReviewSources(item, providerLabel) {
     if (item.rallied) {
         sources.push({
             key: 'poneglyph',
-            label: `Poneglyph-BBox (${providerLabel})`,
+            label: `${BBOX_MODEL_NAME} (${providerLabel})`,
             text: item.poneglyphText || '',
         });
     }
 
     sources.push({
         key: 'lighton',
-        label: `Poneglyph (${providerLabel})`,
+        label: `${TEXT_MODEL_NAME} (${providerLabel})`,
         text: item.lightonText || '',
     });
 
     if (item.suryaEnabled) {
         sources.push({
             key: 'surya',
-            label: 'Surya Local',
+            label: `${SURYA_MODEL_NAME} (${OCR_RUNTIME_LABELS.local})`,
             text: item.suryaText || '',
         });
     }
@@ -538,8 +498,8 @@ export default function BatchOcrManager() {
 
     const getLocalBatchDisabledReason = () => {
         if (!tauriLocalOcr.isTauri) return "App desktop non detectee.";
-        if (!tauriLocalOcr.localModelStatus?.ready) return "Chargez le modele Poneglyph-BBox.";
-        if (!tauriLocalOcr.localTextModelStatus?.ready) return "Chargez le modele Poneglyph.";
+        if (!tauriLocalOcr.localModelStatus?.ready) return `Chargez le modèle ${BBOX_MODEL_NAME}.`;
+        if (!tauriLocalOcr.localTextModelStatus?.ready) return `Chargez le modèle ${TEXT_MODEL_NAME}.`;
         return "Inference locale indisponible.";
     };
 
@@ -971,8 +931,8 @@ export default function BatchOcrManager() {
     };
 
     const chapters = getAllChapters();
-    const providerLabel = ocrProvider === 'local' ? 'Local' : 'Modal';
-    const voterLabel = canUseSuryaBatch ? `${providerLabel} + Surya` : providerLabel;
+    const providerLabel = ocrProvider === 'local' ? OCR_RUNTIME_LABELS.local : OCR_RUNTIME_LABELS.cloud;
+    const voterLabel = canUseSuryaBatch ? `${providerLabel} + ${SURYA_MODEL_NAME}` : providerLabel;
     const hasSuryaReview = reviewQueue.some(item => item.suryaEnabled && item.suryaText);
 
     const totalReviewed = stats.totalReview - reviewQueue.length;
@@ -1011,7 +971,7 @@ export default function BatchOcrManager() {
                                 Configuration
                             </CardTitle>
                             <CardDescription className="text-slate-400">
-                                Sélectionnez un chapitre. YOLO détecte les bulles, Poneglyph-BBox + Poneglyph font l&apos;OCR, avec Surya en troisième voteur quand il est chargé. Les résultats concordants sont auto-validés.
+                                Sélectionnez un chapitre. YOLO détecte les bulles, {BBOX_MODEL_NAME} + {TEXT_MODEL_NAME} font l&apos;OCR, avec {SURYA_MODEL_NAME} en troisième voteur quand il est chargé. Les résultats concordants sont auto-validés.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4 p-5">
@@ -1028,10 +988,10 @@ export default function BatchOcrManager() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="modal">
-                                                <span className="inline-flex items-center gap-2"><CloudLightning className="h-3.5 w-3.5" /> Modal</span>
+                                                <span className="inline-flex items-center gap-2"><CloudLightning className="h-3.5 w-3.5" /> {OCR_RUNTIME_LABELS.cloud}</span>
                                             </SelectItem>
                                             <SelectItem value="local" disabled={!canUseLocalBatch}>
-                                                <span className="inline-flex items-center gap-2"><Cpu className="h-3.5 w-3.5" /> Local</span>
+                                                <span className="inline-flex items-center gap-2"><Cpu className="h-3.5 w-3.5" /> {OCR_RUNTIME_LABELS.local}</span>
                                             </SelectItem>
                                         </SelectContent>
                                     </Select>
@@ -1042,12 +1002,12 @@ export default function BatchOcrManager() {
                                 <div className="flex flex-wrap items-center gap-2 text-xs">
                                     <span className="font-semibold text-slate-400">État des modèles :</span>
                                     <Badge variant="outline" className="border-white/12 bg-white/8 text-slate-200">Provider : {voterLabel}</Badge>
-                                    {tauriLocalOcr.isTauri && <Badge variant="outline" className={tauriLocalOcr.localSuryaModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>Surya {tauriLocalOcr.localSuryaModelStatus?.ready ? "chargé" : "non chargé"}</Badge>}
-                                    {tauriLocalOcr.isTauri && <Badge variant="outline" className={tauriLocalOcr.localModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>Poneglyph-BBox {tauriLocalOcr.localModelStatus?.ready ? "chargé" : "non chargé"}</Badge>}
-                                    {tauriLocalOcr.isTauri && <Badge variant="outline" className={tauriLocalOcr.localTextModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>Poneglyph {tauriLocalOcr.localTextModelStatus?.ready ? "chargé" : "non chargé"}</Badge>}
+                                    {tauriLocalOcr.isTauri && <Badge variant="outline" className={tauriLocalOcr.localSuryaModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>{SURYA_MODEL_NAME} {tauriLocalOcr.localSuryaModelStatus?.ready ? "chargé" : "non chargé"}</Badge>}
+                                    {tauriLocalOcr.isTauri && <Badge variant="outline" className={tauriLocalOcr.localModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>{BBOX_MODEL_NAME} {tauriLocalOcr.localModelStatus?.ready ? "chargé" : "non chargé"}</Badge>}
+                                    {tauriLocalOcr.isTauri && <Badge variant="outline" className={tauriLocalOcr.localTextModelStatus?.ready ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-200" : "border-white/12 bg-white/8 text-slate-300"}>{TEXT_MODEL_NAME} {tauriLocalOcr.localTextModelStatus?.ready ? "chargé" : "non chargé"}</Badge>}
                                 </div>
                                 {tauriLocalOcr.isTauri && !canUseLocalBatch && (
-                                    <p className="mt-2 text-[11px] text-slate-400">Mode local disponible quand Poneglyph-BBox et Poneglyph sont tous les deux chargés.</p>
+                                    <p className="mt-2 text-[11px] text-slate-400">Mode local disponible quand {BBOX_MODEL_NAME} et {TEXT_MODEL_NAME} sont tous les deux chargés.</p>
                                 )}
                             </div>
 
@@ -1135,14 +1095,14 @@ export default function BatchOcrManager() {
                                 </div>
                                 <div className="flex flex-wrap gap-1.5">
                                     <Button size="sm" variant="outline" onClick={() => handleAcceptAll('lighton')} disabled={processingReview} className="border-white/12 bg-white/8 text-slate-200 hover:bg-white/14">
-                                        Tout Poneglyph
+                                        Tout {TEXT_MODEL_NAME}
                                     </Button>
                                     <Button size="sm" variant="outline" onClick={() => handleAcceptAll('poneglyph')} disabled={processingReview} className="border-white/12 bg-white/8 text-slate-200 hover:bg-white/14">
-                                        Tout Poneglyph-BBox
+                                        Tout {BBOX_MODEL_NAME}
                                     </Button>
                                     {hasSuryaReview && (
                                         <Button size="sm" variant="outline" onClick={() => handleAcceptAll('surya')} disabled={processingReview} className="border-white/12 bg-white/8 text-slate-200 hover:bg-white/14">
-                                            Tout Surya
+                                            Tout {SURYA_MODEL_NAME}
                                         </Button>
                                     )}
                                     <Button size="sm" variant="ghost" onClick={handleSkipAll} className="text-red-400 hover:text-red-600">

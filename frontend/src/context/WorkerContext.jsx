@@ -1,108 +1,12 @@
 "use client";
 import React, { createContext, useContext, useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { formatBenchmarkContext, formatRegistryMetric, OCR_MODEL_REGISTRY_IDS } from '@/lib/modelRegistry';
-import { DEEPSEEK_LABEL } from '@/lib/deepseekConfig';
+import { OCR_MODELS } from '@/lib/ocrModels';
 
 const WorkerContext = createContext();
 
 export const useWorker = () => useContext(WorkerContext);
 
 const DEFAULT_OCR_MODEL_KEY = 'ppocrv6Line';
-
-export const OCR_MODELS = {
-    lighton3BubbleWebgpu: {
-        key: 'lighton3BubbleWebgpu', label: 'LightOnOCR 3 · bulles',
-        description: 'Bulles entières · WebGPU dans le navigateur',
-        task: 'bubble-ocr', size: '~1,74 Go', type: 'local', runtime: 'onnx',
-        cer: formatRegistryMetric(OCR_MODEL_REGISTRY_IDS.lighton3BubbleWebgpu),
-        benchmark: formatBenchmarkContext(OCR_MODEL_REGISTRY_IDS.lighton3BubbleWebgpu),
-        preserveTranscript: true,
-    },
-    lighton3Webgpu: {
-        key: 'lighton3Webgpu', label: 'LightOnOCR 3 · WebGPU',
-        description: 'Pages complètes · texte et bbox sur votre GPU',
-        task: 'page-ocr-bbox', size: '~1,72 Go', type: 'local', runtime: 'onnx',
-    },
-    suryaWebgpu: {
-        key: 'suryaWebgpu',
-        label: 'Surya · WebGPU',
-        description: 'Bulles entières · GPU dans le navigateur',
-        cer: 'ONNX · précision mixte',
-        benchmark: 'Fine-tuning du 5 octobre 2026 ; métriques navigateur évaluées séparément',
-        size: '~1,33 Go',
-        type: 'local',
-        runtime: 'onnx'
-    },
-    falconWebgpu: {
-        key: 'falconWebgpu',
-        label: 'Falcon-OCR',
-        description: 'Bulles entières · WebGPU dans le navigateur',
-        cer: 'ONNX · précision mixte',
-        benchmark: 'Modèle final entraîné sur toutes les bulles ; pas de test indépendant',
-        size: '~618 Mo',
-        type: 'local',
-        runtime: 'onnx'
-    },
-    ppocrv6Line: {
-        key: 'ppocrv6Line',
-        label: 'PP-OCRv6',
-        description: 'YOLO lignes + OCR ONNX',
-        cer: formatRegistryMetric(OCR_MODEL_REGISTRY_IDS.ppocrv6Line),
-        benchmark: formatBenchmarkContext(OCR_MODEL_REGISTRY_IDS.ppocrv6Line),
-        size: '~87 Mo',
-        type: 'local',
-        runtime: 'onnx'
-    },
-    poneglyphLocal: {
-        key: 'poneglyphLocal',
-        label: 'Poneglyph',
-        description: 'Inference locale via Tauri',
-        cer: formatRegistryMetric(OCR_MODEL_REGISTRY_IDS.poneglyphLocal),
-        benchmark: formatBenchmarkContext(OCR_MODEL_REGISTRY_IDS.poneglyphLocal),
-        size: '~4 Go',
-        type: 'local',
-        runtime: 'tauri',
-        localModelKey: 'base'
-    },
-    suryaLocal: {
-        key: 'suryaLocal',
-        label: 'Surya',
-        description: 'Inference locale via Tauri',
-        cer: formatRegistryMetric(OCR_MODEL_REGISTRY_IDS.suryaLocal),
-        benchmark: formatBenchmarkContext(OCR_MODEL_REGISTRY_IDS.suryaLocal),
-        size: '~4 Go',
-        type: 'local',
-        runtime: 'tauri',
-        localModelKey: 'surya'
-    },
-    gemini: {
-        key: 'gemini',
-        label: 'Gemini 3.1 Flash Lite',
-        description: 'Google Gemini API',
-        cer: formatRegistryMetric(OCR_MODEL_REGISTRY_IDS.gemini),
-        benchmark: formatBenchmarkContext(OCR_MODEL_REGISTRY_IDS.gemini),
-        size: 'Cloud',
-        type: 'api'
-    },
-    deepseek: {
-        key: 'deepseek',
-        label: DEEPSEEK_LABEL,
-        description: 'OCR vision avec votre clé API DeepSeek',
-        size: 'Cloud',
-        type: 'api',
-        runtime: 'cloud',
-        byok: true,
-    },
-    lighton: {
-        key: 'lighton',
-        label: 'LightOn OCR',
-        description: 'Inference OCR Modal GPU',
-        cer: formatRegistryMetric(OCR_MODEL_REGISTRY_IDS.lighton),
-        benchmark: formatBenchmarkContext(OCR_MODEL_REGISTRY_IDS.lighton),
-        size: 'API Cloud',
-        type: 'api'
-    }
-};
 
 export const WorkerProvider = ({ children }) => {
     const entries = useRef(new Map());
@@ -123,7 +27,7 @@ export const WorkerProvider = ({ children }) => {
 
     const loadModel = useCallback((modelKey) => {
         const key = modelKey || activeModelKey;
-        if (OCR_MODELS[key]?.runtime !== 'onnx') return;
+        if (OCR_MODELS[key]?.engine !== 'onnx') return;
         let entry = entries.current.get(key);
         if (entry?.status === 'loading' || entry?.status === 'ready') return;
         if (!entry) {
@@ -163,7 +67,7 @@ export const WorkerProvider = ({ children }) => {
 
     const runOcr = useCallback(async (imageInput, requestId = null, modelKey = activeModelKey) => {
         const entry = entries.current.get(modelKey);
-        if (entry?.status !== 'ready') throw new Error(`${OCR_MODELS[modelKey]?.label || modelKey} n'est pas chargé.`);
+        if (entry?.status !== 'ready') throw new Error(`${OCR_MODELS[modelKey]?.name || modelKey} n'est pas chargé.`);
         const isBitmap = typeof ImageBitmap !== 'undefined' && imageInput instanceof ImageBitmap;
         const payload = isBitmap
             ? { type: 'run', imageBitmap: imageInput, requestId }
@@ -175,7 +79,7 @@ export const WorkerProvider = ({ children }) => {
         workers,
         modelStates,
         worker: workers[activeModelKey] || null,
-        modelStatus: modelStates[activeModelKey]?.status || (OCR_MODELS[activeModelKey]?.type === 'api' ? 'ready' : 'idle'),
+        modelStatus: modelStates[activeModelKey]?.status || (OCR_MODELS[activeModelKey]?.runtime === 'cloud' ? 'ready' : 'idle'),
         downloadProgress: modelStates[activeModelKey]?.progress || 0,
         loadModel,
         switchModel,

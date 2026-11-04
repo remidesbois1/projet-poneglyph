@@ -1,17 +1,22 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useWorker, OCR_MODELS } from '@/context/WorkerContext';
-import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useWorker } from '@/context/WorkerContext';
+import { useOcrModels } from '@/hooks/useOcrModels';
 import { analyzeBubble } from '@/lib/geminiClient';
 import { analyzeDeepSeekBubble } from '@/lib/deepseekClient';
 import { DEEPSEEK_LABEL, getDeepSeekApiKey } from '@/lib/deepseekConfig';
 import { capitalizeOcrSentenceStarts } from '@/lib/ocr-utils';
-import { postOcrImage } from '@/lib/ocrProxyClient';
-import { isSelectableOcrModel } from '@/lib/ocrModelAvailability';
-import { cropImage, cropImageBitmap } from '@/lib/utils';
+import { OCR_MODELS, getOcrModelLabel } from '@/lib/ocrModels';
 import { toast } from 'sonner';
 
+const DEEPSEEK_CANDIDATE_LABEL = getOcrModelLabel(OCR_MODELS.deepseek);
+
+/**
+ * OCR inside the annotation editor. A bubble (hand-drawn or queued by the page pipeline) is read
+ * by the selected bubble models only; page models contribute through the `pageCandidates` that
+ * the page pipeline rallied onto that bubble.
+ */
 export function useAnnotationOCR({
     imageRef,
     pageId,
@@ -24,44 +29,31 @@ export function useAnnotationOCR({
     setOcrSource,
     setDebugImageUrl,
     setShowApiKeyModal,
-    isSandbox = false
+    isSandbox = false,
+    allowPageModels = false
 }) {
-    const { workers, modelStates, modelStatus, loadModel, switchModel, downloadProgress, runOcr, activeModelKey } = useWorker();
-    const tauriLocalOcr = useTauriLocalOcrContext();
-    const [preferLocalOCR, setPreferLocalOCR] = useState(isSandbox);
-    const [geminiKey, setGeminiKey] = useState(null);
-    const [hasDeepSeekKey, setHasDeepSeekKey] = useState(false);
-    const [ocrResults, setOcrResults] = useState({});
-    const selectableModelKeys = useMemo(() => Object.values(OCR_MODELS)
-        .filter(model => isSelectableOcrModel(model, isSandbox))
-        .map(model => model.key), [isSandbox]);
-    const selectionStorageKey = isSandbox ? 'sandboxSelectedOcrModelKeys' : 'selectedOcrModelKeys';
-    const [selectedOcrModelKeys, setSelectedOcrModelKeys] = useState(() => {
-        if (typeof window === 'undefined') return ['ppocrv6Line'];
-        try {
-            const saved = JSON.parse(localStorage.getItem(selectionStorageKey) ?? localStorage.getItem('selectedOcrModelKeys'));
-            const valid = Array.isArray(saved) ? saved.filter(key => selectableModelKeys.includes(key)) : [];
-            return valid.length ? valid : ['ppocrv6Line'];
-        } catch {
-            return ['ppocrv6Line'];
-        }
-    });
+    const { workers } = useWorker();
+    const {
+        models, selectedOcrModelKeys, toggleOcrModel, prepareSelectedModels,
+        refreshModelAccess, runBubbleModel, runPageModel
+    } = useOcrModels({ isSandbox, allowPageModels });
+    const bubbleModels = useMemo(() => models.filter(model => model.selected && model.scope === 'bubble'), [models]);
+    const pageModels = useMemo(() => models.filter(model => model.selected && model.scope === 'page'), [models]);
     const inFlightRequests = useRef(new Map());
     const completedRequests = useRef(new Map());
-    const workerWaiters = useRef(new Map());
-    const deepSeekRequests = useRef(new Set());
+    const requestControllers = useRef(new Set());
     const deepSeekRetry = useRef(null);
     const pageGeneration = useRef(0);
 
     useEffect(() => {
-        const requests = deepSeekRequests.current;
+        const controllers = requestControllers.current;
         const inFlight = inFlightRequests.current;
         const completed = completedRequests.current;
         return () => {
             pageGeneration.current += 1;
-            if (requests.size || inFlight.size) setIsSubmitting?.(false);
-            for (const controller of requests) controller.abort();
-            requests.clear();
+            if (controllers.size || inFlight.size) setIsSubmitting?.(false);
+            for (const controller of controllers) controller.abort();
+            controllers.clear();
             inFlight.clear();
             completed.clear();
         };
@@ -73,136 +65,26 @@ export function useAnnotationOCR({
     useEffect(() => () => deepSeekRetry.current?.abort(), [pendingTargetKey]);
 
     useEffect(() => {
-        if (typeof window === 'undefined') return;
-        setPreferLocalOCR(isSandbox || localStorage.getItem('preferLocalOCR') !== 'false');
-        const loadKey = () => {
-            setGeminiKey(localStorage.getItem('google_api_key'));
-            setHasDeepSeekKey(Boolean(getDeepSeekApiKey()));
-        };
-        loadKey();
-        window.addEventListener('storage', loadKey);
-        return () => window.removeEventListener('storage', loadKey);
-    }, [isSandbox]);
-
-    const toggleOcrPreference = useCallback(() => {
-        const newValue = !preferLocalOCR;
-        setPreferLocalOCR(newValue);
-        localStorage.setItem('preferLocalOCR', JSON.stringify(newValue));
-    }, [preferLocalOCR]);
-
-    const toggleOcrModel = useCallback((modelKey) => {
-        if (!selectableModelKeys.includes(modelKey)) return;
-        setSelectedOcrModelKeys(previous => {
-            const next = previous.includes(modelKey)
-                ? previous.filter(key => key !== modelKey)
-                : [...previous, modelKey];
-            localStorage.setItem(selectionStorageKey, JSON.stringify(next));
-            return next;
-        });
-    }, [selectableModelKeys, selectionStorageKey]);
-
-    const getTauriTextRuntime = useCallback((modelData) => {
-        const isSurya = modelData?.localModelKey === 'surya';
-        return {
-            canRun: isSurya ? tauriLocalOcr.canRunLocalSuryaOcr : tauriLocalOcr.canRunLocalTextOcr,
-            status: isSurya ? tauriLocalOcr.localSuryaModelStatus : tauriLocalOcr.localTextModelStatus,
-            isDownloading: isSurya ? tauriLocalOcr.isDownloadingLocalSuryaModel : tauriLocalOcr.isDownloadingLocalTextModel,
-            runBlob: isSurya ? tauriLocalOcr.runLocalSuryaOcrBlob : tauriLocalOcr.runLocalTextOcrBlob,
-            label: modelData?.label || (isSurya ? 'Surya' : 'Poneglyph'),
-        };
-    }, [tauriLocalOcr]);
-
-    const waitForWorkerResult = useCallback((workerRequestId) => new Promise((resolve, reject) => {
-        workerWaiters.current.set(workerRequestId, { resolve, reject });
-    }), []);
-
-    useEffect(() => {
         const loadedWorkers = Object.values(workers || {});
-        const handleMessage = (event) => {
-            const { status, text, error, url, requestId } = event.data;
-            if (status === 'debug_image') setDebugImageUrl(url);
-            if (!requestId) return;
-
-            const waiter = workerWaiters.current.get(requestId);
-            if (!waiter) return;
-            if (status === 'complete') {
-                workerWaiters.current.delete(requestId);
-                waiter.resolve(text || '');
-            }
-            if (status === 'error') {
-                workerWaiters.current.delete(requestId);
-                waiter.reject(new Error(error || 'Erreur OCR locale'));
-            }
+        const handleMessage = ({ data }) => {
+            if (data?.status === 'debug_image') setDebugImageUrl(data.url);
         };
         for (const worker of loadedWorkers) worker.addEventListener('message', handleMessage);
         return () => { for (const worker of loadedWorkers) worker.removeEventListener('message', handleMessage); };
     }, [workers, setDebugImageUrl]);
 
-    const runModel = useCallback(async (modelData, areaToCrop, requestId) => {
-        if (!isSelectableOcrModel(modelData, isSandbox)) {
-            throw new Error('Ce moteur OCR n’est pas disponible dans la sandbox.');
-        }
-        if (modelData.key === 'deepseek') {
-            const controller = new AbortController();
-            deepSeekRequests.current.add(controller);
-            try {
-                const result = await analyzeDeepSeekBubble(imageRef.current, areaToCrop, getDeepSeekApiKey(), { signal: controller.signal });
-                controller.signal.throwIfAborted();
-                return result.data.texte_propose;
-            } finally {
-                deepSeekRequests.current.delete(controller);
-            }
-        }
-        if (modelData.key === 'lighton') {
-            const blob = await cropImage(imageRef.current, areaToCrop);
-            const response = await postOcrImage('/api/local_lighton', blob);
-            if (!response.ok) throw new Error(`Erreur OCR ${modelData.label}`);
-            const result = await response.json();
-            return result.text || '';
-        }
-
-        if (modelData.runtime === 'tauri') {
-            const runtime = getTauriTextRuntime(modelData);
-            if (!runtime.canRun) {
-                throw new Error(`${runtime.label} n'est pas chargé et prêt.`);
-            }
-            const blob = await cropImage(imageRef.current, areaToCrop);
-            const result = await runtime.runBlob(blob);
-            return result?.text || '';
-        }
-
-        if (modelData.runtime === 'onnx') {
-            if (modelStates?.[modelData.key]?.status !== 'ready') {
-                throw new Error(`${modelData.label} n'est pas chargé.`);
-            }
-            const workerRequestId = `${requestId}:${modelData.key}:${Date.now()}`;
-            const bitmap = await cropImageBitmap(imageRef.current, areaToCrop);
-            const result = waitForWorkerResult(workerRequestId);
-            try { await runOcr(bitmap, workerRequestId, modelData.key); }
-            catch (error) {
-                bitmap.close();
-                workerWaiters.current.get(workerRequestId)?.reject(error);
-                workerWaiters.current.delete(workerRequestId);
-            }
-            return result;
-        }
-
-        throw new Error(`Le moteur ${modelData.label} n'est pas compatible avec la comparaison OCR.`);
-    }, [modelStates, getTauriTextRuntime, imageRef, isSandbox, runOcr, waitForWorkerResult]);
-
     const executeSelectedOcr = useCallback((areaToCrop, requestId) => {
         // A detected bubble is first read in the background, then opened for review.
         // Reuse that result rather than charging for the same provider request twice.
-        const jobKey = JSON.stringify([requestId, selectedOcrModelKeys, areaToCrop.x, areaToCrop.y, areaToCrop.w, areaToCrop.h]);
+        const jobKey = JSON.stringify([requestId, bubbleModels.map(model => model.key), areaToCrop.x, areaToCrop.y, areaToCrop.w, areaToCrop.h]);
         if (completedRequests.current.has(jobKey)) return Promise.resolve(completedRequests.current.get(jobKey));
         if (inFlightRequests.current.has(jobKey)) return inFlightRequests.current.get(jobKey);
 
         const generation = pageGeneration.current;
-        const models = selectedOcrModelKeys
-            .map(key => OCR_MODELS[key])
-            .filter(Boolean);
-        const job = Promise.allSettled(models.map(async model => {
-            const text = await runModel(model, areaToCrop, requestId);
+        const controller = new AbortController();
+        requestControllers.current.add(controller);
+        const job = Promise.allSettled(bubbleModels.map(async model => {
+            const text = await runBubbleModel(model, imageRef.current, areaToCrop, { requestId, signal: controller.signal });
             return { modelKey: model.key, label: model.label,
                 text: model.preserveTranscript ? text : capitalizeOcrSentenceStarts(text) };
         })).then(settled => {
@@ -211,43 +93,46 @@ export function useAnnotationOCR({
                 .filter(result => result.status === 'fulfilled')
                 .map(result => result.value);
             const failures = settled.flatMap((result, index) => result.status === 'rejected'
-                ? [`${models[index]?.label || 'OCR'} : ${result.reason?.message || 'indisponible'}`]
+                ? [`${bubbleModels[index].label} : ${result.reason?.message || 'indisponible'}`]
                 : []);
-
-            setOcrResults(previous => ({ ...previous, [requestId]: candidates }));
             const result = { candidates, failures };
             completedRequests.current.set(jobKey, result);
             if (completedRequests.current.size > 256) completedRequests.current.delete(completedRequests.current.keys().next().value);
             return result;
         }).finally(() => {
+            requestControllers.current.delete(controller);
             if (inFlightRequests.current.get(jobKey) === job) inFlightRequests.current.delete(jobKey);
         });
 
         inFlightRequests.current.set(jobKey, job);
         return job;
-    }, [runModel, selectedOcrModelKeys]);
+    }, [bubbleModels, imageRef, runBubbleModel]);
 
     const applyCandidatesToModal = useCallback((candidates) => {
-        const firstText = candidates[0]?.text || '';
         setOcrSource(candidates.length > 1 ? 'multiple' : candidates[0]?.modelKey || null);
         setPendingAnnotation(previous => previous ? {
             ...previous,
-            texte_propose: firstText,
+            texte_propose: candidates[0]?.text || '',
             ocr_candidates: candidates
         } : previous);
         setIsModalOpen(true);
     }, [setIsModalOpen, setOcrSource, setPendingAnnotation]);
 
     const runBackgroundOcr = useCallback(async (areaToCrop, requestId) => {
+        if (!bubbleModels.length) return;
         try {
             await executeSelectedOcr(areaToCrop, requestId);
         } catch (error) {
             if (error.name === 'AbortError') return;
             console.error('Background OCR error:', error);
         }
-    }, [executeSelectedOcr]);
+    }, [bubbleModels.length, executeSelectedOcr]);
 
-    const runLocalOcr = useCallback(async (cropData = null, customRequestId = null) => {
+    /**
+     * Reads one bubble with the selected bubble models and opens the editor.
+     * `pageCandidates` (page OCR) are offered alongside; a retry without a crop reuses the open bubble's.
+     */
+    const runLocalOcr = useCallback(async (cropData = null, customRequestId = null, { pageCandidates } = {}) => {
         const areaToCrop = cropData || rectangle || (pendingAnnotation ? {
             x: pendingAnnotation.x,
             y: pendingAnnotation.y,
@@ -258,17 +143,22 @@ export function useAnnotationOCR({
             setIsModalOpen(true);
             return;
         }
+        const extraCandidates = pageCandidates ?? (cropData ? [] : pendingAnnotation?.page_ocr_candidates ?? []);
 
-        if (selectedOcrModelKeys.includes('deepseek') && !getDeepSeekApiKey()) {
+        if (bubbleModels.some(model => model.engine === 'deepseek') && !getDeepSeekApiKey()) {
             toast.info('Configurez votre clé DeepSeek, puis relancez la transcription.');
             setShowApiKeyModal(true);
+            return;
+        }
+        if (!bubbleModels.length) {
+            applyCandidatesToModal(extraCandidates);
             return;
         }
 
         const requestId = customRequestId || Date.now();
         const generation = pageGeneration.current;
-        setLoadingText(selectedOcrModelKeys.length > 1
-            ? `Analyse de ${selectedOcrModelKeys.length} modèles OCR...`
+        setLoadingText(bubbleModels.length > 1
+            ? `Analyse de ${bubbleModels.length} modèles OCR...`
             : 'Analyse OCR...');
         setIsSubmitting(true);
         setDebugImageUrl(null);
@@ -280,12 +170,8 @@ export function useAnnotationOCR({
                     description: failures.join(' · ')
                 });
             }
-            if (!candidates.length) {
-                toast.error('Aucun modèle OCR sélectionné n’a pu traiter cette bulle.');
-                setIsModalOpen(true);
-                return;
-            }
-            applyCandidatesToModal(candidates);
+            if (!candidates.length && !extraCandidates.length) toast.error('Aucun modèle OCR n’a pu lire cette bulle.');
+            applyCandidatesToModal([...candidates, ...extraCandidates]);
         } catch (error) {
             if (error.name === 'AbortError') return;
             console.error('OCR error:', error);
@@ -294,7 +180,7 @@ export function useAnnotationOCR({
         } finally {
             if (generation === pageGeneration.current) setIsSubmitting(false);
         }
-    }, [applyCandidatesToModal, executeSelectedOcr, pendingAnnotation, rectangle, selectedOcrModelKeys, setDebugImageUrl, setIsModalOpen, setIsSubmitting, setLoadingText, setShowApiKeyModal]);
+    }, [applyCandidatesToModal, bubbleModels, executeSelectedOcr, pendingAnnotation, rectangle, setDebugImageUrl, setIsModalOpen, setIsSubmitting, setLoadingText, setShowApiKeyModal]);
 
     const handleRetryWithDeepSeek = useCallback(async () => {
         if (!pendingAnnotation || deepSeekRetry.current) return;
@@ -308,7 +194,7 @@ export function useAnnotationOCR({
         const controller = new AbortController();
         const generation = pageGeneration.current;
         deepSeekRetry.current = controller;
-        deepSeekRequests.current.add(controller);
+        requestControllers.current.add(controller);
         setIsSubmitting(true);
         setLoadingText(`Transcription avec ${DEEPSEEK_LABEL}…`);
         try {
@@ -316,13 +202,13 @@ export function useAnnotationOCR({
             controller.signal.throwIfAborted();
             setPendingAnnotation(previous => previous && previous.id === target.id && ['x', 'y', 'w', 'h'].every(key => previous[key] === target[key]) ? {
                 ...previous, texte_propose: capitalizeOcrSentenceStarts(response.data.texte_propose),
-                ocr_candidates: [{ modelKey: 'deepseek', label: DEEPSEEK_LABEL, text: capitalizeOcrSentenceStarts(response.data.texte_propose) }],
+                ocr_candidates: [{ modelKey: 'deepseek', label: DEEPSEEK_CANDIDATE_LABEL, text: capitalizeOcrSentenceStarts(response.data.texte_propose) }],
             } : previous);
             setOcrSource('deepseek');
         } catch (error) {
             if (!controller.signal.aborted) toast.error(error.message || 'Transcription DeepSeek indisponible.');
         } finally {
-            deepSeekRequests.current.delete(controller);
+            requestControllers.current.delete(controller);
             if (deepSeekRetry.current === controller) deepSeekRetry.current = null;
             if (generation === pageGeneration.current) setIsSubmitting(false);
         }
@@ -359,21 +245,17 @@ export function useAnnotationOCR({
     }, [imageRef, pendingAnnotation, setDebugImageUrl, setIsModalOpen, setIsSubmitting, setLoadingText, setOcrSource, setPendingAnnotation, setShowApiKeyModal]);
 
     return {
-        preferLocalOCR,
-        toggleOcrPreference,
-        geminiKey,
-        hasDeepSeekKey,
-        handleRetryWithDeepSeek,
-        activeModelKey,
-        modelStatus,
-        loadModel,
-        switchModel,
-        downloadProgress,
+        models,
         selectedOcrModelKeys,
         toggleOcrModel,
+        prepareSelectedModels,
+        refreshModelAccess,
+        bubbleModels,
+        pageModels,
+        runPageModel,
         runLocalOcr,
         runBackgroundOcr,
-        ocrResults,
-        handleRetryWithCloud
+        handleRetryWithCloud,
+        handleRetryWithDeepSeek
     };
 }

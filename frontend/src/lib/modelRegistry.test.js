@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-    MODEL_REGISTRY,
-    OCR_MODEL_REGISTRY_IDS,
     PUBLISHED_MODEL_BENCHMARKS,
-    formatBenchmarkContext,
     formatRegistryMetric,
-    getModelRegistryEntry,
 } from './modelRegistry';
 
 describe('model registry', () => {
@@ -32,13 +28,5 @@ describe('model registry', () => {
         expect(formatRegistryMetric('ppocrv6-line')).toBe('CER 1,451 %');
         expect(formatRegistryMetric('readernet-reading-order')).toBe('Exact panel 95,65 %');
         expect(formatRegistryMetric('gemini-flash-lite')).toBe('Benchmark comparable non publié');
-    });
-
-    it('maps every selectable OCR model to a registry entry', () => {
-        for (const registryId of Object.values(OCR_MODEL_REGISTRY_IDS)) {
-            expect(getModelRegistryEntry(registryId)).toBeTruthy();
-        }
-        expect(formatBenchmarkContext('surya-bubble')).toContain('1');
-        expect(MODEL_REGISTRY.schema_version).toBe(1);
     });
 });
