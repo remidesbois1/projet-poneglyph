@@ -1,4 +1,5 @@
 import { DEEPSEEK_LABEL } from './deepseekConfig';
+import { GLM_LABEL } from './mistralConfig';
 
 export const OCR_RUNTIME_LABELS = Object.freeze({
     browser: 'Navigateur',
@@ -22,13 +23,13 @@ export const OCR_MODELS = Object.freeze({
     falconWebgpu: defineModel('falconWebgpu', { name: 'Falcon OCR', scope: 'bubble', runtime: 'browser', engine: 'onnx', size: '620 Mo' }),
     poneglyphLocal: defineModel('poneglyphLocal', { name: 'LightOnOCR 2', scope: 'bubble', runtime: 'local', engine: 'tauri', localModel: 'text', size: '2 Go' }),
     suryaLocal: defineModel('suryaLocal', { name: 'Surya OCR 2', scope: 'bubble', runtime: 'local', engine: 'tauri', localModel: 'surya', size: '1,3 Go' }),
-    deepseek: defineModel('deepseek', { name: DEEPSEEK_LABEL, scope: 'bubble', runtime: 'cloud', engine: 'deepseek' }),
     lighton3Webgpu: defineModel('lighton3Webgpu', { name: 'LightOnOCR 3 BBox', scope: 'page', runtime: 'browser', engine: 'onnx', size: '1,7 Go', preserveTranscript: true }),
     lighton2BboxLocal: defineModel('lighton2BboxLocal', { name: 'LightOnOCR 2 BBox', scope: 'page', runtime: 'local', engine: 'tauri', localModel: 'bbox', size: '2 Go' }),
     suryaBboxLocal: defineModel('suryaBboxLocal', { name: 'Surya OCR 2 BBox', scope: 'page', runtime: 'local', engine: 'tauri', localModel: 'suryaBbox', size: '1,3 Go' }),
     geminiPage: defineModel('geminiPage', { name: 'Gemini', scope: 'page', runtime: 'cloud', engine: 'gemini', configKey: 'model_ocr', sandbox: false }),
     chatgptPage: defineModel('chatgptPage', { name: 'ChatGPT', scope: 'page', runtime: 'cloud', engine: 'chatgpt', configKey: 'model_chatgpt_ocr' }),
     deepseekPage: defineModel('deepseekPage', { name: DEEPSEEK_LABEL, scope: 'page', runtime: 'cloud', engine: 'deepseek' }),
+    glmPage: defineModel('glmPage', { name: GLM_LABEL, scope: 'page', runtime: 'cloud', engine: 'mistral' }),
 });
 
 export const DEFAULT_OCR_MODEL_KEYS = Object.freeze(['ppocrv6Line']);

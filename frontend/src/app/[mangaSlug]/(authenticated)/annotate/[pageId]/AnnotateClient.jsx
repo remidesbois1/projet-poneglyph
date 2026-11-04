@@ -367,7 +367,7 @@ export default function AnnotatePage() {
     const {
         models: ocrModels, toggleOcrModel, prepareSelectedModels, refreshModelAccess,
         bubbleModels, pageModels, runPageModel, runLocalOcr, runBackgroundOcr,
-        handleRetryWithCloud, handleRetryWithDeepSeek
+        handleRetryWithCloud
     } = useAnnotationOCR({
         imageRef, pageId, rectangle, pendingAnnotation, setPendingAnnotation,
         setIsSubmitting, setLoadingText, setIsModalOpen, setOcrSource,
@@ -905,13 +905,12 @@ export default function AnnotatePage() {
                 debugImageUrl={debugImageUrl}
                 runLocalOcr={runLocalOcr}
                 handleRetryWithCloud={handleRetryWithCloud}
-                handleRetryWithDeepSeek={handleRetryWithDeepSeek}
                 isSubmitting={isSubmitting || isPageOcrRunning}
                 ocrModelCount={bubbleModels.length}
             />
 
             <Dialog open={showApiKeyModal} onOpenChange={setShowApiKeyModal}>
-                <AiAccessDialog onSave={handleSaveApiKey} onSaveDeepSeek={() => setShowApiKeyModal(false)} />
+                <AiAccessDialog onSave={handleSaveApiKey} onSaveDeepSeek={() => setShowApiKeyModal(false)} onSaveMistral={() => setShowApiKeyModal(false)} />
             </Dialog>
 
             {!isGuest && (

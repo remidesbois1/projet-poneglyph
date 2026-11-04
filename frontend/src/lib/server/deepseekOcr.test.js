@@ -12,7 +12,7 @@ beforeAll(async () => {
 });
 const request = (input = {}, headers = {}, options = {}) => new Request('https://poneglyph.fr/api/deepseek', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DeepSeek-API-Key': key, Origin: 'https://poneglyph.fr', ...headers },
-    body: JSON.stringify({ mode: 'bubble', prompt: 'Transcribe this image.', image, ...input }), ...options,
+    body: JSON.stringify({ prompt: 'Transcribe this image.', image, ...input }), ...options,
 });
 const completion = (content = 'Bonjour', finish_reason = 'stop') => Response.json({
     choices: [{ finish_reason, message: { content, reasoning_content: 'Private reasoning' } }],
@@ -34,17 +34,10 @@ describe('DeepSeek BYOK proxy', () => {
         const sent = JSON.parse(options.body);
         expect(sent.model).toBe('deepseek-flash');
         expect(sent.thinking).toEqual({ type: 'disabled' });
-        expect(sent.response_format).toBeUndefined();
-        expect(sent.messages[0].content[1]).toEqual({ type: 'image_url', image_url: { url: image, detail: 'original' } });
-    });
-
-    it('requests strict JSON and the normalized bbox convention for full-page OCR', async () => {
-        const fetchImpl = vi.fn(async () => completion('{"bubbles":[]}'));
-        await createDeepSeekOcrHandler({ fetchImpl })(request({ mode: 'bbox' }));
-        const sent = JSON.parse(fetchImpl.mock.calls[0][1].body);
         expect(sent.response_format).toEqual({ type: 'json_object' });
         expect(sent.max_tokens).toBe(16384);
         expect(sent.messages[0].content[0].text).toContain('[x1,y1,x2,y2]');
+        expect(sent.messages[0].content[1]).toEqual({ type: 'image_url', image_url: { url: image, detail: 'original' } });
     });
 
     it.each([
@@ -54,7 +47,6 @@ describe('DeepSeek BYOK proxy', () => {
         [{}, { 'Content-Type': 'text/plain' }, 415],
         [{}, { 'Content-Encoding': 'gzip' }, 415],
         [{}, { 'Content-Length': '20000000' }, 413],
-        [{ mode: 'chat' }, {}, 400],
         [{ prompt: '' }, {}, 400],
         [{ prompt: 'a'.repeat(50001) }, {}, 400],
         [{ image: 'https://private.invalid/image.png' }, {}, 400],

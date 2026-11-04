@@ -109,26 +109,25 @@ export function createDeepSeekOcrHandler({ fetchImpl = globalThis.fetch, timeout
                 if (error instanceof SyntaxError) throw new RequestError(400, 'Requête JSON invalide.');
                 throw error;
             }
-            if (!input || !['bubble', 'bbox'].includes(input.mode) || typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 50_000) {
-                throw new RequestError(400, 'Mode OCR ou instruction invalide.');
+            if (!input || typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 50_000) {
+                throw new RequestError(400, 'Instruction OCR invalide.');
             }
             await validateImage(input.image);
             signal.throwIfAborted();
-            const isBbox = input.mode === 'bbox';
             const response = await fetchImpl(ENDPOINT, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
                 body: JSON.stringify({
                     model: DEEPSEEK_MODEL,
                     messages: [{ role: 'user', content: [
-                        { type: 'text', text: input.prompt + (isBbox ? '\nReturn a JSON object with a bubbles array; bbox order is [x1,y1,x2,y2], normalized to 0-1000.' : '') },
+                        { type: 'text', text: input.prompt + '\nReturn a JSON object with a bubbles array; bbox order is [x1,y1,x2,y2], normalized to 0-1000.' },
                         { type: 'image_url', image_url: { url: input.image, detail: 'original' } },
                     ] }],
                     thinking: { type: 'disabled' },
                     temperature: 0,
-                    max_tokens: isBbox ? 16_384 : 2_048,
+                    max_tokens: 16_384,
                     stream: false,
-                    ...(isBbox ? { response_format: { type: 'json_object' } } : {}),
+                    response_format: { type: 'json_object' },
                 }),
                 signal, cache: 'no-store', redirect: 'error', credentials: 'omit',
             });

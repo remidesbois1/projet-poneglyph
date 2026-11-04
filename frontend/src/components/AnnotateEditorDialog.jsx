@@ -22,7 +22,6 @@ export default function AnnotateEditorDialog({
     debugImageUrl,
     runLocalOcr,
     handleRetryWithCloud,
-    handleRetryWithDeepSeek,
     isSubmitting = false,
     ocrModelCount = 0,
     isSandbox = false
@@ -81,9 +80,9 @@ export default function AnnotateEditorDialog({
                                     <Cpu className="h-3 w-3 mr-1" /> Local IA
                                 </Badge>
                             )}
-                            {(ocrSource === 'cloud' || ocrSource === 'deepseek') && (
+                            {ocrSource === 'cloud' && (
                                 <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200 bg-blue-50">
-                                    <CloudLightning className="h-3 w-3 mr-1" /> {ocrSource === 'deepseek' ? 'DeepSeek' : 'Gemini'}
+                                    <CloudLightning className="h-3 w-3 mr-1" /> Gemini
                                 </Badge>
                             )}
                         </div>
@@ -135,14 +134,13 @@ export default function AnnotateEditorDialog({
                                     <><RotateCcw className="h-3 w-3 mr-1" /> Relancer les modèles OCR ({ocrModelCount})</>
                                 </Button>
                             )}
-                            {(handleRetryWithCloud || handleRetryWithDeepSeek) && (
+                            {handleRetryWithCloud && (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <Button type="button" variant="outline" size="sm" disabled={isSubmitting} className="h-10 text-xs"><CloudLightning className="size-4" />Relire via API</Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="z-[70]">
-                                        {handleRetryWithCloud && <DropdownMenuItem onSelect={() => handleRetryWithCloud()} className="min-h-10">Gemini</DropdownMenuItem>}
-                                        {handleRetryWithDeepSeek && <DropdownMenuItem onSelect={() => handleRetryWithDeepSeek()} className="min-h-10">DeepSeek</DropdownMenuItem>}
+                                        <DropdownMenuItem onSelect={() => handleRetryWithCloud()} className="min-h-10">Gemini</DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             )}

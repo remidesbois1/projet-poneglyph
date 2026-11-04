@@ -461,7 +461,7 @@ export default function SandboxClient() {
     const {
         models: ocrModels, toggleOcrModel, prepareSelectedModels, refreshModelAccess,
         pageModels, runPageModel, runLocalOcr, runBackgroundOcr,
-        handleRetryWithCloud, handleRetryWithDeepSeek
+        handleRetryWithCloud
     } = useAnnotationOCR({
         imageRef, pageId: imageUrl, rectangle, pendingAnnotation, setPendingAnnotation,
         setIsSubmitting, setLoadingText, setIsModalOpen, setOcrSource,
@@ -790,13 +790,12 @@ export default function SandboxClient() {
                 debugImageUrl={debugImageUrl}
                 runLocalOcr={runLocalOcr}
                 handleRetryWithCloud={handleRetryWithCloud}
-                handleRetryWithDeepSeek={handleRetryWithDeepSeek}
                 isSubmitting={isSubmitting || isPageOcrRunning}
                 isSandbox={true}
             />
 
             <Dialog open={showApiKeyModal} onOpenChange={setShowApiKeyModal}>
-                <AiAccessDialog onSave={handleSaveApiKey} onSaveDeepSeek={() => setShowApiKeyModal(false)} />
+                <AiAccessDialog onSave={handleSaveApiKey} onSaveDeepSeek={() => setShowApiKeyModal(false)} onSaveMistral={() => setShowApiKeyModal(false)} />
             </Dialog>
 
             <AnnotateMetadataModal

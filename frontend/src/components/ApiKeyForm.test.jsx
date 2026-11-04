@@ -56,4 +56,22 @@ describe('API keys per provider', () => {
         expect(localStorage.getItem('google_api_key')).toBe('AIza-original');
         expect(await within(card).findByLabelText('Clé API DeepSeek')).toHaveValue('');
     });
+
+    it('stores the Mistral key separately from the DeepSeek and Google keys', async () => {
+        const mistralSave = vi.fn();
+        localStorage.setItem('deepseek_api_key', 'sk-deepseek-unchanged');
+        localStorage.setItem('google_api_key', 'GOOGLE-KEY-UNCHANGED');
+        render(<ApiKeyForm onSaveMistral={mistralSave} />);
+        const card = screen.getByRole('region', { name: 'Clé API Mistral' });
+        const input = within(card).getByLabelText('Clé API Mistral');
+        expect(input).toHaveAttribute('type', 'password');
+        fireEvent.change(input, { target: { value: '  mistral-secret-key  ' } });
+        fireEvent.click(within(card).getByRole('button', { name: 'Enregistrer' }));
+        expect(localStorage.getItem('mistral_api_key')).toBe('mistral-secret-key');
+        expect(localStorage.getItem('deepseek_api_key')).toBe('sk-deepseek-unchanged');
+        expect(localStorage.getItem('google_api_key')).toBe('GOOGLE-KEY-UNCHANGED');
+        expect(mistralSave).toHaveBeenCalledWith('mistral-secret-key');
+        expect(card.textContent).not.toContain('mistral-secret-key');
+        expect(await within(card).findByText('Clé enregistrée')).toBeInTheDocument();
+    });
 });

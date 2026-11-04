@@ -9,7 +9,9 @@ export const DEEPSEEK_TIMEOUT_MS = 120_000;
 
 export function getDeepSeekApiKey() {
     try {
-        return globalThis.localStorage?.getItem(DEEPSEEK_API_KEY_STORAGE_KEY)?.trim() || '';
+        // Node's server-side localStorage getter emits an ExperimentalWarning; only browsers hold the key.
+        if (typeof window === 'undefined') return '';
+        return window.localStorage?.getItem(DEEPSEEK_API_KEY_STORAGE_KEY)?.trim() || '';
     } catch {
         return '';
     }

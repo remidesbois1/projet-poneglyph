@@ -4,13 +4,9 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useWorker } from '@/context/WorkerContext';
 import { useOcrModels } from '@/hooks/useOcrModels';
 import { analyzeBubble } from '@/lib/geminiClient';
-import { analyzeDeepSeekBubble } from '@/lib/deepseekClient';
-import { DEEPSEEK_LABEL, getDeepSeekApiKey } from '@/lib/deepseekConfig';
 import { capitalizeOcrSentenceStarts } from '@/lib/ocr-utils';
-import { OCR_MODELS, getOcrModelLabel } from '@/lib/ocrModels';
 import { toast } from 'sonner';
 
-const DEEPSEEK_CANDIDATE_LABEL = getOcrModelLabel(OCR_MODELS.deepseek);
 
 /**
  * OCR inside the annotation editor. A bubble (hand-drawn or queued by the page pipeline) is read
@@ -42,7 +38,6 @@ export function useAnnotationOCR({
     const inFlightRequests = useRef(new Map());
     const completedRequests = useRef(new Map());
     const requestControllers = useRef(new Set());
-    const deepSeekRetry = useRef(null);
     const pageGeneration = useRef(0);
 
     useEffect(() => {
@@ -58,11 +53,6 @@ export function useAnnotationOCR({
             completed.clear();
         };
     }, [pageId, setIsSubmitting]);
-
-    const pendingTargetKey = pendingAnnotation
-        ? JSON.stringify([pendingAnnotation.id, pendingAnnotation.x, pendingAnnotation.y, pendingAnnotation.w, pendingAnnotation.h])
-        : null;
-    useEffect(() => () => deepSeekRetry.current?.abort(), [pendingTargetKey]);
 
     useEffect(() => {
         const loadedWorkers = Object.values(workers || {});
@@ -145,11 +135,6 @@ export function useAnnotationOCR({
         }
         const extraCandidates = pageCandidates ?? (cropData ? [] : pendingAnnotation?.page_ocr_candidates ?? []);
 
-        if (bubbleModels.some(model => model.engine === 'deepseek') && !getDeepSeekApiKey()) {
-            toast.info('Configurez votre clé DeepSeek, puis relancez la transcription.');
-            setShowApiKeyModal(true);
-            return;
-        }
         if (!bubbleModels.length) {
             applyCandidatesToModal(extraCandidates);
             return;
@@ -180,39 +165,8 @@ export function useAnnotationOCR({
         } finally {
             if (generation === pageGeneration.current) setIsSubmitting(false);
         }
-    }, [applyCandidatesToModal, bubbleModels, executeSelectedOcr, pendingAnnotation, rectangle, setDebugImageUrl, setIsModalOpen, setIsSubmitting, setLoadingText, setShowApiKeyModal]);
+    }, [applyCandidatesToModal, bubbleModels, executeSelectedOcr, pendingAnnotation, rectangle, setDebugImageUrl, setIsModalOpen, setIsSubmitting, setLoadingText]);
 
-    const handleRetryWithDeepSeek = useCallback(async () => {
-        if (!pendingAnnotation || deepSeekRetry.current) return;
-        const apiKey = getDeepSeekApiKey();
-        if (!apiKey) {
-            setShowApiKeyModal(true);
-            toast.info('Configurez votre clé DeepSeek, puis relancez la transcription.');
-            return;
-        }
-        const target = pendingAnnotation;
-        const controller = new AbortController();
-        const generation = pageGeneration.current;
-        deepSeekRetry.current = controller;
-        requestControllers.current.add(controller);
-        setIsSubmitting(true);
-        setLoadingText(`Transcription avec ${DEEPSEEK_LABEL}…`);
-        try {
-            const response = await analyzeDeepSeekBubble(imageRef.current, target, apiKey, { signal: controller.signal });
-            controller.signal.throwIfAborted();
-            setPendingAnnotation(previous => previous && previous.id === target.id && ['x', 'y', 'w', 'h'].every(key => previous[key] === target[key]) ? {
-                ...previous, texte_propose: capitalizeOcrSentenceStarts(response.data.texte_propose),
-                ocr_candidates: [{ modelKey: 'deepseek', label: DEEPSEEK_CANDIDATE_LABEL, text: capitalizeOcrSentenceStarts(response.data.texte_propose) }],
-            } : previous);
-            setOcrSource('deepseek');
-        } catch (error) {
-            if (!controller.signal.aborted) toast.error(error.message || 'Transcription DeepSeek indisponible.');
-        } finally {
-            requestControllers.current.delete(controller);
-            if (deepSeekRetry.current === controller) deepSeekRetry.current = null;
-            if (generation === pageGeneration.current) setIsSubmitting(false);
-        }
-    }, [imageRef, pendingAnnotation, setIsSubmitting, setLoadingText, setOcrSource, setPendingAnnotation, setShowApiKeyModal]);
 
     const handleRetryWithCloud = useCallback((dataOverride = null) => {
         const dataToUse = dataOverride || pendingAnnotation;
@@ -256,6 +210,5 @@ export function useAnnotationOCR({
         runLocalOcr,
         runBackgroundOcr,
         handleRetryWithCloud,
-        handleRetryWithDeepSeek
     };
 }

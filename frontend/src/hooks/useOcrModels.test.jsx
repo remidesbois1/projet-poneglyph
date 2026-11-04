@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useOcrModels } from './useOcrModels';
 import { getChatGptStatus } from '@/lib/chatGptDesktop';
 import { generateDeepSeekOneShotBubbles } from '@/lib/deepseekClient';
+import { generateGlmOneShotBubbles } from '@/lib/mistralClient';
 import { formatProviderModelName } from '@/lib/ocrModels';
 
 const contexts = vi.hoisted(() => ({ worker: {}, tauri: {}, aiConfig: {} }));
@@ -15,7 +16,8 @@ vi.mock('@/lib/chatGptDesktop', () => ({
     subscribeToChatGptAuth: () => () => {},
     runChatGptPageOcr: vi.fn(),
 }));
-vi.mock('@/lib/deepseekClient', () => ({ analyzeDeepSeekBubble: vi.fn(), generateDeepSeekOneShotBubbles: vi.fn() }));
+vi.mock('@/lib/deepseekClient', () => ({ generateDeepSeekOneShotBubbles: vi.fn() }));
+vi.mock('@/lib/mistralClient', () => ({ generateGlmOneShotBubbles: vi.fn() }));
 vi.mock('@/lib/geminiClient', () => ({ generateOneShotBubbles: vi.fn() }));
 
 const modelOf = (result, key) => result.current.models.find(model => model.key === key);
@@ -81,11 +83,12 @@ describe('local desktop models', () => {
 });
 
 describe('model availability', () => {
-    it('hides Gemini page reading in the sandbox but keeps DeepSeek', async () => {
+    it('hides Gemini page reading in the sandbox but keeps the hosted page models', async () => {
         const { result } = await renderModels({ isSandbox: true, allowPageModels: true });
         const keys = keysOf(result);
         expect(keys).not.toContain('geminiPage');
-        expect(keys).toEqual(expect.arrayContaining(['deepseek', 'deepseekPage']));
+        expect(keys).toEqual(expect.arrayContaining(['deepseekPage', 'glmPage']));
+        expect(keys).not.toContain('deepseek');
     });
 
     it('hides every page model when page models are not allowed', async () => {
@@ -123,6 +126,16 @@ describe('DeepSeek page model', () => {
         expect(model).toMatchObject({ status: 'setup', message: 'Clé DeepSeek requise' });
         await expect(result.current.runPageModel(model, { naturalWidth: 10, naturalHeight: 10 })).rejects.toThrow();
         expect(generateDeepSeekOneShotBubbles).not.toHaveBeenCalled();
+    });
+});
+
+describe('GLM page model', () => {
+    it('requires a Mistral key and never reaches the paid API without one', async () => {
+        const { result } = await renderModels({ allowPageModels: true });
+        const model = modelOf(result, 'glmPage');
+        expect(model).toMatchObject({ status: 'setup', message: 'Clé Mistral requise' });
+        await expect(result.current.runPageModel(model, { naturalWidth: 10, naturalHeight: 10 })).rejects.toThrow();
+        expect(generateGlmOneShotBubbles).not.toHaveBeenCalled();
     });
 });
 

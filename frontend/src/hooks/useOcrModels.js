@@ -7,9 +7,11 @@ import { useTauriLocalOcrContext } from '@/context/TauriLocalOcrContext';
 import { useAiModelConfig } from '@/hooks/useAiModelConfig';
 import { canDownloadMissingLocalModel } from '@/components/localModelRecovery';
 import { getChatGptStatus, runChatGptPageOcr, subscribeToChatGptAuth } from '@/lib/chatGptDesktop';
-import { analyzeDeepSeekBubble, generateDeepSeekOneShotBubbles } from '@/lib/deepseekClient';
+import { generateDeepSeekOneShotBubbles } from '@/lib/deepseekClient';
 import { getDeepSeekApiKey } from '@/lib/deepseekConfig';
 import { generateOneShotBubbles } from '@/lib/geminiClient';
+import { getMistralApiKey } from '@/lib/mistralConfig';
+import { generateGlmOneShotBubbles } from '@/lib/mistralClient';
 import { capitalizeOcrSentenceStarts } from '@/lib/ocr-utils';
 import { DEFAULT_OCR_MODEL_KEYS, OCR_MODELS, getOcrModelLabel, getOcrModelName, isSelectableOcrModel } from '@/lib/ocrModels';
 import { cropImage, cropImageBitmap } from '@/lib/utils';
@@ -34,6 +36,7 @@ const LOCAL_CONNECTION_ISSUES = Object.freeze({
 const ACCESS_REQUIREMENTS = Object.freeze({
     gemini: { access: 'gemini', message: 'Clé Gemini requise' },
     deepseek: { access: 'deepseek', message: 'Clé DeepSeek requise' },
+    mistral: { access: 'mistral', message: 'Clé Mistral requise' },
     chatgpt: { access: 'chatgpt', message: 'Connexion ChatGPT requise' },
 });
 
@@ -49,12 +52,16 @@ function getReadyLocalRuntime(local, model) {
 }
 
 function readStoredKey(storageKey) {
-    try { return globalThis.localStorage?.getItem(storageKey)?.trim() || ''; }
+    try {
+        // Node's server-side localStorage getter emits an ExperimentalWarning; only browsers hold keys.
+        if (typeof window === 'undefined') return '';
+        return window.localStorage?.getItem(storageKey)?.trim() || '';
+    }
     catch { return ''; }
 }
 
 function readKeyAccess() {
-    return { gemini: Boolean(readStoredKey(GEMINI_KEY_STORAGE_KEY)), deepseek: Boolean(getDeepSeekApiKey()) };
+    return { gemini: Boolean(readStoredKey(GEMINI_KEY_STORAGE_KEY)), deepseek: Boolean(getDeepSeekApiKey()), mistral: Boolean(getMistralApiKey()) };
 }
 
 function readSelection(storageKey, selectableKeys) {
@@ -258,11 +265,6 @@ export function useOcrModels({ isSandbox = false, allowPageModels = false } = {}
                 const result = await runtime.run(await cropImage(image, area));
                 return result?.text || '';
             }
-            case 'deepseek': {
-                const result = await analyzeDeepSeekBubble(image, area, getDeepSeekApiKey(), { signal });
-                signal?.throwIfAborted();
-                return result.data.texte_propose;
-            }
             default:
                 throw new Error('lecture de bulle non prise en charge.');
         }
@@ -308,6 +310,12 @@ export function useOcrModels({ isSandbox = false, allowPageModels = false } = {}
                 const apiKey = getDeepSeekApiKey();
                 if (!apiKey) throw new Error('clé DeepSeek manquante.');
                 bubbles = (await generateDeepSeekOneShotBubbles(image, apiKey, { signal })).data;
+                break;
+            }
+            case 'mistral': {
+                const apiKey = getMistralApiKey();
+                if (!apiKey) throw new Error('clé Mistral manquante.');
+                bubbles = (await generateGlmOneShotBubbles(image, apiKey, { signal })).data;
                 break;
             }
             default:

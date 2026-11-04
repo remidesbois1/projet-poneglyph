@@ -16,7 +16,6 @@ vi.mock('@/hooks/useAnnotationOCR', () => ({
         runLocalOcr: vi.fn(),
         runBackgroundOcr: vi.fn(),
         handleRetryWithCloud: vi.fn(),
-        handleRetryWithDeepSeek: vi.fn(),
     }),
 }));
 vi.mock('@/hooks/useAnnotationDetection', () => ({

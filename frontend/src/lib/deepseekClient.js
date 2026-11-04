@@ -29,21 +29,21 @@ function toDataUrl(blob) {
     });
 }
 
-async function requestOcr(imageSource, coordinates, apiKey, mode, { signal } = {}) {
+/** Reads the whole page with DeepSeek and returns `[{ content, bbox }]`. */
+export async function generateDeepSeekOneShotBubbles(imageSource, apiKey, { signal } = {}) {
     if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('Clé API DeepSeek manquante. Configurez-la dans les réglages API.');
-    if (!imageSource || !coordinates || !['x', 'y', 'w', 'h'].every(key => Number.isFinite(coordinates[key])) ||
-        coordinates.x < 0 || coordinates.y < 0 || coordinates.w <= 0 || coordinates.h <= 0) {
+    if (!imageSource || !Number.isFinite(imageSource.naturalWidth) || !Number.isFinite(imageSource.naturalHeight) ||
+        imageSource.naturalWidth <= 0 || imageSource.naturalHeight <= 0) {
         throw new Error('Image ou zone OCR invalide.');
     }
-    if (coordinates.w > 8192 || coordinates.h > 8192 || coordinates.w * coordinates.h > 24_000_000) {
+    if (imageSource.naturalWidth > 8192 || imageSource.naturalHeight > 8192 ||
+        imageSource.naturalWidth * imageSource.naturalHeight > 24_000_000) {
         throw new Error('Image trop grande pour DeepSeek : réduisez-la à 8192 pixels par côté et 24 mégapixels.');
     }
     signal?.throwIfAborted();
-    const blob = await cropImage(imageSource, coordinates);
+    const blob = await cropImage(imageSource, { x: 0, y: 0, w: imageSource.naturalWidth, h: imageSource.naturalHeight });
     if (!(blob instanceof Blob) || !blob.size || blob.size > DEEPSEEK_IMAGE_MAX_BYTES) throw new Error('Image DeepSeek invalide ou supérieure à 10 Mo.');
-    const prompt = mode === 'bbox'
-        ? `${await getPrompt('ocr_page_bbox')}\n\n${await getPrompt('strict_json_suffix')}`
-        : await getPrompt('ocr_bubble');
+    const prompt = `${await getPrompt('ocr_page_bbox')}\n\n${await getPrompt('strict_json_suffix')}`;
     const image = await toDataUrl(blob);
     signal?.throwIfAborted();
     const controller = new AbortController();
@@ -53,7 +53,7 @@ async function requestOcr(imageSource, coordinates, apiKey, mode, { signal } = {
         const response = await fetch('/api/deepseek', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-DeepSeek-API-Key': apiKey.trim() },
-            body: JSON.stringify({ mode, prompt, image }),
+            body: JSON.stringify({ prompt, image }),
             cache: 'no-store', credentials: 'same-origin', signal: combined,
         });
         let payload;
@@ -61,7 +61,7 @@ async function requestOcr(imageSource, coordinates, apiKey, mode, { signal } = {
         catch { throw new Error('Réponse du service DeepSeek invalide.'); }
         if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : 'Service DeepSeek indisponible.');
         if (typeof payload?.text !== 'string') throw new Error('DeepSeek n’a pas renvoyé de texte.');
-        return { text: payload.text.trim(), model: payload.model || DEEPSEEK_MODEL };
+        return { data: parseDeepSeekBubbles(payload.text), model: payload.model || DEEPSEEK_MODEL };
     } catch (error) {
         if (signal?.aborted) throw new DOMException('Requête annulée.', 'AbortError');
         if (controller.signal.aborted) throw new Error('DeepSeek a mis trop de temps à répondre.');
@@ -70,16 +70,4 @@ async function requestOcr(imageSource, coordinates, apiKey, mode, { signal } = {
     } finally {
         clearTimeout(timer);
     }
-}
-
-export async function analyzeDeepSeekBubble(imageSource, coordinates, apiKey, options) {
-    const result = await requestOcr(imageSource, coordinates, apiKey, 'bubble', options);
-    return { data: { texte_propose: result.text }, model: result.model };
-}
-
-export async function generateDeepSeekOneShotBubbles(imageSource, apiKey, options) {
-    const result = await requestOcr(imageSource, {
-        x: 0, y: 0, w: imageSource?.naturalWidth, h: imageSource?.naturalHeight,
-    }, apiKey, 'bbox', options);
-    return { data: parseDeepSeekBubbles(result.text), model: result.model };
 }

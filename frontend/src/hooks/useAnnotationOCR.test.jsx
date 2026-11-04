@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAnnotationOCR } from './useAnnotationOCR';
-import { analyzeDeepSeekBubble, generateDeepSeekOneShotBubbles } from '@/lib/deepseekClient';
+import { generateDeepSeekOneShotBubbles } from '@/lib/deepseekClient';
 import { analyzeBubble } from '@/lib/geminiClient';
 
 const workerContext = vi.hoisted(() => ({ value: {} }));
@@ -18,7 +18,7 @@ vi.mock('@/lib/chatGptDesktop', () => ({
     subscribeToChatGptAuth: () => () => {},
     runChatGptPageOcr: vi.fn(),
 }));
-vi.mock('@/lib/deepseekClient', () => ({ analyzeDeepSeekBubble: vi.fn(), generateDeepSeekOneShotBubbles: vi.fn() }));
+vi.mock('@/lib/deepseekClient', () => ({ generateDeepSeekOneShotBubbles: vi.fn() }));
 vi.mock('@/lib/geminiClient', () => ({ analyzeBubble: vi.fn(), generateOneShotBubbles: vi.fn() }));
 
 const aiModelConfig = {};
@@ -139,85 +139,21 @@ describe('bubble OCR in the editor', () => {
     });
 });
 
-describe('DeepSeek bubble OCR', () => {
-    function props() {
-        return editorProps({ isSandbox: true });
-    }
-    beforeEach(() => {
-        vi.clearAllMocks();
-        localStorage.clear();
-        workerContext.value = { modelStates: {}, workers: {} };
-        analyzeDeepSeekBubble.mockResolvedValue({ data: { texte_propose: 'Salut ! comment vas-tu ?' } });
-    });
+describe('bubble result reuse in the editor', () => {
+    beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
-    it('supports explicit DeepSeek comparison selection in sandbox without invoking Gemini', async () => {
-        localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['deepseek']));
-        localStorage.setItem('deepseek_api_key', 'sk-deepseek-own-key');
-        const options = props();
-        const { result } = renderHook(() => useAnnotationOCR(options));
-        expect(result.current.selectedOcrModelKeys).toEqual(['deepseek']);
-        await act(async () => result.current.runLocalOcr());
-        expect(analyzeDeepSeekBubble).toHaveBeenCalledWith(options.imageRef.current, expect.objectContaining({ w: 100, h: 120 }), 'sk-deepseek-own-key', { signal: expect.any(AbortSignal) });
-        const update = options.setPendingAnnotation.mock.lastCall[0](options.pendingAnnotation);
-        expect(update.texte_propose).toBe('Salut ! Comment vas-tu ?');
-        expect(update.ocr_candidates[0].modelKey).toBe('deepseek');
-        expect(analyzeBubble).not.toHaveBeenCalled();
-    });
-
-    it('offers settings when the selected DeepSeek model lacks a key and never auto-runs on save', async () => {
-        localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['deepseek']));
-        const options = props();
-        const { result } = renderHook(() => useAnnotationOCR(options));
-        await act(async () => result.current.runLocalOcr());
-        expect(options.setShowApiKeyModal).toHaveBeenCalledWith(true);
-        expect(analyzeDeepSeekBubble).not.toHaveBeenCalled();
-        expect(result.current.models.find(model => model.key === 'deepseek').status).toBe('setup');
-        await act(async () => { localStorage.setItem('deepseek_api_key', 'sk-key-saved'); window.dispatchEvent(new Event('storage')); });
-        expect(result.current.models.find(model => model.key === 'deepseek').status).toBe('ready');
-        expect(analyzeDeepSeekBubble).not.toHaveBeenCalled();
-    });
-
-    it('can retry a single bubble with DeepSeek even when another engine is selected', async () => {
-        localStorage.setItem('deepseek_api_key', 'sk-own-key');
-        const options = props();
-        const { result } = renderHook(() => useAnnotationOCR(options));
-        await act(async () => result.current.handleRetryWithDeepSeek());
-        expect(analyzeDeepSeekBubble).toHaveBeenCalledOnce();
-        expect(analyzeBubble).not.toHaveBeenCalled();
-        expect(options.setOcrSource).toHaveBeenCalledWith('deepseek');
-        const update = options.setPendingAnnotation.mock.lastCall[0];
-        expect(update({ id: 'different', texte_propose: 'Do not overwrite' }).texte_propose).toBe('Do not overwrite');
-        expect(update(null)).toBeNull();
-    });
-
-    it('reuses background bubble results during review rather than billing twice', async () => {
-        localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['deepseek']));
-        localStorage.setItem('deepseek_api_key', 'sk-own-key');
-        const options = props();
+    it('reuses background bubble results during review rather than reading twice', async () => {
+        localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['ppocrv6Line']));
+        const runOcr = browserWorkers({ ppocrv6Line: 'Fond texte' });
+        const options = editorProps({ isSandbox: true });
         const { result } = renderHook(() => useAnnotationOCR(options));
         const box = { x: 10, y: 20, w: 100, h: 120 };
         await act(async () => result.current.runBackgroundOcr(box, 'detected-bubble-1'));
         await act(async () => result.current.runLocalOcr(box, 'detected-bubble-1'));
-        expect(analyzeDeepSeekBubble).toHaveBeenCalledOnce();
+        expect(runOcr).toHaveBeenCalledOnce();
         expect(options.setPendingAnnotation).toHaveBeenCalled();
         // An explicit retry uses a new request ID and still works normally.
         await act(async () => result.current.runLocalOcr(box, 'explicit-retry'));
-        expect(analyzeDeepSeekBubble).toHaveBeenCalledTimes(2);
-    });
-
-    it('cancels a pending DeepSeek retry when leaving the page', async () => {
-        let resolve;
-        analyzeDeepSeekBubble.mockImplementation(() => new Promise(res => { resolve = res; }));
-        localStorage.setItem('deepseek_api_key', 'sk-own-key');
-        const options = props();
-        const { result, rerender } = renderHook(input => useAnnotationOCR(input), { initialProps: options });
-        let job;
-        act(() => { job = result.current.handleRetryWithDeepSeek(); });
-        const signal = analyzeDeepSeekBubble.mock.calls[0][3].signal;
-        rerender({ ...options, pageId: '2' });
-        expect(signal.aborted).toBe(true);
-        await act(async () => { resolve({ data: { texte_propose: 'Obsolete' } }); await job; });
-        expect(options.setPendingAnnotation).not.toHaveBeenCalled();
-        expect(options.setIsSubmitting).toHaveBeenLastCalledWith(false);
+        expect(runOcr).toHaveBeenCalledTimes(2);
     });
 });

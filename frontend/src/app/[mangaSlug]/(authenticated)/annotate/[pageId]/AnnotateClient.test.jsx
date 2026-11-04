@@ -140,7 +140,6 @@ describe('AnnotateClient async states', () => {
             runLocalOcr: vi.fn(),
             runBackgroundOcr: vi.fn(),
             handleRetryWithCloud: vi.fn(),
-            handleRetryWithDeepSeek: vi.fn(),
         });
         useAnnotationDetection.mockReturnValue({
             isAutoDetecting: false,

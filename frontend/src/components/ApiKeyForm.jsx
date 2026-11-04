@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getChatGptStatus, loginChatGpt, logoutChatGpt, subscribeToChatGptAuth } from '@/lib/chatGptDesktop';
 import { DEEPSEEK_API_KEY_STORAGE_KEY, DEEPSEEK_LABEL, DEEPSEEK_MODEL } from '@/lib/deepseekConfig';
+import { GLM_LABEL, MISTRAL_API_KEY_STORAGE_KEY, MISTRAL_MODEL } from '@/lib/mistralConfig';
 
 const GOOGLE_API_KEY = 'google_api_key';
 
@@ -99,7 +100,7 @@ function ProviderKeyCard({ provider, storageKey, description, keyUrl, placeholde
     );
 }
 
-export default function ApiKeyForm({ onSave = () => {}, onSaveDeepSeek }) {
+export default function ApiKeyForm({ onSave = () => {}, onSaveDeepSeek, onSaveMistral }) {
     const [chatGptStatus, setChatGptStatus] = useState({ available: false, connected: false });
     const [isChatGptPending, setIsChatGptPending] = useState(false);
 
@@ -147,12 +148,13 @@ export default function ApiKeyForm({ onSave = () => {}, onSaveDeepSeek }) {
                 <span className="h-fit rounded-full bg-sky-400/15 p-2"><ShieldCheck className="h-4 w-4 text-sky-300" /></span>
                 <div>
                     <p className="text-sm font-semibold text-sky-100">Vos clés personnelles, stockées sur cet appareil</p>
-                    <p className="mt-1 text-xs leading-relaxed text-sky-100/65">Clés conservées dans ce navigateur. Pour DeepSeek, l’image et la clé transitent par Poneglyph vers l’API, sans conservation côté serveur. Appels facturés sur votre compte fournisseur.{chatGptStatus.available ? ' La session ChatGPT reste dans l’application desktop.' : ''}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-sky-100/65">Clés conservées dans ce navigateur. Pour DeepSeek et Mistral, l’image et la clé transitent par Poneglyph vers l’API, sans conservation côté serveur. Appels facturés sur votre compte fournisseur.{chatGptStatus.available ? ' La session ChatGPT reste dans l’application desktop.' : ''}</p>
                 </div>
             </div>
 
             <ProviderKeyCard provider="Google Gemini" storageKey={GOOGLE_API_KEY} description="Utilisée pour les outils Gemini et Google Vision." keyUrl="https://aistudio.google.com/app/apikey" placeholder="Collez votre clé ici (ex : AIzaSy...)" onSave={onSave} />
-            <ProviderKeyCard provider="DeepSeek" storageKey={DEEPSEEK_API_KEY_STORAGE_KEY} description={`${DEEPSEEK_LABEL} · ${DEEPSEEK_MODEL}. Transcription des bulles et extraction des textes avec bbox.`} keyUrl="https://platform.deepseek.com/api_keys" placeholder="Collez votre clé DeepSeek (sk-...)" onSave={onSaveDeepSeek} />
+            <ProviderKeyCard provider="DeepSeek" storageKey={DEEPSEEK_API_KEY_STORAGE_KEY} description={`${DEEPSEEK_LABEL} · ${DEEPSEEK_MODEL}. Lecture de la page entière : textes avec bbox.`} keyUrl="https://platform.deepseek.com/api_keys" placeholder="Collez votre clé DeepSeek (sk-...)" onSave={onSaveDeepSeek} />
+            <ProviderKeyCard provider="Mistral" storageKey={MISTRAL_API_KEY_STORAGE_KEY} description={`${GLM_LABEL} · ${MISTRAL_MODEL}, hébergé par Mistral. Lecture de la page entière : textes avec bbox.`} keyUrl="https://console.mistral.ai/api-keys" placeholder="Collez votre clé Mistral" onSave={onSaveMistral} />
 
             {chatGptStatus.available && (
                 <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-sm sm:p-5">
