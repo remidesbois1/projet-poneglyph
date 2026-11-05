@@ -1,0 +1,67 @@
+{
+  "date": "2026-11-03",
+  "repositories": {
+    "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec": {
+      "revision": "a6dddec384c76a1ac3c2125f92403e775a3929d7",
+      "parent_commit": "10b932d4aadca2830850ccf5951116597404bef8",
+      "commit_url": "https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/commit/a6dddec384c76a1ac3c2125f92403e775a3929d7",
+      "verified_downloads_sha256": {
+        "model.safetensors": "9275b707f405dc40cdc68b54df14c033f676ed656cc1a283d1abcd800bd90730",
+        "onnx/ppocrv6_bubble_line_rec_webgpu.onnx": "1cd98cf3a6fe77567f097bb01a1f719a3b6487e54ad973579cb9ede5c371e613",
+        "onnx/browser_manifest.json": "798bdf3f911017dec54001c4b9a0f41b47fbd613e2b113ab22ce055f84b3cc75",
+        "metrics/retraining_20261103.json": "2b446308201c9e33a904dddf3c78121d38ea1f8ff31d6558e3229822065b3059"
+      }
+    },
+    "Remidesbois/Poneglyph-ReaderNet": {
+      "revision": "0f3cc90737d90d8c3810b7397c923a2fc7be24e9",
+      "parent_commit": "d97d4cd2903a7ebe49276a5269c4f3b7df608be7",
+      "commit_url": "https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/commit/0f3cc90737d90d8c3810b7397c923a2fc7be24e9",
+      "verified_downloads_sha256": {
+        "bubble_detector.pt": "67fe2e7d3fc571aecce4b324c866c134fbe5413d2e390b91b8d70bc1b41986a2",
+        "bubble_detector.onnx": "fa28ece56ba9e5ccf4361fbb4d2533e088906b0a0d1cd187c02422ba7d6f5688",
+        "model_manifest.json": "7006f8d5985c48e104542ae595da7f70e297871e8a1cd34a039e55eac69e2c24",
+        "metrics/retraining_20261103.json": "2b446308201c9e33a904dddf3c78121d38ea1f8ff31d6558e3229822065b3059"
+      }
+    }
+  },
+  "runtime_bundle": {
+    "revisions": {
+      "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec": "a6dddec384c76a1ac3c2125f92403e775a3929d7",
+      "Remidesbois/Poneglyph-ReaderNet": "0f3cc90737d90d8c3810b7397c923a2fc7be24e9"
+    },
+    "active_files_sha256": {
+      "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/onnx/browser_manifest.json": "798bdf3f911017dec54001c4b9a0f41b47fbd613e2b113ab22ce055f84b3cc75",
+      "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/onnx/bubble_line_detector_yolo26n.onnx": "b8a7d12cbb65ce4028cd1b49fabf01b14a0ca3f28ff9509387524f648f183505",
+      "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/onnx/ppocrv6_bubble_line_rec.onnx": "45744f36130540c474e0c33bc95898f93b3ad29ba938e4486286fd93f1404510",
+      "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/onnx/ppocrv6_bubble_line_rec_webgpu.onnx": "1cd98cf3a6fe77567f097bb01a1f719a3b6487e54ad973579cb9ede5c371e613",
+      "Remidesbois/Poneglyph-ReaderNet/bubble_detector.onnx": "fa28ece56ba9e5ccf4361fbb4d2533e088906b0a0d1cd187c02422ba7d6f5688",
+      "Remidesbois/Poneglyph-ReaderNet/panel_detector.onnx": "67a9b0128a49cf8c1c0a7e1907e0e943fdedcaedf0877894b0fb87d9283c597f",
+      "Remidesbois/Poneglyph-ReaderNet/ordering.onnx": "e5c92135ccdbcb7cb678ec05388be03348d8b2eff7f7d24b9ef7644e2a23df94"
+    },
+    "public_manifest_access_and_cors": "passed"
+  },
+  "checks": {
+    "python_training_unit_tests": 4,
+    "javascript_runtime_split_tensor_and_postprocess_checks": "passed",
+    "frontend_targeted_tests": 44,
+    "frontend_production_build": "passed",
+    "frontend_test_environment": "Node 26.11.1, NODE_OPTIONS=--no-experimental-webstorage so JSDOM supplies localStorage",
+    "published_native_smoke": {
+      "pages": 2,
+      "bubbles": 26,
+      "exactly_reproduces_evaluated_outputs": true
+    },
+    "published_webgpu_smoke": {
+      "validation_crops": 10,
+      "exactly_reproduces_evaluated_outputs": true
+    }
+  },
+  "runpod": {
+    "gpu": "NVIDIA GeForce RTX 4090 24 GB",
+    "pod_deleted_verified": true,
+    "temporary_volume_deleted_verified": true,
+    "current_spend_per_hour_after_cleanup": 0,
+    "approximate_balance_decrease_usd": 0.911948,
+    "note": "Observed account balance difference for this training session; not a line-item billing invoice."
+  }
+}

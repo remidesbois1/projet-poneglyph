@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-30",
+  "updated_at": "2026-11-05",
   "provenance_policy": "Published values must come from a pinned artifact and carry the dataset, split, date, hardware, model revision and evaluation protocol.",
   "models": {
     "lighton3-bubble": {
@@ -28,35 +28,71 @@
         }
       }
     },
-    "ppocrv6-line": {
-      "display_name": "PP-OCRv6 Bubble Line",
+    "indra-bubble": {
+      "display_name": "Indra OCR Poneglyph Bubble",
       "task": "bubble-line-ocr",
       "artifact": {
-        "repository": "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec",
-        "revision": "10b932d4aadca2830850ccf5951116597404bef8",
-        "url": "https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec"
+        "repository": "Remidesbois/indra-ocr-poneglyph-bubble",
+        "revision": "fea60b5793979c05b483dd53e6536b920db6a17a",
+        "url": "https://huggingface.co/Remidesbois/indra-ocr-poneglyph-bubble"
       },
       "benchmark": {
         "status": "published",
-        "dataset": "Poneglyph validated bubbles reconstructed from detected text lines",
-        "split": "test held-out by page",
-        "date": "2026-06-29",
-        "sample_count": 1219,
-        "hardware": "Not recorded; offline scoring over pinned predictions",
-        "protocol": "YOLO26n line detection, horizontal line stitching, PP-OCRv6 CTC decoding, then spacing and case rules learned only from the training split.",
-        "source_url": "https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/blob/10b932d4aadca2830850ccf5951116597404bef8/postprocess_official_metrics.json",
+        "dataset": "Poneglyph validated reference bubble crops, same 1,221-bubble test as PP-OCRv6 Bubble Line",
+        "split": "historical test held out by page, previously evaluated and inspected",
+        "date": "2026-11-05",
+        "sample_count": 1221,
+        "hardware": "CPU, onnxruntime-node 1.24.3 running the browser implementation (frontend/src/lib/indraOcr.js)",
+        "protocol": "Fine-tuned Indra OCR v1.1.0 det.onnx (YOLO line pseudo-labels) and rec.onnx; bubble crop at 0.75x for line detection, Indra tall line windows side by side, one greedy CTC pass, then the same train-derived lexicon/spacing/case rules as PP-OCRv6. NFKC, straight apostrophes, expanded ellipses and collapsed whitespace; case and punctuation retained. Settings chosen on validation only. Python reference 0.690% CER (1219/1221 identical raw texts); PP-OCRv6 production pipeline 0.902% on the same crops (paired page bootstrap difference -0.21 points, 95% CI -0.41 to -0.005). Not a full-page or blind benchmark.",
+        "source_url": "https://huggingface.co/Remidesbois/indra-ocr-poneglyph-bubble/blob/fea60b5793979c05b483dd53e6536b920db6a17a/metrics/evaluation_20261105.json",
         "primary_metric": "cer",
         "metrics": {
           "cer": {
             "label": "CER",
-            "value": 0.014505395907584179,
+            "value": 0.0069264500697628064,
             "unit": "ratio",
             "lower_is_better": true,
             "display_precision": 3
           },
           "exact_match": {
             "label": "Exact match",
-            "value": 0.7596390484003281,
+            "value": 0.8853398853398854,
+            "unit": "ratio",
+            "lower_is_better": false,
+            "display_precision": 2
+          }
+        }
+      }
+    },
+    "ppocrv6-line": {
+      "display_name": "PP-OCRv6 Bubble Line",
+      "task": "bubble-line-ocr",
+      "artifact": {
+        "repository": "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec",
+        "revision": "a6dddec384c76a1ac3c2125f92403e775a3929d7",
+        "url": "https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec"
+      },
+      "benchmark": {
+        "status": "published",
+        "dataset": "Poneglyph validated reference bubble crops reconstructed from production-detected text lines",
+        "split": "historical test held out by page, previously evaluated and inspected",
+        "date": "2026-11-03",
+        "sample_count": 1221,
+        "hardware": "NVIDIA GeForce RTX 4090 24 GB, native PyTorch 2.8.0 CUDA FP32",
+        "protocol": "Reference bubble crops; production YOLO line detection at 0.10, horizontal stitching, 48 px height with gray padding and dynamic width 960-3200, BGR normalization, PP-OCRv6 CTC, frozen train-derived lexicon/spacing/case rules. NFKC, straight apostrophes, expanded ellipses and collapsed whitespace; case and punctuation retained. Native corpus results; Chrome WebGPU validated separately on 100 validation crops. Not a full-page or blind benchmark.",
+        "source_url": "https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/blob/a6dddec384c76a1ac3c2125f92403e775a3929d7/metrics/retraining_20261103.json",
+        "primary_metric": "cer",
+        "metrics": {
+          "cer": {
+            "label": "CER",
+            "value": 0.009044249551524816,
+            "unit": "ratio",
+            "lower_is_better": true,
+            "display_precision": 3
+          },
+          "exact_match": {
+            "label": "Exact match",
+            "value": 0.8501228501228502,
             "unit": "ratio",
             "lower_is_better": false,
             "display_precision": 2
@@ -361,7 +397,7 @@
       "task": "reading-order",
       "artifact": {
         "repository": "Remidesbois/Poneglyph-ReaderNet",
-        "revision": "d97d4cd2903a7ebe49276a5269c4f3b7df608be7",
+        "revision": "0f3cc90737d90d8c3810b7397c923a2fc7be24e9",
         "url": "https://huggingface.co/Remidesbois/Poneglyph-ReaderNet"
       },
       "benchmark": {
@@ -371,8 +407,8 @@
         "date": "2026-08-27",
         "sample_count": 138,
         "hardware": "CPU offline ONNX scoring",
-        "protocol": "Shared bubble detections and annotated panels; pairwise Borda ranking independently inside each panel, with no global bubble sorter.",
-        "source_url": "https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/d97d4cd2903a7ebe49276a5269c4f3b7df608be7/metrics/shared_detector_comparison.json",
+        "protocol": "Shared bubble detections and annotated panels; pairwise Borda ranking independently inside each panel, with no global bubble sorter. Historical ordering benchmark inherited unchanged. Active detector weights retained; confidence calibrated to 0.25 on 2026-11-03. Fresh detector/text results are separate in metrics/retraining_20261103.json.",
+        "source_url": "https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/0f3cc90737d90d8c3810b7397c923a2fc7be24e9/metrics/shared_detector_comparison.json",
         "primary_metric": "exact_panel_match",
         "metrics": {
           "exact_panel_match": {

@@ -1,4 +1,4 @@
-## Projet Poneglyph benchmark (2026-10-30)
+## Projet Poneglyph benchmark (2026-11-05)
 
 Registry ID: `lighton3-bbox`
 Pinned revision: `41570a243115f8ed723c8fc8b761a5aa7735aa03`

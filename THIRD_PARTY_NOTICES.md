@@ -50,8 +50,15 @@ Poneglyph MIT License. This includes, without limitation:
 - `Remidesbois/LightonOCR-2-1b-poneglyph`;
 - `Remidesbois/surya-ocr-2-poneglyph-bbox`;
 - `Remidesbois/surya-bubble-ocr-poneglyph`;
-- `Remidesbois/pp-ocrv6-one-piece-bubble-line-rec`; and
+- `Remidesbois/pp-ocrv6-one-piece-bubble-line-rec`;
+- `Remidesbois/indra-ocr-poneglyph-bubble`; and
 - `Remidesbois/YoloPiece_OneShot_Models`.
+
+`Remidesbois/indra-ocr-poneglyph-bubble` is a fine-tune of Datalab's
+[Indra OCR](https://huggingface.co/datalab-to/indra-ocr) and keeps its modified
+OpenRAIL-M license, shipped in that repository, including its use restrictions
+(free for research, personal use and organizations under the stated funding or
+revenue threshold; no use competing with Datalab's API).
 
 The license, acceptable-use terms, and notices shown on each model repository
 and on its base model govern use of those artifacts. A Poneglyph source-code

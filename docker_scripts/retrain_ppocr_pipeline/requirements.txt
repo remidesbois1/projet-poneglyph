@@ -1,0 +1,12 @@
+# Install the correct PyTorch/torchvision build for your CPU or CUDA GPU first.
+transformers==5.22.1
+ultralytics==8.4.201
+rapidfuzz==3.14.6
+huggingface_hub==2.4.0
+numpy==2.5.4
+pillow==13.0.0
+onnx==1.23.2
+onnxruntime==1.31.1
+onnxscript==0.7.2
+pyyaml==6.0.3
+safetensors==0.8.0

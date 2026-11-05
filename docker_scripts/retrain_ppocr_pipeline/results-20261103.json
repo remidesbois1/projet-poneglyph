@@ -1,0 +1,1065 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-03",
+  "protocol": {
+    "dataset": "Poneglyph historical page-level splits, already evaluated and inspected; not blind.",
+    "normalization": "Production audit NFKC, straight apostrophes, ellipsis expansion and collapsed whitespace; case and punctuation retained.",
+    "text_matching": "Greedy one-to-one spatial matching at IoU >= 0.5; missed GT bubbles receive empty text. Unmatched predictions counted separately, not included in CER.",
+    "annotation_limit": "Annotation completeness is unproven. Unmatched predictions are not verified false positives. Perfect annotated pages score text and GT coverage only, not extra regions or reading order.",
+    "selection": "OCR epoch, text policy and detector confidence selected on validation; detector selection frozen before final selected-pipeline test.",
+    "native_crop_runtime": "PyTorch 2.8.0+cu128 FP32, NVIDIA GeForce RTX 4090 24 GB on RunPod",
+    "native_page_runtime": "Actual production worker functions, Skia Canvas and ONNX Runtime Node 1.24.3 CPU",
+    "browser_scope": "100 validation GT-crop recognizer inputs on Chrome WebGPU AMD RDNA3; 20 validation full-page active detector inputs on WASM; no full-corpus browser CER claim.",
+    "sfx": "SFX retained without a class-based exclusion or automatic skip; no SFX classifier trained. Short strings are not used as SFX labels."
+  },
+  "dataset": {
+    "pages": 1326,
+    "bubbles": 11670,
+    "splits": {
+      "train": {
+        "pages": 1068,
+        "bubbles": 9256
+      },
+      "val": {
+        "pages": 129,
+        "bubbles": 1193
+      },
+      "test": {
+        "pages": 129,
+        "bubbles": 1221
+      }
+    },
+    "plan_sha256": "b9732ad1ce777707b66add3d02fc46bff700711390e0c5c8cb2e7446960b8d73",
+    "recognizer_train_effective": 9228,
+    "reviewed_train_pairs_excluded": 28,
+    "zero_line_fallbacks_kept_all_splits": 24,
+    "detector_pages": {
+      "train": 1065,
+      "val": 127,
+      "test": 129
+    },
+    "detector_excluded_unvalidated_pages": 5,
+    "train_boxes_clipped_to_image": 2,
+    "audit": "All prepared PNG hashes and CTC capacity checked; no page hash duplicated across splits. Six multiline transcripts serialized with whitespace normalization; raw reference preserved privately."
+  },
+  "recognizer_training": {
+    "seed": 42,
+    "prepared_inputs": true,
+    "image_width": 960,
+    "max_target_len": 0,
+    "train_rows": 9228,
+    "val_rows": 1193,
+    "train_dropped": 0,
+    "val_dropped": 0,
+    "train_short_rows": 2718,
+    "val_short_rows": 348,
+    "train_single_line_rows": 2153,
+    "val_single_line_rows": 265,
+    "train_hard_rows": 0,
+    "short_max_len": 12,
+    "short_loss_weight": 1.0,
+    "short_oversample": 1.0,
+    "single_line_loss_weight": 1.0,
+    "single_line_oversample": 1.0,
+    "hard_example_csv": [],
+    "hard_example_min_cer": 0.25,
+    "hard_example_loss_weight": 1.0,
+    "hard_example_oversample": 1.0,
+    "hard_example_short_only": false,
+    "hard_example_include_exact_failures": false,
+    "blank_penalty": 0.0,
+    "learning_rate": 6e-06,
+    "backbone_learning_rate": 6e-07,
+    "weight_decay": 0.01,
+    "lr_scheduler": "cosine",
+    "warmup_ratio": 0.05,
+    "batch_size": 1,
+    "grad_accum_steps": 16,
+    "effective_batch_size": 16,
+    "max_train_steps": 0,
+    "profile_vram": false,
+    "amp": false,
+    "train_backbone": true,
+    "freeze_batchnorm": true,
+    "evaluation_amp": false,
+    "train_classifier_only": false,
+    "trainable_parameters": 19134326,
+    "epochs": [
+      {
+        "epoch": 1,
+        "train_loss": 0.14205717731200343,
+        "val_loss": 0.14550661395259212,
+        "val_cer": 0.014340871483728626,
+        "val_exact_match": 0.7954735959765298,
+        "val_normalized_cer": 0.014181360875498355,
+        "val_normalized_exact_match": 0.7988264878457669,
+        "val_casefold_normalized_cer": 0.009338292350092313,
+        "val_casefold_normalized_exact_match": 0.9128248113998324,
+        "val_empty_predictions": 0,
+        "val_short_cer": 0.08638743455497382,
+        "val_short_exact_match": 0.8448275862068966,
+        "val_short_normalized_cer": 0.08746518105849582,
+        "val_short_normalized_exact_match": 0.8505747126436781,
+        "val_short_casefold_normalized_cer": 0.0818941504178273,
+        "val_short_casefold_normalized_exact_match": 0.867816091954023,
+        "val_medium_cer": 0.013809770412566891,
+        "val_medium_exact_match": 0.8194130925507901,
+        "val_medium_normalized_cer": 0.013811420982735724,
+        "val_medium_normalized_exact_match": 0.8216704288939052,
+        "val_medium_casefold_normalized_cer": 0.007791057990261177,
+        "val_medium_casefold_normalized_exact_match": 0.9345372460496614,
+        "val_dialogue_cer": 0.008992147129429955,
+        "val_dialogue_exact_match": 0.7263681592039801,
+        "val_dialogue_normalized_cer": 0.008936292879792447,
+        "val_dialogue_normalized_exact_match": 0.7288557213930348,
+        "val_dialogue_casefold_normalized_cer": 0.004694642342379442,
+        "val_dialogue_casefold_normalized_exact_match": 0.927860696517413
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.10917563744061003,
+        "val_loss": 0.13481332951439826,
+        "val_cer": 0.01344785018254406,
+        "val_exact_match": 0.8046940486169321,
+        "val_normalized_cer": 0.013271613196692799,
+        "val_normalized_exact_match": 0.8088851634534786,
+        "val_casefold_normalized_cer": 0.008990447649372542,
+        "val_casefold_normalized_exact_match": 0.9170159262363788,
+        "val_empty_predictions": 1,
+        "val_short_cer": 0.08115183246073299,
+        "val_short_exact_match": 0.8563218390804598,
+        "val_short_normalized_cer": 0.0818941504178273,
+        "val_short_normalized_exact_match": 0.8620689655172413,
+        "val_short_casefold_normalized_cer": 0.07632311977715878,
+        "val_short_casefold_normalized_exact_match": 0.8764367816091954,
+        "val_medium_cer": 0.01320559295701709,
+        "val_medium_exact_match": 0.8194130925507901,
+        "val_medium_normalized_cer": 0.013191677733510402,
+        "val_medium_normalized_exact_match": 0.8216704288939052,
+        "val_medium_casefold_normalized_cer": 0.007791057990261177,
+        "val_medium_casefold_normalized_exact_match": 0.9300225733634312,
+        "val_dialogue_cer": 0.00830044350408919,
+        "val_dialogue_exact_match": 0.7437810945273632,
+        "val_dialogue_normalized_cer": 0.008236214635753407,
+        "val_dialogue_normalized_exact_match": 0.7487562189054726,
+        "val_dialogue_casefold_normalized_cer": 0.004571099122843141,
+        "val_dialogue_casefold_normalized_exact_match": 0.9378109452736318
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.10023567446453022,
+        "val_loss": 0.13248755040386356,
+        "val_cer": 0.013185196858666247,
+        "val_exact_match": 0.8139145012573344,
+        "val_normalized_cer": 0.013057554919326787,
+        "val_normalized_exact_match": 0.8164291701592624,
+        "val_casefold_normalized_cer": 0.00896369036470179,
+        "val_casefold_normalized_exact_match": 0.9170159262363788,
+        "val_empty_predictions": 1,
+        "val_short_cer": 0.08010471204188482,
+        "val_short_exact_match": 0.8591954022988506,
+        "val_short_normalized_cer": 0.08133704735376045,
+        "val_short_normalized_exact_match": 0.8649425287356322,
+        "val_short_casefold_normalized_cer": 0.07520891364902507,
+        "val_short_casefold_normalized_exact_match": 0.8793103448275862,
+        "val_medium_cer": 0.012774037631624375,
+        "val_medium_exact_match": 0.8306997742663657,
+        "val_medium_normalized_cer": 0.012749003984063745,
+        "val_medium_normalized_exact_match": 0.8329571106094809,
+        "val_medium_casefold_normalized_cer": 0.007791057990261177,
+        "val_medium_casefold_normalized_exact_match": 0.9300225733634312,
+        "val_dialogue_cer": 0.008178378158440818,
+        "val_dialogue_exact_match": 0.7562189054726368,
+        "val_dialogue_normalized_cer": 0.008153852489395874,
+        "val_dialogue_normalized_exact_match": 0.7562189054726368,
+        "val_dialogue_casefold_normalized_cer": 0.004612280196021909,
+        "val_dialogue_casefold_normalized_exact_match": 0.9353233830845771
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.09560335553240767,
+        "val_loss": 0.13117927014527542,
+        "val_cer": 0.013211462191054027,
+        "val_exact_match": 0.8122380553227159,
+        "val_normalized_cer": 0.013057554919326787,
+        "val_normalized_exact_match": 0.815590947191953,
+        "val_casefold_normalized_cer": 0.008936933080031038,
+        "val_casefold_normalized_exact_match": 0.9178541492036881,
+        "val_empty_predictions": 1,
+        "val_short_cer": 0.07958115183246073,
+        "val_short_exact_match": 0.853448275862069,
+        "val_short_normalized_cer": 0.0807799442896936,
+        "val_short_normalized_exact_match": 0.8591954022988506,
+        "val_short_casefold_normalized_cer": 0.07465181058495822,
+        "val_short_casefold_normalized_exact_match": 0.8764367816091954,
+        "val_medium_cer": 0.01294665976178146,
+        "val_medium_exact_match": 0.8306997742663657,
+        "val_medium_normalized_cer": 0.012926073483842409,
+        "val_medium_normalized_exact_match": 0.8329571106094809,
+        "val_medium_casefold_normalized_cer": 0.00787959274015051,
+        "val_medium_casefold_normalized_exact_match": 0.9322799097065463,
+        "val_dialogue_cer": 0.008178378158440818,
+        "val_dialogue_exact_match": 0.7562189054726368,
+        "val_dialogue_normalized_cer": 0.008112671416217106,
+        "val_dialogue_normalized_exact_match": 0.7587064676616916,
+        "val_dialogue_casefold_normalized_cer": 0.004571099122843141,
+        "val_dialogue_casefold_normalized_exact_match": 0.9378109452736318
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.09372126679677041,
+        "val_loss": 0.13109838906036658,
+        "val_cer": 0.013185196858666247,
+        "val_exact_match": 0.815590947191953,
+        "val_normalized_cer": 0.013030797634656035,
+        "val_normalized_exact_match": 0.8189438390611903,
+        "val_casefold_normalized_cer": 0.008936933080031038,
+        "val_casefold_normalized_exact_match": 0.9178541492036881,
+        "val_empty_predictions": 1,
+        "val_short_cer": 0.07958115183246073,
+        "val_short_exact_match": 0.853448275862069,
+        "val_short_normalized_cer": 0.0807799442896936,
+        "val_short_normalized_exact_match": 0.8591954022988506,
+        "val_short_casefold_normalized_cer": 0.07465181058495822,
+        "val_short_casefold_normalized_exact_match": 0.8764367816091954,
+        "val_medium_cer": 0.012774037631624375,
+        "val_medium_exact_match": 0.835214446952596,
+        "val_medium_normalized_cer": 0.012749003984063745,
+        "val_medium_normalized_exact_match": 0.837471783295711,
+        "val_medium_casefold_normalized_cer": 0.00787959274015051,
+        "val_medium_casefold_normalized_exact_match": 0.9322799097065463,
+        "val_dialogue_cer": 0.008219066606990276,
+        "val_dialogue_exact_match": 0.7611940298507462,
+        "val_dialogue_normalized_cer": 0.008153852489395874,
+        "val_dialogue_normalized_exact_match": 0.763681592039801,
+        "val_dialogue_casefold_normalized_cer": 0.004571099122843141,
+        "val_dialogue_casefold_normalized_exact_match": 0.9378109452736318
+      }
+    ],
+    "initial_validation": {
+      "loss": 0.2541065779336524,
+      "cer": 0.016809812728180076,
+      "exact_match": 0.757753562447611,
+      "normalized_cer": 0.016696545634549007,
+      "normalized_exact_match": 0.760268231349539,
+      "casefold_normalized_cer": 0.010756428437642148,
+      "casefold_normalized_exact_match": 0.8935456831517183,
+      "samples": 1193,
+      "empty_predictions": 16,
+      "short_samples": 348,
+      "short_cer": 0.1162303664921466,
+      "short_exact_match": 0.7959770114942529,
+      "short_normalized_cer": 0.11977715877437325,
+      "short_normalized_exact_match": 0.7959770114942529,
+      "short_casefold_normalized_cer": 0.10584958217270195,
+      "short_casefold_normalized_exact_match": 0.8304597701149425,
+      "medium_samples": 443,
+      "medium_cer": 0.014672881063352322,
+      "medium_exact_match": 0.801354401805869,
+      "medium_normalized_cer": 0.014519698981850376,
+      "medium_normalized_exact_match": 0.8058690744920993,
+      "medium_casefold_normalized_cer": 0.00787959274015051,
+      "medium_casefold_normalized_exact_match": 0.9300225733634312,
+      "dialogue_samples": 402,
+      "dialogue_cer": 0.010090735240265289,
+      "dialogue_exact_match": 0.6766169154228856,
+      "dialogue_normalized_cer": 0.010089362928797925,
+      "dialogue_normalized_exact_match": 0.6791044776119403,
+      "dialogue_casefold_normalized_cer": 0.005065272000988346,
+      "dialogue_casefold_normalized_exact_match": 0.9079601990049752
+    },
+    "best_val_cer": 0.013185196858666247,
+    "best_epoch": 3,
+    "skipped_optimizer_steps": 0,
+    "train_seconds": 927.406787298969,
+    "reviewed_training_pair_exclusions": {
+      "count": 28,
+      "split": "train",
+      "reason": "line_detector_omitted_visible_text",
+      "visually_reviewed": true
+    },
+    "starting_checkpoint": {
+      "repository": "Remidesbois/pp-ocrv6-one-piece-bubble-line-rec",
+      "revision": "10b932d4aadca2830850ccf5951116597404bef8"
+    }
+  },
+  "recognition_gt_crops": {
+    "val": {
+      "baseline": {
+        "raw": {
+          "n": 1193,
+          "chars": 38075,
+          "errors": 637,
+          "cer": 0.016730137885751804,
+          "exact": 0.7585917854149203,
+          "exact_count": 905,
+          "empty": 16,
+          "content_cer": 0.010837280244039496,
+          "content_exact": 0.8918692372170998
+        },
+        "lexicon_only": {
+          "n": 1193,
+          "chars": 38075,
+          "errors": 515,
+          "cer": 0.013525935653315824,
+          "exact": 0.8340318524727578,
+          "exact_count": 995,
+          "empty": 16,
+          "content_cer": 0.010890797677343394,
+          "content_exact": 0.8901927912824812
+        },
+        "final": {
+          "n": 1193,
+          "chars": 38075,
+          "errors": 560,
+          "cer": 0.014707813525935653,
+          "exact": 0.8231349538977368,
+          "exact_count": 982,
+          "empty": 16,
+          "content_cer": 0.012094939926681116,
+          "content_exact": 0.8776194467728415
+        }
+      },
+      "candidate": {
+        "raw": {
+          "n": 1193,
+          "chars": 38075,
+          "errors": 498,
+          "cer": 0.013079448456992777,
+          "exact": 0.815590947191953,
+          "exact_count": 973,
+          "empty": 1,
+          "content_cer": 0.00899092879505499,
+          "content_exact": 0.9161777032690696
+        },
+        "legacy_cleanup": {
+          "n": 1193,
+          "chars": 38075,
+          "errors": 485,
+          "cer": 0.01273801707156927,
+          "exact": 0.8407376362112322,
+          "exact_count": 1003,
+          "empty": 1,
+          "content_cer": 0.01024858847769661,
+          "content_exact": 0.9002514668901928
+        },
+        "final": {
+          "n": 1193,
+          "chars": 38075,
+          "errors": 440,
+          "cer": 0.011556139198949442,
+          "exact": 0.8549874266554903,
+          "exact_count": 1020,
+          "empty": 1,
+          "content_cer": 0.009044446228358888,
+          "content_exact": 0.914501257334451
+        }
+      }
+    },
+    "test": {
+      "baseline": {
+        "raw": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 539,
+          "cer": 0.01342934024317321,
+          "exact": 0.7657657657657657,
+          "exact_count": 935,
+          "empty": 3,
+          "content_cer": 0.006883938323976935,
+          "content_exact": 0.9058149058149059
+        },
+        "lexicon_only": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 398,
+          "cer": 0.009916284632250348,
+          "exact": 0.8370188370188371,
+          "exact_count": 1022,
+          "empty": 3,
+          "content_cer": 0.006960144283282952,
+          "content_exact": 0.9033579033579033
+        },
+        "final": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 429,
+          "cer": 0.010688658560892964,
+          "exact": 0.8312858312858313,
+          "exact_count": 1015,
+          "empty": 3,
+          "content_cer": 0.00774760586277847,
+          "content_exact": 0.8943488943488943
+        }
+      },
+      "candidate": {
+        "raw": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 442,
+          "cer": 0.011012557305162448,
+          "exact": 0.8091728091728092,
+          "exact_count": 988,
+          "empty": 0,
+          "content_cer": 0.005588437015774633,
+          "content_exact": 0.9213759213759214
+        },
+        "legacy_cleanup": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 394,
+          "cer": 0.00981662348016743,
+          "exact": 0.846027846027846,
+          "exact_count": 1033,
+          "empty": 0,
+          "content_cer": 0.006426702568140829,
+          "content_exact": 0.9099099099099099
+        },
+        "final": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 363,
+          "cer": 0.009044249551524816,
+          "exact": 0.8501228501228502,
+          "exact_count": 1038,
+          "empty": 0,
+          "content_cer": 0.005664642975080651,
+          "content_exact": 0.9197379197379197
+        }
+      }
+    }
+  },
+  "postprocess": {
+    "selection": "Validation only: 440 vs 485 character errors on candidate, 515 vs 560 on baseline.",
+    "baseline": "Lexicon then legacy generic cleanup",
+    "candidate": "PP-OCR lexicon/spacing/case rules; preserve quotes and literal I"
+  },
+  "browser_recognizer": {
+    "split": "val",
+    "provider": "webgpu",
+    "adapter": {
+      "vendor": "amd",
+      "architecture": "rdna-3",
+      "device": "",
+      "description": ""
+    },
+    "samples": 100,
+    "input_mode": "Production-prepared PNGs; real browser Canvas normalization",
+    "baseline": {
+      "n": 100,
+      "chars": 3417,
+      "errors": 29,
+      "cer": 0.008486976880304361,
+      "exact": 0.84,
+      "exact_count": 84,
+      "empty": 0,
+      "content_cer": 0.006582884500299222,
+      "content_exact": 0.89
+    },
+    "candidate": {
+      "n": 100,
+      "chars": 3417,
+      "errors": 22,
+      "cer": 0.006438396254023998,
+      "exact": 0.86,
+      "exact_count": 86,
+      "empty": 0,
+      "content_cer": 0.004488330341113106,
+      "content_exact": 0.92
+    },
+    "native_candidate_text_matches": 99
+  },
+  "onnx_parity": {
+    "samples": 9,
+    "all_text_match": true,
+    "max_abs_diff": 0.00011938810348510742,
+    "dynamic_widths": [
+      960,
+      1200,
+      1600,
+      2400,
+      3200
+    ],
+    "webgpu_pool_patches": [
+      "/model/model/backbone/encoder/convolution/pool/MaxPool"
+    ]
+  },
+  "detector_selection": {
+    "frozen_at": "2026-11-03T21:57:00.230Z",
+    "selected": {
+      "model": "production",
+      "threshold": 0.25,
+      "gt": 1193,
+      "detected": 1188,
+      "matched": 1186,
+      "missed": 7,
+      "unmatched": 2
+    },
+    "rule": "Validation only: minimize missed annotated bubbles without increasing unmatched predictions above the production .45 baseline; do not interpret unmatched predictions as verified false positives.",
+    "reason": "Retrained candidates do not improve this validation operating point. Keep active detector weights; publish retrained checkpoints as candidates.",
+    "tables": {
+      "production": [
+        {
+          "threshold": 0.1,
+          "gt": 1193,
+          "detected": 1199,
+          "matched": 1189,
+          "missed": 4,
+          "unmatched": 10
+        },
+        {
+          "threshold": 0.15,
+          "gt": 1193,
+          "detected": 1194,
+          "matched": 1189,
+          "missed": 4,
+          "unmatched": 5
+        },
+        {
+          "threshold": 0.2,
+          "gt": 1193,
+          "detected": 1192,
+          "matched": 1188,
+          "missed": 5,
+          "unmatched": 4
+        },
+        {
+          "threshold": 0.25,
+          "gt": 1193,
+          "detected": 1188,
+          "matched": 1186,
+          "missed": 7,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.3,
+          "gt": 1193,
+          "detected": 1187,
+          "matched": 1185,
+          "missed": 8,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.35,
+          "gt": 1193,
+          "detected": 1186,
+          "matched": 1184,
+          "missed": 9,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.4,
+          "gt": 1193,
+          "detected": 1183,
+          "matched": 1181,
+          "missed": 12,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.45,
+          "gt": 1193,
+          "detected": 1179,
+          "matched": 1177,
+          "missed": 16,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.5,
+          "gt": 1193,
+          "detected": 1174,
+          "matched": 1172,
+          "missed": 21,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.55,
+          "gt": 1193,
+          "detected": 1167,
+          "matched": 1165,
+          "missed": 28,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.6,
+          "gt": 1193,
+          "detected": 1157,
+          "matched": 1155,
+          "missed": 38,
+          "unmatched": 2
+        }
+      ],
+      "cold800": [
+        {
+          "threshold": 0.1,
+          "gt": 1193,
+          "detected": 1199,
+          "matched": 1185,
+          "missed": 8,
+          "unmatched": 14
+        },
+        {
+          "threshold": 0.15,
+          "gt": 1193,
+          "detected": 1199,
+          "matched": 1185,
+          "missed": 8,
+          "unmatched": 14
+        },
+        {
+          "threshold": 0.2,
+          "gt": 1193,
+          "detected": 1199,
+          "matched": 1185,
+          "missed": 8,
+          "unmatched": 14
+        },
+        {
+          "threshold": 0.25,
+          "gt": 1193,
+          "detected": 1199,
+          "matched": 1185,
+          "missed": 8,
+          "unmatched": 14
+        },
+        {
+          "threshold": 0.3,
+          "gt": 1193,
+          "detected": 1199,
+          "matched": 1185,
+          "missed": 8,
+          "unmatched": 14
+        },
+        {
+          "threshold": 0.35,
+          "gt": 1193,
+          "detected": 1198,
+          "matched": 1185,
+          "missed": 8,
+          "unmatched": 13
+        },
+        {
+          "threshold": 0.4,
+          "gt": 1193,
+          "detected": 1196,
+          "matched": 1185,
+          "missed": 8,
+          "unmatched": 11
+        },
+        {
+          "threshold": 0.45,
+          "gt": 1193,
+          "detected": 1192,
+          "matched": 1183,
+          "missed": 10,
+          "unmatched": 9
+        },
+        {
+          "threshold": 0.5,
+          "gt": 1193,
+          "detected": 1192,
+          "matched": 1183,
+          "missed": 10,
+          "unmatched": 9
+        },
+        {
+          "threshold": 0.55,
+          "gt": 1193,
+          "detected": 1190,
+          "matched": 1183,
+          "missed": 10,
+          "unmatched": 7
+        },
+        {
+          "threshold": 0.6,
+          "gt": 1193,
+          "detected": 1190,
+          "matched": 1183,
+          "missed": 10,
+          "unmatched": 7
+        }
+      ],
+      "head800": [
+        {
+          "threshold": 0.1,
+          "gt": 1193,
+          "detected": 1198,
+          "matched": 1188,
+          "missed": 5,
+          "unmatched": 10
+        },
+        {
+          "threshold": 0.15,
+          "gt": 1193,
+          "detected": 1195,
+          "matched": 1187,
+          "missed": 6,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.2,
+          "gt": 1193,
+          "detected": 1192,
+          "matched": 1187,
+          "missed": 6,
+          "unmatched": 5
+        },
+        {
+          "threshold": 0.25,
+          "gt": 1193,
+          "detected": 1191,
+          "matched": 1186,
+          "missed": 7,
+          "unmatched": 5
+        },
+        {
+          "threshold": 0.3,
+          "gt": 1193,
+          "detected": 1190,
+          "matched": 1185,
+          "missed": 8,
+          "unmatched": 5
+        },
+        {
+          "threshold": 0.35,
+          "gt": 1193,
+          "detected": 1183,
+          "matched": 1180,
+          "missed": 13,
+          "unmatched": 3
+        },
+        {
+          "threshold": 0.4,
+          "gt": 1193,
+          "detected": 1180,
+          "matched": 1178,
+          "missed": 15,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.45,
+          "gt": 1193,
+          "detected": 1172,
+          "matched": 1170,
+          "missed": 23,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.5,
+          "gt": 1193,
+          "detected": 1166,
+          "matched": 1164,
+          "missed": 29,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.55,
+          "gt": 1193,
+          "detected": 1162,
+          "matched": 1160,
+          "missed": 33,
+          "unmatched": 2
+        },
+        {
+          "threshold": 0.6,
+          "gt": 1193,
+          "detected": 1156,
+          "matched": 1154,
+          "missed": 39,
+          "unmatched": 2
+        }
+      ],
+      "cold1024": [
+        {
+          "threshold": 0.1,
+          "gt": 1193,
+          "detected": 1194,
+          "matched": 1186,
+          "missed": 7,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.15,
+          "gt": 1193,
+          "detected": 1194,
+          "matched": 1186,
+          "missed": 7,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.2,
+          "gt": 1193,
+          "detected": 1194,
+          "matched": 1186,
+          "missed": 7,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.25,
+          "gt": 1193,
+          "detected": 1194,
+          "matched": 1186,
+          "missed": 7,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.3,
+          "gt": 1193,
+          "detected": 1194,
+          "matched": 1186,
+          "missed": 7,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.35,
+          "gt": 1193,
+          "detected": 1194,
+          "matched": 1186,
+          "missed": 7,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.4,
+          "gt": 1193,
+          "detected": 1192,
+          "matched": 1184,
+          "missed": 9,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.45,
+          "gt": 1193,
+          "detected": 1192,
+          "matched": 1184,
+          "missed": 9,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.5,
+          "gt": 1193,
+          "detected": 1192,
+          "matched": 1184,
+          "missed": 9,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.55,
+          "gt": 1193,
+          "detected": 1192,
+          "matched": 1184,
+          "missed": 9,
+          "unmatched": 8
+        },
+        {
+          "threshold": 0.6,
+          "gt": 1193,
+          "detected": 1192,
+          "matched": 1184,
+          "missed": 9,
+          "unmatched": 8
+        }
+      ]
+    }
+  },
+  "full_page": {
+    "test": {
+      "baseline": {
+        "pages": 129,
+        "bubbles": 1221,
+        "matched": 1209,
+        "unmatched_predictions": 6,
+        "raw": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 758,
+          "cer": 0.018885788319712975,
+          "exact": 0.7665847665847666,
+          "exact_count": 936,
+          "empty": 14,
+          "content_cer": 0.012294561434704194,
+          "content_exact": 0.9025389025389026
+        },
+        "final": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 652,
+          "cer": 0.016244767789515648,
+          "exact": 0.8337428337428338,
+          "exact_count": 1018,
+          "empty": 14,
+          "content_cer": 0.013209032946376407,
+          "content_exact": 0.8902538902538902
+        },
+        "perfect_annotated_pages": 28,
+        "limitation": "Previously inspected historical holdout. Native Skia/ORT CPU execution; browser tested separately. Unmatched predictions reported but not scored as false positives because annotation completeness is unproven."
+      },
+      "selected": {
+        "pages": 129,
+        "bubbles": 1221,
+        "matched": 1217,
+        "unmatched_predictions": 9,
+        "raw": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 484,
+          "cer": 0.012058999402033088,
+          "exact": 0.814086814086814,
+          "exact_count": 994,
+          "empty": 4,
+          "content_cer": 0.006909340310412274,
+          "content_exact": 0.918918918918919
+        },
+        "final": {
+          "n": 1221,
+          "chars": 40136,
+          "errors": 407,
+          "cer": 0.010140522224436914,
+          "exact": 0.8542178542178542,
+          "exact_count": 1043,
+          "empty": 4,
+          "content_cer": 0.007010948256153632,
+          "content_exact": 0.9164619164619164
+        },
+        "perfect_annotated_pages": 37,
+        "limitation": "Previously inspected historical holdout. Native Skia/ORT CPU execution; browser tested separately. Unmatched predictions reported but not scored as false positives because annotation completeness is unproven."
+      }
+    },
+    "val_selected": {
+      "pages": 129,
+      "bubbles": 1193,
+      "matched": 1186,
+      "unmatched_predictions": 2,
+      "raw": {
+        "n": 1193,
+        "chars": 38075,
+        "errors": 554,
+        "cer": 0.014550229809586342,
+        "exact": 0.8097233864207879,
+        "exact_count": 966,
+        "empty": 7,
+        "content_cer": 0.010061277461132964,
+        "content_exact": 0.9153394803017603
+      },
+      "final": {
+        "n": 1193,
+        "chars": 38075,
+        "errors": 493,
+        "cer": 0.012948128693368352,
+        "exact": 0.8499580888516345,
+        "exact_count": 1014,
+        "empty": 7,
+        "content_cer": 0.010114794894436863,
+        "content_exact": 0.9136630343671417
+      },
+      "perfect_annotated_pages": 40,
+      "postprocess": "PP-OCR lexicon/spacing/case only, selected on validation",
+      "raw_predictions_sha256": "d8b2b77f12cf040cd6ea908ddc479cebcf412a618f21832c7f5d3148e6b220f6",
+      "original_protocol": {
+        "split": "val",
+        "threshold": 0.25,
+        "crop_mode": false,
+        "page_limit": null,
+        "dataset_plan_sha256": "b9732ad1ce777707b66add3d02fc46bff700711390e0c5c8cb2e7446960b8d73",
+        "worker_sha256": "b6eb5cbefdda48c166904724f9b0c62ad2abc0aacf6fba6395c35a215703debf",
+        "detection_worker_sha256": "b8f0dac21b835920ec8e8b114aa053e3db1ecf4052295cd46de0a916b2f0b54f",
+        "runtime_sha256": "47f42c7711226612b0d62e58ccb4fb750a3b4b86fcbc44539eb8b8338b04db16",
+        "script_sha256": "a5c76a78a8cbda3a9c83e828497addbf481ccad075f1d63ffc09993e77dff041",
+        "artifacts": {
+          "browser_manifest.json": "02e254fceed6dde655588ae7fc431d48ec9de70a2cf167e040aad7cf43f8570e",
+          "ppocrv6_bubble_line_rec_webgpu.onnx": "1cd98cf3a6fe77567f097bb01a1f719a3b6487e54ad973579cb9ede5c371e613",
+          "bubble_line_detector_yolo26n.onnx": "b8a7d12cbb65ce4028cd1b49fabf01b14a0ca3f28ff9509387524f648f183505",
+          "bubble_detector.onnx": "fa28ece56ba9e5ccf4361fbb4d2533e088906b0a0d1cd187c02422ba7d6f5688",
+          "panel_detector.onnx": "67a9b0128a49cf8c1c0a7e1907e0e943fdedcaedf0877894b0fb87d9283c597f",
+          "ordering.onnx": "e5c92135ccdbcb7cb678ec05388be03348d8b2eff7f7d24b9ef7644e2a23df94"
+        },
+        "note": "Previously inspected historical holdout. Native Skia/ORT CPU execution; browser tested separately. Unmatched predictions reported but not scored as false positives because annotation completeness is unproven."
+      },
+      "limitation": "Previously inspected historical holdout; GT-conditioned scores, unverified annotation completeness."
+    },
+    "val_1024_candidate_diagnostic": {
+      "pages": 129,
+      "bubbles": 1193,
+      "matched": 1186,
+      "unmatched_predictions": 8,
+      "raw": {
+        "n": 1193,
+        "chars": 38075,
+        "errors": 569,
+        "cer": 0.01494418910045962,
+        "exact": 0.8130762782900252,
+        "exact_count": 970,
+        "empty": 8,
+        "content_cer": 0.010703486660779749,
+        "content_exact": 0.9170159262363788
+      },
+      "final": {
+        "n": 1193,
+        "chars": 38075,
+        "errors": 507,
+        "cer": 0.013315824031516743,
+        "exact": 0.8575020955574183,
+        "exact_count": 1023,
+        "empty": 8,
+        "content_cer": 0.010757004094083648,
+        "content_exact": 0.9153394803017603
+      },
+      "perfect_annotated_pages": 42,
+      "limitation": "Previously inspected historical holdout. Native Skia/ORT CPU execution; browser tested separately. Unmatched predictions reported but not scored as false positives because annotation completeness is unproven."
+    }
+  },
+  "matched_reading_order": {
+    "baseline": {
+      "eligible_pages": 129,
+      "exact_matched_order_pages": 114,
+      "pairs": 5816,
+      "inversions": 18,
+      "skipped_incomplete_or_duplicate_order_pages": 0,
+      "skipped_small_pages": 0,
+      "note": "Exploratory global order over spatially matched annotations with unique numeric order; missed and extra bubbles are excluded. This is not a full reading-order success rate. Panel and ordering weights are unchanged."
+    },
+    "selected": {
+      "eligible_pages": 129,
+      "exact_matched_order_pages": 114,
+      "pairs": 5901,
+      "inversions": 19,
+      "skipped_incomplete_or_duplicate_order_pages": 0,
+      "skipped_small_pages": 0,
+      "note": "Exploratory global order over spatially matched annotations with unique numeric order; missed and extra bubbles are excluded. This is not a full reading-order success rate. Panel and ordering weights are unchanged."
+    }
+  },
+  "remaining_work": [
+    "Annotate complete line boxes, including missed lines, and retrain the line detector. Twenty-eight visually confirmed train pairs currently omit visible text before recognition.",
+    "Create a human-labeled ordinary/SFX evaluation set; the existing diagnostic subset is too small and error-focused for a reliable class-wide score.",
+    "Acquire new unseen volumes and review all extra detections to establish recall and precision on an independent, complete holdout.",
+    "Validate reading-order and panel annotations separately; text CER alone does not measure ordering quality."
+  ],
+  "evidence_sha256": {
+    "final-pipeline-test-v1/pages.jsonl": "09d344cd780bb3be593d8e9b76f7a88276bb83644e6b5905fd07d83adaeb6e1f",
+    "baseline-test-v1/pages.jsonl": "221737add2391039b58561e75c92b356546e2f5d5a3318fe2ed4eec8ba4da612",
+    "final-pipeline-test-v1/protocol.json": "7dff644f6f4298668035d58c3532d89ff94b5d05b730c42b6a0a46d210080191",
+    "recognition-summary-final.json": "95acdca9dece91c183e8a137c6d2b841380260378eb5b3e3bc458a777ef64c6c",
+    "browser-new-webgpu-val100-lexicon/result.json": "4430a92a764f94f7bf2517c47dd8e3e7a150455107c6560258546aa78ce38452",
+    "browser-active-detector-val20/result.json": "c4f7ba733c753e46ed953106ed63e8f58cec68ca5c0e54d445b4b29317f80973"
+  },
+  "production_artifacts": {
+    "bubble_detector.onnx": {
+      "bytes": 9898957,
+      "sha256": "fa28ece56ba9e5ccf4361fbb4d2533e088906b0a0d1cd187c02422ba7d6f5688"
+    },
+    "bubble_line_detector_yolo26n.onnx": {
+      "bytes": 10066944,
+      "sha256": "b8a7d12cbb65ce4028cd1b49fabf01b14a0ca3f28ff9509387524f648f183505"
+    },
+    "ppocrv6_bubble_line_rec_webgpu.onnx": {
+      "bytes": 76570513,
+      "sha256": "1cd98cf3a6fe77567f097bb01a1f719a3b6487e54ad973579cb9ede5c371e613"
+    },
+    "panel_detector.onnx": {
+      "bytes": 12457857,
+      "sha256": "67a9b0128a49cf8c1c0a7e1907e0e943fdedcaedf0877894b0fb87d9283c597f"
+    },
+    "ordering.onnx": {
+      "bytes": 280470,
+      "sha256": "e5c92135ccdbcb7cb678ec05388be03348d8b2eff7f7d24b9ef7644e2a23df94"
+    }
+  }
+}

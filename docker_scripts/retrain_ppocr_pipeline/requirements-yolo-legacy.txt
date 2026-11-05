@@ -1,0 +1,4 @@
+# Install without replacing the main environment:
+# python -m pip install --no-deps --target /workspace/legacy-ultralytics -r requirements-yolo-legacy.txt
+# Run the historical detector with PYTHONPATH=/workspace/legacy-ultralytics.
+ultralytics==8.4.48

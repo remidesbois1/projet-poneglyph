@@ -64,4 +64,29 @@ describe('rallyPageBubblesToYolo', () => {
         expect(barely.unmatchedYoloIndices).toEqual([0]);
         expect(enough.matches).toEqual([expect.objectContaining({ yoloIndex: 0, text: 'Chevauche' })]);
     });
+
+    it('detects and corrects Gemini native [ymin, xmin, ymax, xmax] responses', () => {
+        // Same pagebubble list expressed in both orientations: only the transposed reading
+        // of the native order lines up with the detector boxes.
+        const yoloBoxes = [
+            { x: 740, y: 170, w: 121, h: 65 },  // top-right bubble
+            { x: 86, y: 1124, w: 194, h: 146 }, // bottom-left bubble
+        ];
+        const nativeOrder = [
+            { content: 'Première bulle', bbox: [121, 781, 149, 888] },
+            { content: 'Dernière bulle', bbox: [757, 105, 836, 279] },
+        ];
+        const promptOrder = [
+            { content: 'Première bulle', bbox: [782, 121, 885, 149] },
+            { content: 'Dernière bulle', bbox: [105, 757, 279, 836] },
+        ];
+        const expected = [
+            { yoloIndex: 0, text: 'Première bulle' },
+            { yoloIndex: 1, text: 'Dernière bulle' },
+        ];
+        const shape = matches => matches.map(({ yoloIndex, text }) => ({ yoloIndex, text }));
+
+        expect(shape(rallyPageBubblesToYolo(nativeOrder, yoloBoxes, 958, 1500).matches)).toEqual(expected);
+        expect(shape(rallyPageBubblesToYolo(promptOrder, yoloBoxes, 958, 1500).matches)).toEqual(expected);
+    });
 });

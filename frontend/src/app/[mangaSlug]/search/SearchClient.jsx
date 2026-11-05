@@ -21,7 +21,8 @@ import { SEMANTIC_EXAMPLES, getSearchMode } from './searchModes';
 
 const RESULTS_PER_PAGE = 24;
 const OCR_RESULTS_LIMIT = 3;
-const OCR_SEARCH_PROVIDER = 'readernet+ppocrv6';
+const OCR_SEARCH_MODEL_KEY = 'indraBubble';
+const OCR_SEARCH_PROVIDER = 'readernet+indra';
 
 const waitForCondition = (predicate, timeoutMs, errorMessage, signal) => {
     const started = Date.now();
@@ -76,10 +77,13 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         loadDetectionModel,
     } = useDetection();
     const {
-        worker: ocrWorker,
-        modelStatus: ocrModelStatus,
-        activeModelKey: activeOcrModelKey,
+        workers: ocrWorkers,
+        modelStates: ocrModelStates,
+        loadModel: loadOcrModel,
     } = useWorker();
+    // Image search always reads bubbles with Indra OCR, whatever model the editor has selected.
+    const ocrWorker = ocrWorkers?.[OCR_SEARCH_MODEL_KEY] || null;
+    const ocrModelStatus = ocrModelStates?.[OCR_SEARCH_MODEL_KEY]?.status || 'idle';
     const getSavedState = () => {
         if (typeof window === 'undefined') return {};
         try {
@@ -148,7 +152,6 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
     const autoSemanticSearchRef = useRef(isLandingSemanticSearch);
     const detectionStatusRef = useRef(detectionStatus);
     const ocrModelStatusRef = useRef(ocrModelStatus);
-    const activeOcrModelKeyRef = useRef(activeOcrModelKey);
     const ocrWorkerRef = useRef(ocrWorker);
     const activeLocalSearchRequestIdRef = useRef(null);
 
@@ -188,10 +191,6 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
     useEffect(() => {
         ocrModelStatusRef.current = ocrModelStatus;
     }, [ocrModelStatus]);
-
-    useEffect(() => {
-        activeOcrModelKeyRef.current = activeOcrModelKey;
-    }, [activeOcrModelKey]);
 
     useEffect(() => {
         ocrWorkerRef.current = ocrWorker;
@@ -312,34 +311,28 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         throwIfAborted(request.signal);
     };
 
-    const ensurePpocrReady = async (request) => {
+    const ensureOcrReady = async (request) => {
         throwIfAborted(request.signal);
-        if (ocrWorkerRef.current && ocrModelStatusRef.current === 'ready' && activeOcrModelKeyRef.current === 'ppocrv6Line') return;
+        if (ocrWorkerRef.current && ocrModelStatusRef.current === 'ready') return;
         searchLifecycleRef.current.commit(request.requestId, () => {
-            setOcrStatus("Chargement de PP-OCRv6…");
+            setOcrStatus("Chargement d’Indra OCR…");
         });
+        loadOcrModel(OCR_SEARCH_MODEL_KEY);
         await waitForCondition(
-            () => Boolean(ocrWorkerRef.current),
-            10000,
-            "Worker PP-OCRv6 indisponible.",
-            request.signal
-        );
-        throwIfAborted(request.signal);
-        ocrWorkerRef.current.postMessage({ type: 'init', modelKey: 'ppocrv6Line' });
-        await waitForCondition(
-            () => ocrWorkerRef.current && ocrModelStatusRef.current === 'ready' && activeOcrModelKeyRef.current === 'ppocrv6Line',
+            () => (ocrWorkerRef.current && ocrModelStatusRef.current === 'ready') || ocrModelStatusRef.current === 'error',
             120000,
-            "PP-OCRv6 n’a pas pu être chargé.",
+            "Indra OCR n’a pas pu être chargé.",
             request.signal
         );
         throwIfAborted(request.signal);
+        if (ocrModelStatusRef.current !== 'ready') throw new Error("Indra OCR n’a pas pu être chargé.");
     };
 
-    const runPpocrSearchCrop = (imageBitmap, workerRequestId, signal) => new Promise((resolve, reject) => {
+    const runSearchCropOcr = (imageBitmap, workerRequestId, signal) => new Promise((resolve, reject) => {
         const worker = ocrWorkerRef.current;
         if (!worker) {
             imageBitmap?.close?.();
-            reject(new Error("Worker PP-OCRv6 indisponible."));
+            reject(new Error("Worker Indra OCR indisponible."));
             return;
         }
 
@@ -367,7 +360,7 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
             if (data.status === 'complete') {
                 settle(resolve, data);
             } else {
-                settle(reject, new Error(data.error || "Erreur PP-OCRv6."));
+                settle(reject, new Error(data.error || "Erreur Indra OCR."));
             }
         };
 
@@ -378,7 +371,7 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
         }
 
         timeout = window.setTimeout(() => {
-            settle(reject, new Error("Timeout PP-OCRv6 sur une bulle."));
+            settle(reject, new Error("Timeout Indra OCR sur une bulle."));
         }, 90000);
         worker.addEventListener('message', handleMessage);
         signal?.addEventListener('abort', handleAbort, { once: true });
@@ -398,7 +391,7 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
             throw new Error("Aucune bulle détectée par le pipeline ReaderNet.");
         }
 
-        await ensurePpocrReady(request);
+        await ensureOcrReady(request);
         const pageBitmap = await createImageBitmap(imageFile);
         const bubbles = [];
 
@@ -415,9 +408,9 @@ export default function SearchPage({ initialQuery = '', initialMode = '' }) {
                 });
                 const crop = await createImageBitmap(pageBitmap, bbox.x, bbox.y, bbox.w, bbox.h);
                 throwIfAborted(request.signal);
-                const result = await runPpocrSearchCrop(
+                const result = await runSearchCropOcr(
                     crop,
-                    `search-ppocr-${request.requestId}-${index}`,
+                    `search-indra-${request.requestId}-${index}`,
                     request.signal
                 );
                 throwIfAborted(request.signal);

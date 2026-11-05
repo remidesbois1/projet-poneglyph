@@ -16,6 +16,72 @@ export function capitalizeOcrSentenceStarts(text) {
     }).join('');
 }
 
+const OCR_RULE_TOKEN_RE = /[\p{L}]+(?:['\u2019][\p{L}]+)?/gu;
+
+function normalizeOcrRuleSpacing(text) {
+    return String(text || '')
+        .trim()
+        .replace(/\u2026/g, '...')
+        .replace(/\s+/g, ' ')
+        .replace(/\s*\.\s*\.\s*\./g, '<ELLIPSIS>')
+        .replace(/\s+([,.])/g, '$1')
+        .replace(/([,.])(\S)/g, '$1 $2')
+        .replace(/\s*([!?;:]+)/g, ' $1')
+        .replace(/<ELLIPSIS>/g, '...')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function isOcrWeirdCase(token) {
+    const letters = [...token].filter(char => OCR_LETTER_RE.test(char));
+    if (letters.length < 2) return false;
+    const hasUpper = letters.some(char => char === char.toLocaleUpperCase('fr-FR') && char !== char.toLocaleLowerCase('fr-FR'));
+    const hasLower = letters.some(char => char === char.toLocaleLowerCase('fr-FR') && char !== char.toLocaleUpperCase('fr-FR'));
+    if (!hasUpper || !hasLower) return false;
+    const titleLike = token[0] === token[0].toLocaleUpperCase('fr-FR')
+        && token.slice(1) === token.slice(1).toLocaleLowerCase('fr-FR');
+    return !titleLike;
+}
+
+/**
+ * Text rules learned from the training labels only (browser manifest `postprocess`):
+ * French punctuation spacing, lexicon casing, then sentence starts. Shared by the
+ * PP-OCRv6 and Indra bubble recognizers.
+ */
+export function applyOcrTextRules(text, rules) {
+    if (!rules?.enabled || !rules.lexicon) return capitalizeOcrSentenceStarts(text);
+
+    const lexicon = rules.lexicon || {};
+    const minCount = Number(rules.min_count || 1);
+    const minRatio = Number(rules.min_ratio || 1);
+    const maxLowerRatio = Number(rules.max_lower_ratio || 0);
+    const sentenceStart = Boolean(rules.sentence_start);
+    const spaced = normalizeOcrRuleSpacing(text);
+
+    const lexiconCorrected = spaced.replace(OCR_RULE_TOKEN_RE, (token, offset) => {
+        const key = token.toLocaleLowerCase('fr-FR');
+        const entry = lexicon[key];
+        if (!entry?.best) return token;
+        if (isOcrWeirdCase(token)) return entry.best;
+
+        const total = Number(entry.total || 0);
+        const bestRatio = Number(entry.best_ratio || 0);
+        const lowerRatio = Number(entry.lower_ratio || 0);
+        const tokenIsLower = token === token.toLocaleLowerCase('fr-FR');
+        if (
+            total >= minCount
+            && bestRatio >= minRatio
+            && lowerRatio <= maxLowerRatio
+            && entry.best !== key
+            && (tokenIsLower || (sentenceStart && offset === 0))
+        ) {
+            return entry.best;
+        }
+        return token;
+    });
+    return capitalizeOcrSentenceStarts(lexiconCorrected);
+}
+
 export function fixFrenchPunctuation(text) {
     if (!text) return "";
 

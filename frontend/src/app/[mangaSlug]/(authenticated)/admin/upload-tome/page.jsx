@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useManga } from '@/context/MangaContext';
 import { getTomes, uploadPageToR2, batchCreatePages } from '@/lib/api';
 import { analyzeVolumeSummary } from '@/lib/geminiClient';
-import { buildPageTypeImportPlan } from '@/lib/pageTypeSlicing';
+import { buildPageTypeImportPlan, markDoublePageSpreads } from '@/lib/pageTypeSlicing';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -172,7 +172,7 @@ export default function UploadTomePage() {
             if (!thumbBlob) thumbBlob = await new Promise(r => canvas.toBlob(r, 'image/webp', 0.35));
 
             URL.revokeObjectURL(img.src);
-            resolve(URL.createObjectURL(thumbBlob));
+            resolve({ thumbUrl: URL.createObjectURL(thumbBlob), width: img.width, height: img.height });
         };
         img.onerror = reject;
         img.src = URL.createObjectURL(blob);
@@ -209,24 +209,27 @@ export default function UploadTomePage() {
             const extracted = [];
             for (let i = 0; i < imageFiles.length; i++) {
                 const blob = await imageFiles[i].entry.async('blob');
-                const thumbUrl = await createThumbnail(blob);
+                const { thumbUrl, width, height } = await createThumbnail(blob);
                 extracted.push({
                     id: crypto.randomUUID(),
                     index: i,
                     filename: imageFiles[i].path.split('/').pop(),
                     thumbUrl,
+                    width,
+                    height,
                     blob,
                     chapterId: null,
                 });
                 setExtractProgress(Math.round(((i + 1) / imageFiles.length) * 100));
             }
 
-            setPages(extracted);
+            const extractedWithSpreads = markDoublePageSpreads(extracted);
+            setPages(extractedWithSpreads);
             setStep(2);
             setAnalyzingPageTypes(true);
 
             try {
-                const classifiedPages = await classifyExtractedPages(extracted);
+                const classifiedPages = await classifyExtractedPages(extractedWithSpreads);
                 const initialPlan = buildPageTypeImportPlan(classifiedPages);
                 setAutoRemovedAnnexes(initialPlan.autoDeletedPages);
                 setDetectedSummaryPage(initialPlan.summaryPage);
@@ -523,6 +526,7 @@ export default function UploadTomePage() {
 
     const selectedTomeObj = tomes.find(t => String(t.id) === selectedTome);
     const assignedCount = pages.filter(p => p.chapterId).length;
+    const doublePageCount = pages.filter(p => p.isDoublePage).length;
     const assigningChapterObj = chapters.find(c => c.id === assigningChapter);
 
     return (
@@ -631,6 +635,11 @@ export default function UploadTomePage() {
                                 <h2 className="text-xl font-bold text-white">
                                     Pages ({pages.length})
                                 </h2>
+                                {doublePageCount > 0 && (
+                                    <span className="rounded-full border border-sky-400/35 bg-sky-500/10 px-2 py-1 text-xs font-medium text-sky-200">
+                                        {doublePageCount} double(s) page(s) détectée(s)
+                                    </span>
+                                )}
                                 {assignedCount < pages.length && (
                                     <span className="rounded-full border border-amber-400/35 bg-amber-500/14 px-2 py-1 text-xs font-medium text-amber-200">
                                         {pages.length - assignedCount} non assignée(s)
@@ -735,10 +744,15 @@ export default function UploadTomePage() {
                                             <img
                                                 src={page.thumbUrl}
                                                 alt={`Page ${index + 1}`}
-                                                className="w-full h-full object-cover"
+                                                className={`w-full h-full ${page.isDoublePage ? 'object-contain' : 'object-cover'}`}
                                                 loading="lazy"
                                             />
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            {page.isDoublePage && (
+                                                <span className="absolute bottom-1.5 right-1.5 rounded bg-sky-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow" title="Compte pour deux pages imprimées">
+                                                    Double page
+                                                </span>
+                                            )}
                                             {page.suggestedChapterStart && (
                                                 <span className="absolute left-1.5 top-1.5 rounded bg-[#3d86ff] px-1.5 py-0.5 text-[10px] font-bold text-white shadow">
                                                     Début du sommaire

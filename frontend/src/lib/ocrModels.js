@@ -17,6 +17,7 @@ const defineModel = (key, fields) => Object.freeze({ key, sandbox: true, ...fiel
  * Names follow "<family> <version>[ BBox]"; where a model runs is `runtime`, never the name.
  */
 export const OCR_MODELS = Object.freeze({
+    indraBubble: defineModel('indraBubble', { name: 'Indra OCR', scope: 'bubble', runtime: 'browser', engine: 'onnx', size: '6 Mo' }),
     ppocrv6Line: defineModel('ppocrv6Line', { name: 'PP-OCRv6', scope: 'bubble', runtime: 'browser', engine: 'onnx', size: '87 Mo' }),
     lighton3BubbleWebgpu: defineModel('lighton3BubbleWebgpu', { name: 'LightOnOCR 3', scope: 'bubble', runtime: 'browser', engine: 'onnx', size: '1,7 Go', preserveTranscript: true }),
     suryaWebgpu: defineModel('suryaWebgpu', { name: 'Surya OCR 2', scope: 'bubble', runtime: 'browser', engine: 'onnx', size: '1,3 Go' }),
@@ -32,7 +33,7 @@ export const OCR_MODELS = Object.freeze({
     glmPage: defineModel('glmPage', { name: GLM_LABEL, scope: 'page', runtime: 'cloud', engine: 'mistral' }),
 });
 
-export const DEFAULT_OCR_MODEL_KEYS = Object.freeze(['ppocrv6Line']);
+export const DEFAULT_OCR_MODEL_KEYS = Object.freeze(['indraBubble']);
 
 /** The sandbox never offered Gemini page reading. */
 export function isSelectableOcrModel(model, isSandbox = false) {

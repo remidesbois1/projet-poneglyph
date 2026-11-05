@@ -6,7 +6,7 @@ const WorkerContext = createContext();
 
 export const useWorker = () => useContext(WorkerContext);
 
-const DEFAULT_OCR_MODEL_KEY = 'ppocrv6Line';
+const DEFAULT_OCR_MODEL_KEY = 'indraBubble';
 
 export const WorkerProvider = ({ children }) => {
     const entries = useRef(new Map());
@@ -39,6 +39,8 @@ export const WorkerProvider = ({ children }) => {
                 ? new Worker(new URL('../workers/falcon.worker.js', import.meta.url), { type: 'module' })
                 : key === 'suryaWebgpu'
                 ? new Worker(new URL('../workers/surya.worker.js', import.meta.url), { type: 'module' })
+                : key === 'indraBubble'
+                ? new Worker(new URL('../workers/indra.worker.js', import.meta.url), { type: 'module' })
                 : new Worker(new URL('../workers/ocr.worker.js', import.meta.url), { type: 'module' });
             entry = { worker, status: 'idle' };
             entries.current.set(key, entry);

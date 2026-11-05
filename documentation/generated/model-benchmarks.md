@@ -1,6 +1,6 @@
 # Benchmarks modèles publiés
 
-Ce document est généré depuis `shared/model-registry.json` (v1, 2026-10-30). Ne pas modifier manuellement.
+Ce document est généré depuis `shared/model-registry.json` (v1, 2026-11-05). Ne pas modifier manuellement.
 
 Les résultats ne sont comparables qu’à protocole et tâche identiques. Un matériel non consigné est indiqué explicitement plutôt que supposé.
 
@@ -23,23 +23,41 @@ Les résultats ne sont comparables qu’à protocole et tâche identiques. Un ma
 | `wer` | WER WebGPU 1,410 % | plus bas |
 | `exact_match` | Exact match WebGPU 92,25 % | plus haut |
 
+## Indra OCR Poneglyph Bubble
+
+- Identifiant registre : `indra-bubble`
+- Tâche : `bubble-line-ocr`
+- Version : [`Remidesbois/indra-ocr-poneglyph-bubble@fea60b5793979c05b483dd53e6536b920db6a17a`](https://huggingface.co/Remidesbois/indra-ocr-poneglyph-bubble/tree/fea60b5793979c05b483dd53e6536b920db6a17a)
+- Dataset : Poneglyph validated reference bubble crops, same 1,221-bubble test as PP-OCRv6 Bubble Line
+- Split : historical test held out by page, previously evaluated and inspected
+- Date : 2026-11-05
+- Échantillons : 1 221
+- Matériel : CPU, onnxruntime-node 1.24.3 running the browser implementation (frontend/src/lib/indraOcr.js)
+- Protocole : Fine-tuned Indra OCR v1.1.0 det.onnx (YOLO line pseudo-labels) and rec.onnx; bubble crop at 0.75x for line detection, Indra tall line windows side by side, one greedy CTC pass, then the same train-derived lexicon/spacing/case rules as PP-OCRv6. NFKC, straight apostrophes, expanded ellipses and collapsed whitespace; case and punctuation retained. Settings chosen on validation only. Python reference 0.690% CER (1219/1221 identical raw texts); PP-OCRv6 production pipeline 0.902% on the same crops (paired page bootstrap difference -0.21 points, 95% CI -0.41 to -0.005). Not a full-page or blind benchmark.
+- Preuve : [artefact figé](https://huggingface.co/Remidesbois/indra-ocr-poneglyph-bubble/blob/fea60b5793979c05b483dd53e6536b920db6a17a/metrics/evaluation_20261105.json)
+
+| Clé | Valeur | Sens favorable |
+|---|---:|---|
+| `cer` | CER 0,693 % | plus bas |
+| `exact_match` | Exact match 88,53 % | plus haut |
+
 ## PP-OCRv6 Bubble Line
 
 - Identifiant registre : `ppocrv6-line`
 - Tâche : `bubble-line-ocr`
-- Version : [`Remidesbois/pp-ocrv6-one-piece-bubble-line-rec@10b932d4aadca2830850ccf5951116597404bef8`](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/tree/10b932d4aadca2830850ccf5951116597404bef8)
-- Dataset : Poneglyph validated bubbles reconstructed from detected text lines
-- Split : test held-out by page
-- Date : 2026-06-29
-- Échantillons : 1 219
-- Matériel : Not recorded; offline scoring over pinned predictions
-- Protocole : YOLO26n line detection, horizontal line stitching, PP-OCRv6 CTC decoding, then spacing and case rules learned only from the training split.
-- Preuve : [artefact figé](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/blob/10b932d4aadca2830850ccf5951116597404bef8/postprocess_official_metrics.json)
+- Version : [`Remidesbois/pp-ocrv6-one-piece-bubble-line-rec@a6dddec384c76a1ac3c2125f92403e775a3929d7`](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/tree/a6dddec384c76a1ac3c2125f92403e775a3929d7)
+- Dataset : Poneglyph validated reference bubble crops reconstructed from production-detected text lines
+- Split : historical test held out by page, previously evaluated and inspected
+- Date : 2026-11-03
+- Échantillons : 1 221
+- Matériel : NVIDIA GeForce RTX 4090 24 GB, native PyTorch 2.8.0 CUDA FP32
+- Protocole : Reference bubble crops; production YOLO line detection at 0.10, horizontal stitching, 48 px height with gray padding and dynamic width 960-3200, BGR normalization, PP-OCRv6 CTC, frozen train-derived lexicon/spacing/case rules. NFKC, straight apostrophes, expanded ellipses and collapsed whitespace; case and punctuation retained. Native corpus results; Chrome WebGPU validated separately on 100 validation crops. Not a full-page or blind benchmark.
+- Preuve : [artefact figé](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/blob/a6dddec384c76a1ac3c2125f92403e775a3929d7/metrics/retraining_20261103.json)
 
 | Clé | Valeur | Sens favorable |
 |---|---:|---|
-| `cer` | CER 1,451 % | plus bas |
-| `exact_match` | Exact match 75,96 % | plus haut |
+| `cer` | CER 0,904 % | plus bas |
+| `exact_match` | Exact match 85,01 % | plus haut |
 
 ## LightOnOCR Poneglyph
 
@@ -151,14 +169,14 @@ Les résultats ne sont comparables qu’à protocole et tâche identiques. Un ma
 
 - Identifiant registre : `readernet-reading-order`
 - Tâche : `reading-order`
-- Version : [`Remidesbois/Poneglyph-ReaderNet@d97d4cd2903a7ebe49276a5269c4f3b7df608be7`](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/tree/d97d4cd2903a7ebe49276a5269c4f3b7df608be7)
+- Version : [`Remidesbois/Poneglyph-ReaderNet@0f3cc90737d90d8c3810b7397c923a2fc7be24e9`](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/tree/0f3cc90737d90d8c3810b7397c923a2fc7be24e9)
 - Dataset : Poneglyph polygon panels with bubbles from the shared YOLO26n detector
 - Split : validation held out by page
 - Date : 2026-08-27
 - Échantillons : 138
 - Matériel : CPU offline ONNX scoring
-- Protocole : Shared bubble detections and annotated panels; pairwise Borda ranking independently inside each panel, with no global bubble sorter.
-- Preuve : [artefact figé](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/d97d4cd2903a7ebe49276a5269c4f3b7df608be7/metrics/shared_detector_comparison.json)
+- Protocole : Shared bubble detections and annotated panels; pairwise Borda ranking independently inside each panel, with no global bubble sorter. Historical ordering benchmark inherited unchanged. Active detector weights retained; confidence calibrated to 0.25 on 2026-11-03. Fresh detector/text results are separate in metrics/retraining_20261103.json.
+- Preuve : [artefact figé](https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/0f3cc90737d90d8c3810b7397c923a2fc7be24e9/metrics/shared_detector_comparison.json)
 
 | Clé | Valeur | Sens favorable |
 |---|---:|---|

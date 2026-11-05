@@ -28,7 +28,7 @@ async function blobToBase64(blob) {
     });
 }
 
-function normalizeGeneratedBubbles(data) {
+export function normalizeGeneratedBubbles(data) {
     const rawBubbles = Array.isArray(data)
         ? data
         : Array.isArray(data?.bubbles)
@@ -38,18 +38,20 @@ function normalizeGeneratedBubbles(data) {
     return rawBubbles
         .map((bubble) => {
             const content = capitalizeOcrSentenceStarts(bubble?.content || bubble?.text || bubble?.texte).trim();
-            const rawBox = bubble?.bbox || bubble?.pos || bubble?.box;
+            const rawBox = bubble?.bbox || bubble?.pos || bubble?.box || bubble?.box_2d;
             let bbox = null;
 
             if (Array.isArray(rawBox) && rawBox.length >= 4) {
+                // Kept as-is: Gemini alternates per response between the prompt's [x1, y1, x2, y2]
+                // and its native [ymin, xmin, ymax, xmax]; the rally against YOLO picks the orientation.
                 bbox = rawBox.slice(0, 4).map(Number);
             } else if (rawBox && typeof rawBox === 'object') {
-                const x = Number(rawBox.x ?? rawBox.x1);
-                const y = Number(rawBox.y ?? rawBox.y1);
-                const w = Number(rawBox.w);
-                const h = Number(rawBox.h);
-                const x2 = Number(rawBox.x2);
-                const y2 = Number(rawBox.y2);
+                const x = Number(rawBox.x ?? rawBox.x1 ?? rawBox.xmin ?? rawBox.left);
+                const y = Number(rawBox.y ?? rawBox.y1 ?? rawBox.ymin ?? rawBox.top);
+                const w = Number(rawBox.w ?? rawBox.width);
+                const h = Number(rawBox.h ?? rawBox.height);
+                const x2 = Number(rawBox.x2 ?? rawBox.xmax ?? rawBox.right);
+                const y2 = Number(rawBox.y2 ?? rawBox.ymax ?? rawBox.bottom);
                 bbox = Number.isFinite(w) && Number.isFinite(h)
                     ? [x, y, x + w, y + h]
                     : [x, y, x2, y2];
@@ -152,21 +154,27 @@ export function normalizeVolumeSummaryChapters(data, pageCount) {
             const title = typeof chapter?.title === 'string' ? chapter.title.trim() : '';
             const printedPage = Number.parseInt(chapter?.printed_page ?? chapter?.printedPage, 10);
             if (!Number.isInteger(number) || number < 1) return null;
-            if (!Number.isInteger(startPage) || startPage < 1 || startPage > pageCount) return null;
+            const validStartPage = Number.isInteger(startPage) && startPage >= 1 && startPage <= pageCount;
+            const validPrintedPage = Number.isInteger(printedPage) && printedPage > 0;
+            if (!validStartPage && !validPrintedPage) return null;
             return {
                 number,
                 title: title || `Chapitre ${number}`,
-                startPage,
-                printedPage: Number.isInteger(printedPage) && printedPage > 0 ? printedPage : null,
+                startPage: validStartPage ? startPage : null,
+                printedPage: validPrintedPage ? printedPage : null,
             };
         })
-        .filter(Boolean)
-        .sort((left, right) => left.startPage - right.startPage || left.number - right.number);
+        .filter(Boolean);
 
-    const hasDuplicateOrReverseStart = normalized.some(
-        (chapter, index) => index > 0 && chapter.startPage <= normalized[index - 1].startPage,
-    );
-    if (!normalized.length || hasDuplicateOrReverseStart) {
+    const hasAnchor = normalized.some((chapter) => chapter.startPage !== null && chapter.printedPage !== null);
+    const hasLegacyStarts = normalized.every((chapter) => chapter.startPage !== null);
+    const hasReversePrintedPage = normalized.some((chapter, index) => index > 0 &&
+        chapter.printedPage !== null && normalized[index - 1].printedPage !== null &&
+        chapter.printedPage <= normalized[index - 1].printedPage);
+    const hasReverseLegacyStart = !hasAnchor && normalized.some((chapter, index) => index > 0 &&
+        chapter.startPage !== null && normalized[index - 1].startPage !== null &&
+        chapter.startPage <= normalized[index - 1].startPage);
+    if (!normalized.length || (!hasAnchor && !hasLegacyStarts) || hasReversePrintedPage || hasReverseLegacyStart) {
         throw new Error('Sommaire Gemini invalide : aucune liste de débuts de chapitres exploitable.');
     }
     return normalized;

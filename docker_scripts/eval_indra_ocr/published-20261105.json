@@ -1,0 +1,13 @@
+{
+ "repository": "Remidesbois/indra-ocr-poneglyph-bubble",
+ "revision": "fea60b5793979c05b483dd53e6536b920db6a17a",
+ "url": "https://huggingface.co/Remidesbois/indra-ocr-poneglyph-bubble",
+ "downloads_match": {
+  "LICENSE": true,
+  "metrics/evaluation_20261105.json": true,
+  "onnx/browser_manifest.json": true,
+  "onnx/indra_det_bubble.onnx": true,
+  "onnx/indra_rec_bubble.onnx": true,
+  "README.md": true
+ }
+}

@@ -26,7 +26,9 @@ test('page reads pass a bounded AbortSignal to the S3 request', () => {
 test('page uploads validate bounded bytes and canonical keys before object storage', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/routes/adminRoutes.js'), 'utf8');
   assert.match(source, /const upload = multer\(\{ storage: storage \}\)/);
-  assert.match(source, /const pageUpload = multer\(\{[\s\S]*?fileSize:\s*inputLimits\.pageImageBytes/);
+  const middleware = fs.readFileSync(path.join(__dirname, '../src/routes/pageUploadMiddleware.js'), 'utf8');
+  assert.match(middleware, /const pageUpload = multer\(\{[\s\S]*?fileSize:\s*inputLimits\.pageImageBytes/);
+  assert.match(source, /createPageUploadMiddleware\(storage\)/);
   assert.match(source, /router\.post\('\/upload\/page'[\s\S]*?uploadSinglePage/);
 
   const routeStart = source.indexOf("router.post('/upload/page'");

@@ -1,6 +1,6 @@
 # Model benchmark release notes
 
-Generated from model registry v1 on 2026-10-30.
+Generated from model registry v1 on 2026-11-05.
 
 ## LightOnOCR 3 Poneglyph · WebGPU
 
@@ -11,14 +11,23 @@ Generated from model registry v1 on 2026-10-30.
 - Hardware: NVIDIA GeForce RTX 5090 32 GB / Chromium WebGPU (Blackwell)
 - Protocol and evidence: Real app worker, ONNX Runtime Web 1.27.0 and fused WGSL decoder, mixed FP16/FP32, no quantization or CPU EP fallback. Image-only empty prompt, thinking disabled, greedy 256 tokens, 65536–1048576 pixels; native Torchvision uint8 antialiased bicubic resize reproduced in JavaScript. Whitespace collapsed; visible quotes, case, accents and punctuation preserved. Native BF16 CER 0.387984%; browser CER 0.393746% (205 vs 202 character errors), 1600/1612 literal outputs identical, no empty/truncated outputs. Conversion fidelity on the already inspected frozen test, not a new independent benchmark. https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph/blob/dd066c12c4dcc990d71ebc78136e9c7c21c36522/onnx/webgpu_metrics.json
 
+## Indra OCR Poneglyph Bubble
+
+- Registry ID: `indra-bubble`
+- Published version: `Remidesbois/indra-ocr-poneglyph-bubble@fea60b5793979c05b483dd53e6536b920db6a17a`
+- Result: CER 0,693 % · Exact match 88,53 %
+- Evaluation: Poneglyph validated reference bubble crops, same 1,221-bubble test as PP-OCRv6 Bubble Line, historical test held out by page, previously evaluated and inspected, 1221 samples, 2026-11-05
+- Hardware: CPU, onnxruntime-node 1.24.3 running the browser implementation (frontend/src/lib/indraOcr.js)
+- Protocol and evidence: Fine-tuned Indra OCR v1.1.0 det.onnx (YOLO line pseudo-labels) and rec.onnx; bubble crop at 0.75x for line detection, Indra tall line windows side by side, one greedy CTC pass, then the same train-derived lexicon/spacing/case rules as PP-OCRv6. NFKC, straight apostrophes, expanded ellipses and collapsed whitespace; case and punctuation retained. Settings chosen on validation only. Python reference 0.690% CER (1219/1221 identical raw texts); PP-OCRv6 production pipeline 0.902% on the same crops (paired page bootstrap difference -0.21 points, 95% CI -0.41 to -0.005). Not a full-page or blind benchmark. https://huggingface.co/Remidesbois/indra-ocr-poneglyph-bubble/blob/fea60b5793979c05b483dd53e6536b920db6a17a/metrics/evaluation_20261105.json
+
 ## PP-OCRv6 Bubble Line
 
 - Registry ID: `ppocrv6-line`
-- Published version: `Remidesbois/pp-ocrv6-one-piece-bubble-line-rec@10b932d4aadca2830850ccf5951116597404bef8`
-- Result: CER 1,451 % · Exact match 75,96 %
-- Evaluation: Poneglyph validated bubbles reconstructed from detected text lines, test held-out by page, 1219 samples, 2026-06-29
-- Hardware: Not recorded; offline scoring over pinned predictions
-- Protocol and evidence: YOLO26n line detection, horizontal line stitching, PP-OCRv6 CTC decoding, then spacing and case rules learned only from the training split. https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/blob/10b932d4aadca2830850ccf5951116597404bef8/postprocess_official_metrics.json
+- Published version: `Remidesbois/pp-ocrv6-one-piece-bubble-line-rec@a6dddec384c76a1ac3c2125f92403e775a3929d7`
+- Result: CER 0,904 % · Exact match 85,01 %
+- Evaluation: Poneglyph validated reference bubble crops reconstructed from production-detected text lines, historical test held out by page, previously evaluated and inspected, 1221 samples, 2026-11-03
+- Hardware: NVIDIA GeForce RTX 4090 24 GB, native PyTorch 2.8.0 CUDA FP32
+- Protocol and evidence: Reference bubble crops; production YOLO line detection at 0.10, horizontal stitching, 48 px height with gray padding and dynamic width 960-3200, BGR normalization, PP-OCRv6 CTC, frozen train-derived lexicon/spacing/case rules. NFKC, straight apostrophes, expanded ellipses and collapsed whitespace; case and punctuation retained. Native corpus results; Chrome WebGPU validated separately on 100 validation crops. Not a full-page or blind benchmark. https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/blob/a6dddec384c76a1ac3c2125f92403e775a3929d7/metrics/retraining_20261103.json
 
 ## LightOnOCR Poneglyph
 
@@ -68,11 +77,11 @@ Generated from model registry v1 on 2026-10-30.
 ## Poneglyph ReaderNet
 
 - Registry ID: `readernet-reading-order`
-- Published version: `Remidesbois/Poneglyph-ReaderNet@d97d4cd2903a7ebe49276a5269c4f3b7df608be7`
+- Published version: `Remidesbois/Poneglyph-ReaderNet@0f3cc90737d90d8c3810b7397c923a2fc7be24e9`
 - Result: Exact panel 95,65 % · Bubble position accuracy 96,62 % · Bubble assignment accuracy 100,00 %
 - Evaluation: Poneglyph polygon panels with bubbles from the shared YOLO26n detector, validation held out by page, 138 samples, 2026-08-27
 - Hardware: CPU offline ONNX scoring
-- Protocol and evidence: Shared bubble detections and annotated panels; pairwise Borda ranking independently inside each panel, with no global bubble sorter. https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/d97d4cd2903a7ebe49276a5269c4f3b7df608be7/metrics/shared_detector_comparison.json
+- Protocol and evidence: Shared bubble detections and annotated panels; pairwise Borda ranking independently inside each panel, with no global bubble sorter. Historical ordering benchmark inherited unchanged. Active detector weights retained; confidence calibrated to 0.25 on 2026-11-03. Fresh detector/text results are separate in metrics/retraining_20261103.json. https://huggingface.co/Remidesbois/Poneglyph-ReaderNet/blob/0f3cc90737d90d8c3810b7397c923a2fc7be24e9/metrics/shared_detector_comparison.json
 
 ## LightOnOCR 3 Poneglyph BBox
 

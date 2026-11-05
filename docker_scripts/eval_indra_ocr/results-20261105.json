@@ -1,0 +1,732 @@
+{
+ "date": "2026-11-05",
+ "dataset": "Poneglyph validated reference bubble crops (One Piece, French), page-level splits of dataset-v5",
+ "splits": {
+  "train": 9256,
+  "val": 1193,
+  "test": 1221
+ },
+ "selection": "Every setting (detector scale, recognizer variant and epoch, detector variant and epoch) chosen on val only; test scored once per frozen configuration.",
+ "scoring": "Production postprocessPpocrText (train-label lexicon, spacing, sentence case) applied to every configuration; then NFKC, straight apostrophes, expanded ellipses, collapsed whitespace; case and punctuation kept (docker_scripts/audit_ppocr_pipeline/runtime.cjs score).",
+ "test": {
+  "A: YOLO lines + PP-OCRv6 (production)": {
+   "config": null,
+   "raw": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 442,
+    "cer": 0.011012557305162448,
+    "exact": 0.8091728091728092,
+    "exact_count": 988,
+    "empty": 0,
+    "content_cer": 0.005588437015774633,
+    "content_exact": 0.9213759213759214
+   },
+   "final": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 362,
+    "cer": 0.009019334263504085,
+    "exact": 0.8501228501228502,
+    "exact_count": 1038,
+    "empty": 0,
+    "content_cer": 0.005664642975080651,
+    "content_exact": 0.9197379197379197
+   },
+   "truecase": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 1254,
+    "cer": 0.031243771177994817,
+    "exact": 0.20638820638820637,
+    "exact_count": 252,
+    "empty": 0,
+    "content_cer": 0.005664642975080651,
+    "content_exact": 0.9197379197379197
+   },
+   "short_final": {
+    "n": 343,
+    "chars": 1808,
+    "errors": 79,
+    "cer": 0.043694690265486724,
+    "exact": 0.9067055393586005,
+    "exact_count": 311,
+    "empty": 0,
+    "content_cer": 0.03766921718658034,
+    "content_exact": 0.9154518950437318
+   },
+   "zero_line_bubbles": 0
+  },
+  "B zero-shot: YOLO lines + Indra rec v1.1.0": {
+   "config": {
+    "det": "yolo",
+    "det_scale": 1,
+    "det_margin": 0,
+    "det_thresh": 0.5,
+    "mode": "stitched",
+    "gap": 0,
+    "grow_y": 0,
+    "dehyphenate": true,
+    "lm": false,
+    "min_conf": 0,
+    "rec": ""
+   },
+   "raw": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 29766,
+    "cer": 0.7416284632250348,
+    "exact": 0.009828009828009828,
+    "exact_count": 12,
+    "empty": 1,
+    "content_cer": 0.04988950135900627,
+    "content_exact": 0.37674037674037675
+   },
+   "final": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 29165,
+    "cer": 0.7266543751245764,
+    "exact": 0.031122031122031123,
+    "exact_count": 38,
+    "empty": 1,
+    "content_cer": 0.04996570731831229,
+    "content_exact": 0.3759213759213759
+   },
+   "truecase": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 2951,
+    "cer": 0.07352501494917281,
+    "exact": 0.0475020475020475,
+    "exact_count": 58,
+    "empty": 1,
+    "content_cer": 0.04996570731831229,
+    "content_exact": 0.3759213759213759
+   },
+   "short_final": {
+    "n": 343,
+    "chars": 1808,
+    "errors": 1185,
+    "cer": 0.6554203539823009,
+    "exact": 0.10495626822157435,
+    "exact_count": 36,
+    "empty": 1,
+    "content_cer": 0.4396703943496174,
+    "content_exact": 0.20408163265306123
+   },
+   "zero_line_bubbles": 0
+  },
+  "indra_ocr 1.1.2 full pipeline on the crop": {
+   "config": {
+    "full_indra": true
+   },
+   "raw": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 40580,
+    "cer": 1.011062387881204,
+    "exact": 0,
+    "exact_count": 0,
+    "empty": 505,
+    "content_cer": 0.5935428150481368,
+    "content_exact": 0
+   },
+   "final": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 40554,
+    "cer": 1.010414590392665,
+    "exact": 0,
+    "exact_count": 0,
+    "empty": 505,
+    "content_cer": 0.5935428150481368,
+    "content_exact": 0
+   },
+   "truecase": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 23944,
+    "cer": 0.5965716563683476,
+    "exact": 0,
+    "exact_count": 0,
+    "empty": 505,
+    "content_cer": 0.5935428150481368,
+    "content_exact": 0
+   },
+   "short_final": {
+    "n": 343,
+    "chars": 1808,
+    "errors": 1874,
+    "cer": 1.0365044247787611,
+    "exact": 0,
+    "exact_count": 0,
+    "empty": 325,
+    "content_cer": 1.038846380223661,
+    "content_exact": 0
+   },
+   "zero_line_bubbles": 499
+  },
+  "C zero-shot: Indra det + rec v1.1.0": {
+   "config": {
+    "det": "indra",
+    "det_scale": 0.75,
+    "det_margin": 0,
+    "det_thresh": 0.5,
+    "mode": "stitched",
+    "gap": 0,
+    "grow_y": 0,
+    "dehyphenate": true,
+    "lm": false,
+    "min_conf": 0,
+    "rec": ""
+   },
+   "raw": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 29863,
+    "cer": 0.7440452461630457,
+    "exact": 0.010647010647010647,
+    "exact_count": 13,
+    "empty": 10,
+    "content_cer": 0.0570274595473366,
+    "content_exact": 0.32596232596232594
+   },
+   "final": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 29319,
+    "cer": 0.7304913294797688,
+    "exact": 0.02702702702702703,
+    "exact_count": 33,
+    "empty": 10,
+    "content_cer": 0.057179871465948634,
+    "content_exact": 0.32596232596232594
+   },
+   "truecase": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 3218,
+    "cer": 0.0801773968507076,
+    "exact": 0.042588042588042586,
+    "exact_count": 52,
+    "empty": 10,
+    "content_cer": 0.057179871465948634,
+    "content_exact": 0.32596232596232594
+   },
+   "short_final": {
+    "n": 343,
+    "chars": 1808,
+    "errors": 1186,
+    "cer": 0.6559734513274337,
+    "exact": 0.09037900874635568,
+    "exact_count": 31,
+    "empty": 10,
+    "content_cer": 0.457327839905827,
+    "content_exact": 0.18658892128279883
+   },
+   "zero_line_bubbles": 43
+  },
+  "C: Indra det (fine-tuned) + Indra rec (fine-tuned) - this release": {
+   "config": {
+    "det": "indra",
+    "det_scale": 0.75,
+    "det_margin": 0,
+    "det_thresh": 0.5,
+    "mode": "stitched",
+    "gap": 0,
+    "grow_y": 0,
+    "dehyphenate": true,
+    "lm": false,
+    "min_conf": 0,
+    "rec": "outputs/ft/runs/r2_lr3e-4/rec_best.onnx",
+    "det_model": "outputs/ft/det_runs/d1_lr1e-3/det_last.onnx"
+   },
+   "raw": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 287,
+    "cer": 0.007150687661949372,
+    "exact": 0.8804258804258804,
+    "exact_count": 1075,
+    "empty": 0,
+    "content_cer": 0.004623161531231742,
+    "content_exact": 0.9344799344799345
+   },
+   "final": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 277,
+    "cer": 0.006901534781742077,
+    "exact": 0.8853398853398854,
+    "exact_count": 1081,
+    "empty": 0,
+    "content_cer": 0.00469936749053776,
+    "content_exact": 0.9320229320229321
+   },
+   "truecase": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 1216,
+    "cer": 0.030296990233207095,
+    "exact": 0.20393120393120392,
+    "exact_count": 249,
+    "empty": 0,
+    "content_cer": 0.00469936749053776,
+    "content_exact": 0.9320229320229321
+   },
+   "short_final": {
+    "n": 343,
+    "chars": 1808,
+    "errors": 115,
+    "cer": 0.06360619469026549,
+    "exact": 0.8862973760932945,
+    "exact_count": 304,
+    "empty": 0,
+    "content_cer": 0.06062389640965274,
+    "content_exact": 0.8892128279883382
+   },
+   "zero_line_bubbles": 1
+  },
+  "B: YOLO lines + Indra rec (fine-tuned)": {
+   "config": {
+    "det": "yolo",
+    "det_scale": 1,
+    "det_margin": 0,
+    "det_thresh": 0.5,
+    "mode": "stitched",
+    "gap": 0,
+    "grow_y": 0,
+    "dehyphenate": true,
+    "lm": false,
+    "min_conf": 0,
+    "rec": "outputs/ft/runs/r2_lr3e-4/rec_best.onnx"
+   },
+   "raw": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 373,
+    "cer": 0.009293402431732111,
+    "exact": 0.8746928746928747,
+    "exact_count": 1068,
+    "empty": 0,
+    "content_cer": 0.006909340310412274,
+    "content_exact": 0.9254709254709255
+   },
+   "final": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 366,
+    "cer": 0.009118995415587004,
+    "exact": 0.877968877968878,
+    "exact_count": 1072,
+    "empty": 0,
+    "content_cer": 0.006985546269718292,
+    "content_exact": 0.9238329238329238
+   },
+   "truecase": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 1300,
+    "cer": 0.03238987442694838,
+    "exact": 0.20556920556920558,
+    "exact_count": 251,
+    "empty": 0,
+    "content_cer": 0.006985546269718292,
+    "content_exact": 0.9238329238329238
+   },
+   "short_final": {
+    "n": 343,
+    "chars": 1808,
+    "errors": 118,
+    "cer": 0.06526548672566372,
+    "exact": 0.8862973760932945,
+    "exact_count": 304,
+    "empty": 0,
+    "content_cer": 0.06180105944673337,
+    "content_exact": 0.892128279883382
+   },
+   "zero_line_bubbles": 0
+  },
+  "C: Indra det (original) + Indra rec (fine-tuned)": {
+   "config": {
+    "det": "indra",
+    "det_scale": 0.75,
+    "det_margin": 0,
+    "det_thresh": 0.5,
+    "mode": "stitched",
+    "gap": 0,
+    "grow_y": 0,
+    "dehyphenate": true,
+    "lm": false,
+    "min_conf": 0,
+    "rec": "outputs/ft/runs/r2_lr3e-4/rec_best.onnx"
+   },
+   "raw": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 451,
+    "cer": 0.011236794897349014,
+    "exact": 0.8484848484848485,
+    "exact_count": 1036,
+    "empty": 0,
+    "content_cer": 0.008331851550791271,
+    "content_exact": 0.9058149058149059
+   },
+   "final": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 435,
+    "cer": 0.01083815028901734,
+    "exact": 0.8583128583128583,
+    "exact_count": 1048,
+    "empty": 0,
+    "content_cer": 0.008408057510097289,
+    "content_exact": 0.904995904995905
+   },
+   "truecase": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 1365,
+    "cer": 0.0340093681482958,
+    "exact": 0.19656019656019655,
+    "exact_count": 240,
+    "empty": 0,
+    "content_cer": 0.008408057510097289,
+    "content_exact": 0.904995904995905
+   },
+   "short_final": {
+    "n": 343,
+    "chars": 1808,
+    "errors": 198,
+    "cer": 0.10951327433628319,
+    "exact": 0.8338192419825073,
+    "exact_count": 286,
+    "empty": 0,
+    "content_cer": 0.10476751030017657,
+    "content_exact": 0.8425655976676385
+   },
+   "zero_line_bubbles": 43
+  }
+ },
+ "val_selected": {
+  "config": {
+   "det": "indra",
+   "det_scale": 0.75,
+   "det_margin": 0,
+   "det_thresh": 0.5,
+   "mode": "stitched",
+   "gap": 0,
+   "grow_y": 0,
+   "dehyphenate": true,
+   "lm": false,
+   "min_conf": 0,
+   "rec": "outputs/ft/runs/r2_lr3e-4/rec_best.onnx",
+   "det_model": "outputs/ft/det_runs/d1_lr1e-3/det_last.onnx"
+  },
+  "raw": {
+   "n": 1193,
+   "chars": 38075,
+   "errors": 305,
+   "cer": 0.008010505581089953,
+   "exact": 0.8792958927074602,
+   "exact_count": 1049,
+   "empty": 0,
+   "content_cer": 0.006047469963340558,
+   "content_exact": 0.9287510477787091
+  },
+  "final": {
+   "n": 1193,
+   "chars": 38075,
+   "errors": 300,
+   "cer": 0.007879185817465528,
+   "exact": 0.8843252305113161,
+   "exact_count": 1055,
+   "empty": 0,
+   "content_cer": 0.006074228679992508,
+   "content_exact": 0.9279128248113998
+  },
+  "truecase": {
+   "n": 1193,
+   "chars": 38075,
+   "errors": 1182,
+   "cer": 0.03104399212081418,
+   "exact": 0.2179379715004191,
+   "exact_count": 260,
+   "empty": 0,
+   "content_cer": 0.006074228679992508,
+   "content_exact": 0.9279128248113998
+  },
+  "short_final": {
+   "n": 348,
+   "chars": 1910,
+   "errors": 174,
+   "cer": 0.09109947643979058,
+   "exact": 0.8477011494252874,
+   "exact_count": 295,
+   "empty": 0,
+   "content_cer": 0.09025069637883008,
+   "content_exact": 0.8591954022988506
+  },
+  "zero_line_bubbles": 0
+ },
+ "test_bootstrap_vs_production": {
+  "method": "paired bootstrap over 129 test pages, 5000 resamples, final text",
+  "vs": "A_yolo_ppocrv6",
+  "runs": {
+   "FT_B_yolo_r2best": {
+    "delta_cer_pts": 0.01,
+    "ci95": [
+     -0.091,
+     0.142
+    ],
+    "errors_A": 362,
+    "errors": 366
+   },
+   "FT_C_indra_s0.75_r2best": {
+    "delta_cer_pts": 0.182,
+    "ci95": [
+     -0.066,
+     0.46
+    ],
+    "errors_A": 362,
+    "errors": 435
+   },
+   "FTD_C_indra_d1last_r2best": {
+    "delta_cer_pts": -0.212,
+    "ci95": [
+     -0.414,
+     -0.005
+    ],
+    "errors_A": 362,
+    "errors": 277
+   }
+  }
+ },
+ "browser_implementation_test": {
+  "implementation": "frontend/src/lib/indraOcr.js (Poneglyph web worker code) on onnxruntime-node 1.24.3 CPU",
+  "result": {
+   "config": {
+    "implementation": "frontend/src/lib/indraOcr.js",
+    "runtime": "onnxruntime-node CPU"
+   },
+   "raw": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 288,
+    "cer": 0.007175602949970101,
+    "exact": 0.8804258804258804,
+    "exact_count": 1075,
+    "empty": 0,
+    "content_cer": 0.004648563517667082,
+    "content_exact": 0.9344799344799345
+   },
+   "final": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 278,
+    "cer": 0.0069264500697628064,
+    "exact": 0.8853398853398854,
+    "exact_count": 1081,
+    "empty": 0,
+    "content_cer": 0.004724769476973099,
+    "content_exact": 0.9320229320229321
+   },
+   "truecase": {
+    "n": 1221,
+    "chars": 40136,
+    "errors": 1217,
+    "cer": 0.030321905521227824,
+    "exact": 0.20393120393120392,
+    "exact_count": 249,
+    "empty": 0,
+    "content_cer": 0.004724769476973099,
+    "content_exact": 0.9320229320229321
+   },
+   "short_final": {
+    "n": 343,
+    "chars": 1808,
+    "errors": 116,
+    "cer": 0.06415929203539823,
+    "exact": 0.8862973760932945,
+    "exact_count": 304,
+    "empty": 0,
+    "content_cer": 0.06121247792819305,
+    "content_exact": 0.8892128279883382
+   },
+   "zero_line_bubbles": 1
+  },
+  "identical_raw_texts_vs_python": {
+   "val": "1193/1193",
+   "test": "1219/1221"
+  }
+ },
+ "cpu_latency_ms": {
+  "4_threads": {
+   "pipelines": {
+    "A": {
+     "detect": {
+      "mean": 70.33495066638959,
+      "median": 69.57769999280572,
+      "p90": 74.90101000585128,
+      "p99": 80.4936779961281
+     },
+     "recognize": {
+      "mean": 109.41522599944922,
+      "median": 85.53729999403004,
+      "p90": 162.90651999152036,
+      "p99": 287.1255470048345
+     },
+     "total": {
+      "mean": 179.7501766658388,
+      "median": 157.66350000194507,
+      "p90": 235.21563000686,
+      "p99": 357.8775850117381
+     }
+    },
+    "B": {
+     "detect": {
+      "mean": 70.33495066638959,
+      "median": 69.57769999280572,
+      "p90": 74.90101000585128,
+      "p99": 80.4936779961281
+     },
+     "recognize": {
+      "mean": 3.967577666529299,
+      "median": 3.6737000045832247,
+      "p90": 6.305560006876476,
+      "p99": 10.134495004313061
+     },
+     "total": {
+      "mean": 74.30252833291888,
+      "median": 73.80554999690503,
+      "p90": 79.66980999917723,
+      "p99": 83.35182199429252
+     }
+    },
+    "C": {
+     "detect": {
+      "mean": 1.1699979997744474,
+      "median": 1.159799998276867,
+      "p90": 1.5877099955105223,
+      "p99": 2.0999270040192632
+     },
+     "recognize": {
+      "mean": 3.5090229998362097,
+      "median": 3.165899994201027,
+      "p90": 6.047540000872687,
+      "p99": 9.903069008869338
+     },
+     "total": {
+      "mean": 4.679020999610657,
+      "median": 4.438399999344256,
+      "p90": 7.459170003130567,
+      "p99": 12.345891005825242
+     }
+    }
+   },
+   "n": 300,
+   "note": "median/mean/p90/p99 per bubble over the first 300 test bubbles; Python + onnxruntime 1.31.1 CPU (Windows, 20 logical cores, idle machine), warm sessions, one bubble at a time; A and B use a Python port of the production YOLO/PP-OCR worker"
+  },
+  "1_threads": {
+   "pipelines": {
+    "A": {
+     "detect": {
+      "mean": 137.59534633354633,
+      "median": 137.4329000027501,
+      "p90": 138.70815999398474,
+      "p99": 142.32442000429728
+     },
+     "recognize": {
+      "mean": 306.16809099995106,
+      "median": 250.0397499970859,
+      "p90": 425.21048000198795,
+      "p99": 778.6807370019957
+     },
+     "total": {
+      "mean": 443.7634373334974,
+      "median": 387.83390000025975,
+      "p90": 562.7884199944674,
+      "p99": 915.8532090115474
+     }
+    },
+    "B": {
+     "detect": {
+      "mean": 137.59534633354633,
+      "median": 137.4329000027501,
+      "p90": 138.70815999398474,
+      "p99": 142.32442000429728
+     },
+     "recognize": {
+      "mean": 4.3058990001736674,
+      "median": 3.8064499967731535,
+      "p90": 7.315060001565144,
+      "p99": 13.739411008718887
+     },
+     "total": {
+      "mean": 141.90124533372,
+      "median": 141.42595000157598,
+      "p90": 145.52104999456787,
+      "p99": 150.53107999556232
+     }
+    },
+    "C": {
+     "detect": {
+      "mean": 0.9705053333406491,
+      "median": 0.9648499981267378,
+      "p90": 1.3907799933804201,
+      "p99": 1.8616490016574954
+     },
+     "recognize": {
+      "mean": 3.9987753336511864,
+      "median": 3.4908499947050586,
+      "p90": 7.003450002230241,
+      "p99": 13.075243013008725
+     },
+     "total": {
+      "mean": 4.9692806669918355,
+      "median": 4.456099995877594,
+      "p90": 8.184669996262532,
+      "p99": 14.866400013852395
+     }
+    }
+   },
+   "n": 300,
+   "note": "median/mean/p90/p99 per bubble over the first 300 test bubbles; Python + onnxruntime 1.31.1 CPU (Windows, 20 logical cores, idle machine), warm sessions, one bubble at a time; A and B use a Python port of the production YOLO/PP-OCR worker"
+  }
+ },
+ "training": {
+  "recognizer": {
+   "source": "rec.onnx of datalab-to/indra-ocr v1.1.0",
+   "data": "bubble crops; production YOLO line boxes (60%) or Indra det boxes (40%), box jitter, photometric augmentation; line windows side by side, CTC on the whole bubble transcription",
+   "optimizer": "AdamW lr 3e-4, wd 0.01, warmup 300, cosine, batch 48, 40 epochs, EMA 0.999",
+   "selected": "epoch 27 (best val CER)",
+   "hardware": "1x NVIDIA RTX PRO 6000 Blackwell (RunPod), 5.3 min"
+  },
+  "detector": {
+   "source": "det.onnx of datalab-to/indra-ocr v1.1.0",
+   "labels": "pseudo-labels: production YOLO26n line boxes (conf 0.10, line NMS 0.75); bubbles without YOLO lines and 28 reviewed YOLO omissions excluded",
+   "targets": "indra_ocr.det_post.encode_targets (core band + top/bottom distances)",
+   "optimizer": "AdamW lr 1e-3, wd 0.01, warmup 200, cosine, batch 32, 30 epochs, EMA 0.999, input scale 0.75 jittered x0.8-1.25",
+   "selected": "last epoch (best val end-to-end CER)",
+   "hardware": "1x NVIDIA RTX PRO 6000 Blackwell (RunPod), 3.6 min"
+  }
+ },
+ "limits": [
+  "Historical val/test pages were inspected in earlier audits: not a blind benchmark.",
+  "Detector labels are YOLO pseudo-labels, not human line boxes.",
+  "Short texts (<= 12 characters: SFX, lone punctuation) remain weaker than PP-OCRv6."
+ ],
+ "files": {
+  "det": {
+   "path": "onnx/indra_det_bubble.onnx",
+   "sha256": "064d4fa6639f25a3581798a43e9ea4cecd79f361e728270b8bf3b68357569803",
+   "bytes": 389948
+  },
+  "rec": {
+   "path": "onnx/indra_rec_bubble.onnx",
+   "sha256": "d9811067d9ae67fecef08e3da8a12a0871b4cf82ceaf7f784943f3f7d5148fa8",
+   "bytes": 5042161
+  }
+ }
+}

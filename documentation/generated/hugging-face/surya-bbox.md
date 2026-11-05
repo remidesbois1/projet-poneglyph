@@ -1,4 +1,4 @@
-## Projet Poneglyph benchmark (2026-10-30)
+## Projet Poneglyph benchmark (2026-11-05)
 
 Registry ID: `surya-bbox`
 Pinned revision: `671cfe63672286ccfe629079a8d57f7ed967f3d5`

@@ -65,7 +65,7 @@ page
 | Application de bureau | OCR de pages entières ou de bulles isolées | Tauri, serveur FastAPI local, PyTorch et accélération matérielle lorsqu’elle est disponible |
 | Services distants | OCR de secours, embeddings et réordonnancement | Routes serveur soumises aux contrôles d’accès et aux quotas, fournisseurs configurés par variables d’environnement |
 
-Dans le navigateur, la détection repose sur des modèles distincts pour les cases, les bulles et leur ordre. L’OCR local combine un détecteur de lignes avec un modèle de reconnaissance PP-OCRv6 ; LightOnOCR 3, Surya OCR 2 et Falcon OCR tournent aussi en WebGPU. L’application de bureau ajoute LightOnOCR 2 et Surya OCR 2, en version bulle et en version page entière (BBox). Plus massifs mais potentiellement meilleurs.
+Dans le navigateur, la détection repose sur des modèles distincts pour les cases, les bulles et leur ordre. L’OCR local par défaut est Indra OCR, un fine-tune des deux petits réseaux d’Indra (détecteur de lignes et reconnaissance CTC, 6 Mo au total) qui lit une bulle en une dizaine de millisecondes en WASM ; il sert aussi à la recherche par image. Le pipeline précédent, détecteur de lignes YOLO et reconnaissance PP-OCRv6, reste proposé, et LightOnOCR 3, Surya OCR 2 et Falcon OCR tournent aussi en WebGPU. L’application de bureau ajoute LightOnOCR 2 et Surya OCR 2, en version bulle et en version page entière (BBox). Plus massifs mais potentiellement meilleurs.
 
 Dans l’éditeur d’annotation, l’OCR de la page part toujours de la détection YOLO, qui fixe les bulles et leur ordre de lecture. Les modèles « bulles » lisent chaque bulle détectée ; les modèles « page entière » lisent la page et leurs boîtes sont ralliées aux bulles YOLO, les boîtes sans correspondance étant ignorées. Chaque bulle est ensuite validée avec toutes ses propositions. Une bulle tracée à la main n’utilise que les modèles « bulles ».
 
@@ -85,11 +85,12 @@ Les valeurs ci-dessous sont générées depuis `shared/model-registry.json`. Cha
 <summary>Afficher les résultats publiés</summary>
 
 <!-- model-registry:start -->
-> Tableau généré depuis `shared/model-registry.json` (registre v1, 2026-11-03). Les protocoles complets sont publiés dans [la fiche de provenance](documentation/generated/model-benchmarks.md).
+> Tableau généré depuis `shared/model-registry.json` (registre v1, 2026-11-05). Les protocoles complets sont publiés dans [la fiche de provenance](documentation/generated/model-benchmarks.md).
 
 | Modèle | Résultat publié | Dataset et split | Date et échantillons | Matériel | Version et preuve |
 |---|---|---|---|---|---|
 | LightOnOCR 3 Poneglyph · WebGPU | CER WebGPU 0,394 % · WER WebGPU 1,410 % · Exact match WebGPU 92,25 % | Poneglyph frozen Surya single-bubble crops — test held out by page, previously evaluated for Surya and native LightOnOCR-3 | 2026-10-13 · 1 612 | NVIDIA GeForce RTX 5090 32 GB / Chromium WebGPU (Blackwell) | [dd066c12c4dc](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph/tree/dd066c12c4dcc990d71ebc78136e9c7c21c36522) · [source](https://huggingface.co/Remidesbois/LightOnOCR-3-Poneglyph/blob/dd066c12c4dcc990d71ebc78136e9c7c21c36522/onnx/webgpu_metrics.json) |
+| Indra OCR Poneglyph Bubble | CER 0,693 % · Exact match 88,53 % | Poneglyph validated reference bubble crops, same 1,221-bubble test as PP-OCRv6 Bubble Line — historical test held out by page, previously evaluated and inspected | 2026-11-05 · 1 221 | CPU, onnxruntime-node 1.24.3 running the browser implementation (frontend/src/lib/indraOcr.js) | [fea60b579397](https://huggingface.co/Remidesbois/indra-ocr-poneglyph-bubble/tree/fea60b5793979c05b483dd53e6536b920db6a17a) · [source](https://huggingface.co/Remidesbois/indra-ocr-poneglyph-bubble/blob/fea60b5793979c05b483dd53e6536b920db6a17a/metrics/evaluation_20261105.json) |
 | PP-OCRv6 Bubble Line | CER 0,904 % · Exact match 85,01 % | Poneglyph validated reference bubble crops reconstructed from production-detected text lines — historical test held out by page, previously evaluated and inspected | 2026-11-03 · 1 221 | NVIDIA GeForce RTX 4090 24 GB, native PyTorch 2.8.0 CUDA FP32 | [a6dddec384c7](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/tree/a6dddec384c76a1ac3c2125f92403e775a3929d7) · [source](https://huggingface.co/Remidesbois/pp-ocrv6-one-piece-bubble-line-rec/blob/a6dddec384c76a1ac3c2125f92403e775a3929d7/metrics/retraining_20261103.json) |
 | LightOnOCR Poneglyph | CER 0,424 % · WER 1,405 % · Exact match 92,55 % | Poneglyph validated single-bubble crops — test held-out by page | 2026-07-01 · 1 128 | NVIDIA H100 | [3d5181ce138e](https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/tree/3d5181ce138e7d92132a741f1e54c3a9e602e129) · [source](https://huggingface.co/Remidesbois/LightonOCR-2-1b-poneglyph/blob/3d5181ce138e7d92132a741f1e54c3a9e602e129/benchmark_test.json) |
 | Surya OCR 2 Poneglyph | CER 0,465 % · WER 1,823 % · Exact match 91,19 % · Token limit 0,00 % | Poneglyph validated single-bubble crops — test held-out by page | 2026-10-30 · 1 691 | NVIDIA RTX 5090 32 GB | [24a589633c9c](https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/tree/24a589633c9c4b57663bfc019b132f11b45f9eb8) · [source](https://huggingface.co/Remidesbois/surya-bubble-ocr-poneglyph/blob/24a589633c9c4b57663bfc019b132f11b45f9eb8/benchmark_test.json) |
@@ -267,6 +268,7 @@ Les pipelines d’export, d’entraînement, d’évaluation et de publication s
 
 | Sujet | Document |
 | --- | --- |
+| OCR Indra dans le navigateur (évaluation, fine-tuning, intégration) | [`documentation/indra_ocr_bubble.md`](documentation/indra_ocr_bubble.md) |
 | OCR PP-OCRv6 dans le navigateur | [`documentation/ppocrv6_bubble_line_recognition.md`](documentation/ppocrv6_bubble_line_recognition.md) |
 | Modèles d’ordre de lecture | [`documentation/reading_order_ml.md`](documentation/reading_order_ml.md) |
 | Expériences sur l’ordre de lecture | [`documentation/reading_order_experiments.md`](documentation/reading_order_experiments.md) |

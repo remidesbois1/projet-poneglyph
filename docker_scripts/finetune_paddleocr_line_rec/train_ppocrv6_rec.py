@@ -3,12 +3,20 @@ import csv
 import json
 import math
 import os
+import random
 import re
 import sys
+import time
 import unicodedata
 from pathlib import Path
 
-import editdistance
+try:
+    import editdistance
+except ImportError:
+    from types import SimpleNamespace
+    from rapidfuzz.distance import Levenshtein
+    editdistance = SimpleNamespace(eval=Levenshtein.distance)
+import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
@@ -213,10 +221,16 @@ class RecDataset(Dataset):
         self.short_max_len = short_max_len
         manifest_features = manifest_features or {}
         hard_examples = hard_examples or {"images": set(), "bubbles": set()}
+        self.excluded_rows = []
         for image_path, text, rel_path in rows:
-            ids = [char_to_id[ch] for ch in text if ch in char_to_id and char_to_id[ch] != 0]
-            if not ids or len(ids) > max_target_len:
+            unknown = sorted({ch for ch in text if ch not in char_to_id or char_to_id[ch] == 0})
+            if unknown:
+                raise ValueError(f"Unsupported target characters in {rel_path}: {unknown!r}; do not silently remove labels")
+            ids = [char_to_id[ch] for ch in text]
+            required_steps = len(ids) + sum(a == b for a, b in zip(ids, ids[1:]))
+            if not ids or (max_target_len > 0 and required_steps > max_target_len):
                 dropped += 1
+                self.excluded_rows.append({"image": rel_path, "reason": "empty_target" if not ids else "ctc_capacity", "required_steps": required_steps})
                 continue
             is_short = len(text) <= short_max_len
             if is_short:
@@ -290,9 +304,21 @@ def configure_processor_width(processor, image_width: int) -> None:
     processor.pad_size = {"height": 48, "width": image_width}
 
 
-def make_collate(processor):
+def make_collate(processor, prepared_inputs: bool = False):
     def collate(batch):
-        encoded = processor(images=[item["image"] for item in batch], return_tensors="pt")
+        if prepared_inputs:
+            # PNGs contain the exact worker resize and #808080 padding. Do not
+            # resample them through a second, different image processor.
+            images = [np.asarray(item["image"], dtype=np.uint8) for item in batch]
+            if any(image.shape[0] != 48 or not 960 <= image.shape[1] <= 3200 for image in images):
+                raise ValueError("Prepared inputs must have height 48 and width in [960, 3200]")
+            if len({image.shape[1] for image in images}) != 1:
+                raise ValueError("Use batch-size 1 for variable-width prepared inputs; padding changes the model input")
+            rgb = np.stack(images)
+            bgr = np.ascontiguousarray(rgb[..., ::-1].transpose(0, 3, 1, 2))
+            encoded = {"pixel_values": (torch.from_numpy(bgr).float() / 255.0 - 0.5) / 0.5}
+        else:
+            encoded = processor(images=[item["image"] for item in batch], return_tensors="pt")
         targets = torch.cat([item["target"] for item in batch])
         target_lengths = torch.tensor([len(item["target"]) for item in batch], dtype=torch.long)
         return {
@@ -304,9 +330,25 @@ def make_collate(processor):
             "is_single_line": [item["is_single_line"] for item in batch],
             "is_hard": [item["is_hard"] for item in batch],
             "texts": [item["text"] for item in batch],
+            "ctc_min_steps": torch.tensor([
+                len(item["target"]) + int((item["target"][1:] == item["target"][:-1]).sum())
+                for item in batch
+            ], dtype=torch.long),
         }
 
     return collate
+
+
+def checked_ctc_loss(log_probs, targets, input_lengths, target_lengths, batch):
+    """Reject impossible or nonfinite CTC loss instead of turning it into zero."""
+    required = batch.get("ctc_min_steps")
+    if required is not None and bool((required.to(input_lengths.device) > input_lengths).any()):
+        raise ValueError(f"CTC target needs more than {log_probs.shape[0]} timesteps: {batch['texts']!r}")
+    losses = F.ctc_loss(log_probs, targets, input_lengths, target_lengths,
+                        blank=0, zero_infinity=False, reduction="none")
+    if not bool(torch.isfinite(losses).all()):
+        raise FloatingPointError("Non-finite CTC loss; inspect the input/target pairs")
+    return losses
 
 
 def decode_ctc(probabilities: torch.Tensor, characters: list[str], blank_penalty: float = 0.0) -> list[str]:
@@ -371,15 +413,7 @@ def evaluate(model, loader, characters: list[str], device: torch.device, use_amp
                 dtype=torch.long,
                 device=device,
             )
-            sample_losses = F.ctc_loss(
-                log_probs,
-                targets,
-                input_lengths,
-                target_lengths,
-                blank=0,
-                zero_infinity=True,
-                reduction="none",
-            )
+            sample_losses = checked_ctc_loss(log_probs, targets, input_lengths, target_lengths, batch)
             sample_losses = sample_losses / target_lengths.float().clamp_min(1)
             losses.extend(float(value) for value in sample_losses.detach().cpu())
             predictions.extend(decode_ctc(probabilities, characters, blank_penalty=blank_penalty))
@@ -489,7 +523,26 @@ def main() -> int:
     parser.add_argument("--max-train-steps", type=int, default=int(os.getenv("PPOCR_MAX_TRAIN_STEPS", "0")), help="Stop each epoch after this many train batches. Useful for VRAM smoke tests.")
     parser.add_argument("--profile-vram", action="store_true", help="Run a short train loop, write vram_profile.json, and skip validation/checkpointing.")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--prepared-inputs", action="store_true", help="Use exported production-worker input PNGs without resizing again.")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--initial-eval", action="store_true", help="Keep the starting checkpoint unless validation improves.")
+    parser.add_argument("--patience", type=int, default=0, help="Stop after this many epochs without validation improvement (0 disables).")
+    parser.add_argument("--require-cuda", action="store_true")
+    parser.add_argument("--freeze-batchnorm", action="store_true", help="Keep pretrained running statistics for batch-size 1 fine-tuning.")
+    parser.add_argument("--exclude-train-pairs", type=Path, help="JSON list of visually reviewed, incoherent training image/target pairs.")
     args = parser.parse_args()
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.set_num_threads(args.threads)
+    # Production inputs have many different widths. Avoid repeated per-shape
+    # cuDNN benchmark searches when training on these small variable inputs.
+    torch.backends.cudnn.benchmark = False
+    if args.prepared_inputs and args.batch_size != 1:
+        parser.error("--prepared-inputs requires --batch-size 1 to preserve each production tensor")
+    if args.require_cuda and not torch.cuda.is_available():
+        parser.error("CUDA is required for this training run, but no GPU is visible")
 
     dataset_dir = args.dataset_dir or (args.output_dir / "bubble_single_line_rec_dataset")
     if not dataset_ready(dataset_dir):
@@ -549,7 +602,7 @@ def main() -> int:
     configure_processor_width(processor, args.image_width)
     characters = list(processor.character_list)
     char_to_id = {char: idx for idx, char in enumerate(characters)}
-    max_target_len = args.image_width // 8
+    max_target_len = 0 if args.prepared_inputs else args.image_width // 8
     manifest_features = load_manifest_features(dataset_dir)
     hard_examples = load_hard_examples(
         args.hard_example_csv,
@@ -559,8 +612,19 @@ def main() -> int:
         include_exact_failures=args.hard_example_include_exact_failures,
     )
 
+    training_rows = read_label_file(dataset_dir, "train")
+    pair_exclusions = []
+    if args.exclude_train_pairs:
+        pair_exclusions = json.loads(args.exclude_train_pairs.read_text(encoding="utf-8"))
+        if any(item.get("split") != "train" or not item.get("reviewed") or not item.get("reason") for item in pair_exclusions):
+            raise ValueError("Only reviewed training-pair exclusions are allowed")
+        excluded_ids = {str(item["bubble_id"]) for item in pair_exclusions}
+        known_train_ids = {manifest_features.get(row[2], {}).get("bubble_id") for row in training_rows}
+        if not excluded_ids <= known_train_ids:
+            raise ValueError("Exclusions contain IDs outside the training split")
+        training_rows = [row for row in training_rows if manifest_features.get(row[2], {}).get("bubble_id") not in excluded_ids]
     train_dataset = RecDataset(
-        read_label_file(dataset_dir, "train"),
+        training_rows,
         char_to_id,
         max_target_len=max_target_len,
         short_max_len=args.short_max_len,
@@ -588,7 +652,11 @@ def main() -> int:
         )
         return 1
 
-    collate = make_collate(processor)
+    (args.output_dir / "excluded_rows.json").write_text(json.dumps({
+        "train": train_dataset.excluded_rows, "val": val_dataset.excluded_rows,
+        "reviewed_training_pairs": pair_exclusions,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    collate = make_collate(processor, prepared_inputs=args.prepared_inputs)
     sampler = None
     shuffle_train = True
     sampler_weights = train_dataset.sampler_weights(args.short_oversample)
@@ -631,13 +699,16 @@ def main() -> int:
     else:
         optimizer_groups = [{"params": trainable_parameters, "lr": args.learning_rate, "weight_decay": args.weight_decay, "name": "trainable"}]
     optimizer = torch.optim.AdamW(optimizer_groups)
-    total_update_steps = math.ceil(len(train_loader) / max(args.grad_accum_steps, 1)) * args.epochs
+    steps_per_epoch = min(len(train_loader), args.max_train_steps) if args.max_train_steps > 0 else len(train_loader)
+    total_update_steps = math.ceil(steps_per_epoch / max(args.grad_accum_steps, 1)) * args.epochs
     scheduler = build_lr_scheduler(optimizer, args.lr_scheduler, total_update_steps, args.warmup_ratio)
     use_amp = torch.cuda.is_available() and not args.no_amp
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     best_cer = float("inf")
     metrics = {
         "model_id": args.model_id,
+        "seed": args.seed,
+        "prepared_inputs": args.prepared_inputs,
         "resume_from": str(resume_from) if resume_from else None,
         "dataset_dir": str(dataset_dir),
         "image_width": args.image_width,
@@ -645,6 +716,7 @@ def main() -> int:
         "train_rows": len(train_dataset),
         "val_rows": len(val_dataset),
         "train_dropped": train_dataset.dropped,
+        "reviewed_training_pair_exclusions": pair_exclusions,
         "val_dropped": val_dataset.dropped,
         "train_short_rows": train_dataset.short_count,
         "val_short_rows": val_dataset.short_count,
@@ -675,13 +747,32 @@ def main() -> int:
         "profile_vram": args.profile_vram,
         "amp": use_amp,
         "train_backbone": args.train_backbone,
+        "freeze_batchnorm": args.freeze_batchnorm,
+        "evaluation_amp": use_amp and not args.prepared_inputs,
         "train_classifier_only": args.train_classifier_only,
         "trainable_parameters": sum(parameter.numel() for parameter in trainable_parameters),
         "epochs": [],
     }
 
+    metrics_path = args.output_dir / "training_metrics.json"
+    best_dir = args.output_dir / "ppocrv6_medium_rec_line_finetune_best"
+    best_epoch = 0
+    if args.initial_eval and not args.profile_vram:
+        initial = evaluate(model, val_loader, characters, device, use_amp and not args.prepared_inputs, blank_penalty=args.blank_penalty)
+        best_cer = initial["cer"]
+        metrics["initial_validation"] = initial
+        metrics["best_val_cer"] = best_cer
+        metrics["best_epoch"] = best_epoch
+        best_dir.mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(best_dir)
+        processor.save_pretrained(best_dir)
+        metrics_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(json.dumps({"initial_validation": initial}, ensure_ascii=False), flush=True)
+
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats(device)
+    training_started = time.monotonic()
+    skipped_optimizer_steps = 0
 
     for epoch in range(1, args.epochs + 1):
         if args.train_classifier_only:
@@ -692,6 +783,10 @@ def main() -> int:
             model.train()
         if not args.train_backbone and backbone_module is not None:
             backbone_module.eval()
+        if args.freeze_batchnorm:
+            for module in model.modules():
+                if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+                    module.eval()
         train_losses = []
         completed_train_steps = 0
         optimizer.zero_grad(set_to_none=True)
@@ -709,26 +804,24 @@ def main() -> int:
                 dtype=torch.long,
                 device=device,
             )
-            sample_losses = F.ctc_loss(
-                log_probs,
-                targets,
-                input_lengths,
-                target_lengths,
-                blank=0,
-                zero_infinity=True,
-                reduction="none",
-            )
+            sample_losses = checked_ctc_loss(log_probs, targets, input_lengths, target_lengths, batch)
             sample_losses = sample_losses / target_lengths.float().clamp_min(1)
             loss_weights = batch["loss_weights"].to(device)
             loss = (sample_losses * loss_weights).sum() / loss_weights.sum().clamp_min(1.0)
-            scaled_loss = loss / max(args.grad_accum_steps, 1)
+            accumulation = max(args.grad_accum_steps, 1)
+            group_start = ((step - 1) // accumulation) * accumulation
+            group_size = min(accumulation, steps_per_epoch - group_start)
+            scaled_loss = loss / group_size
             scaler.scale(scaled_loss).backward()
-            if step % max(args.grad_accum_steps, 1) == 0 or step == len(train_loader):
+            if step % accumulation == 0 or step == steps_per_epoch:
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(trainable_parameters, 1.0)
+                torch.nn.utils.clip_grad_norm_(trainable_parameters, 1.0, error_if_nonfinite=not use_amp)
+                old_scale = scaler.get_scale()
                 scaler.step(optimizer)
                 scaler.update()
-                if scheduler is not None:
+                step_skipped = scaler.get_scale() < old_scale
+                skipped_optimizer_steps += int(step_skipped)
+                if scheduler is not None and not step_skipped:
                     scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
             train_losses.append(float(loss.detach().cpu()))
@@ -759,6 +852,7 @@ def main() -> int:
                 "workers": args.workers,
                 "max_train_steps": args.max_train_steps,
                 "completed_train_steps": completed_train_steps,
+                "train_seconds": time.monotonic() - training_started,
                 "train_loss": sum(train_losses) / max(len(train_losses), 1),
                 "peak_cuda_allocated_mb": peak_allocated_mb,
                 "peak_cuda_reserved_mb": peak_reserved_mb,
@@ -767,7 +861,7 @@ def main() -> int:
             profile_path.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
             print(json.dumps({"vram_profile": profile}, ensure_ascii=False), flush=True)
             return 0
-        val_metrics = evaluate(model, val_loader, characters, device, use_amp, blank_penalty=args.blank_penalty)
+        val_metrics = evaluate(model, val_loader, characters, device, use_amp and not args.prepared_inputs, blank_penalty=args.blank_penalty)
         epoch_metrics = {
             "epoch": epoch,
             "train_loss": sum(train_losses) / max(len(train_losses), 1),
@@ -803,7 +897,9 @@ def main() -> int:
 
         if val_metrics["cer"] < best_cer:
             best_cer = val_metrics["cer"]
-            best_dir = args.output_dir / "ppocrv6_medium_rec_line_finetune_best"
+            best_epoch = epoch
+            metrics["best_val_cer"] = best_cer
+            metrics["best_epoch"] = best_epoch
             best_dir.mkdir(parents=True, exist_ok=True)
             model.save_pretrained(best_dir)
             processor.save_pretrained(best_dir)
@@ -815,8 +911,16 @@ def main() -> int:
             model.save_pretrained(epoch_dir)
             processor.save_pretrained(epoch_dir)
 
+        metrics["best_val_cer"] = best_cer
+        metrics["best_epoch"] = best_epoch
+        metrics["skipped_optimizer_steps"] = skipped_optimizer_steps
+        metrics_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+        if args.patience > 0 and epoch - best_epoch >= args.patience:
+            print(f"Early stopping: no validation improvement for {args.patience} epochs", flush=True)
+            break
+
     metrics["best_val_cer"] = best_cer
-    metrics_path = args.output_dir / "training_metrics.json"
+    metrics["train_seconds"] = time.monotonic() - training_started
     metrics_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Training complete. Best CER={best_cer:.6f}. Metrics: {metrics_path}", flush=True)
     return 0

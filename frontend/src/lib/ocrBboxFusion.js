@@ -30,12 +30,14 @@ export function boxIou(a, b) {
  * Rallies full-page OCR bubbles (`bbox` normalized to 0–1000) onto YOLO boxes, as the batch OCR does:
  * one-to-one assignment by descending IoU (> 0.05). YOLO is the truth, so page bubbles without a YOLO
  * match are dropped. Matches come back in YOLO order with the YOLO indices that kept no page text.
+ *
+ * Gemini vision models emit 2D boxes either in the prompt's [x1, y1, x2, y2] order or in their
+ * native spatial order [ymin, xmin, ymax, xmax], non-deterministically per response. Both
+ * orientations are rallied and the one agreeing best with the detector boxes wins.
  */
 export function rallyPageBubblesToYolo(pageBubbles, yoloBoxes, imageWidth, imageHeight) {
     const yoloList = Array.isArray(yoloBoxes) ? yoloBoxes : [];
-    const page = (Array.isArray(pageBubbles) ? pageBubbles : [])
-        .map((bubble, index) => ({ index, text: String(bubble?.content ?? ''), box: normalizedToPixels(bubble, imageWidth, imageHeight) }))
-        .filter(item => isFiniteBox(item.box));
+    const rawPage = Array.isArray(pageBubbles) ? pageBubbles : [];
     const yolo = yoloList
         .map((box, index) => ({ index, box: isFiniteBox(box) ? {
             x: Math.round(Number(box.x)),
@@ -45,6 +47,30 @@ export function rallyPageBubblesToYolo(pageBubbles, yoloBoxes, imageWidth, image
         } : null }))
         .filter(item => item.box);
 
+    const direct = rawPage
+        .map((bubble, index) => ({ index, text: String(bubble?.content ?? ''), box: normalizedToPixels(bubble, imageWidth, imageHeight) }))
+        .filter(item => isFiniteBox(item.box));
+    const transposed = rawPage
+        .map((bubble, index) => {
+            if (!Array.isArray(bubble?.bbox) || bubble.bbox.length !== 4) return null;
+            const [a, b, c, d] = bubble.bbox.map(Number);
+            return { index, text: String(bubble?.content ?? ''), box: normalizedToPixels({ bbox: [b, a, d, c] }, imageWidth, imageHeight) };
+        })
+        .filter(item => item && isFiniteBox(item.box));
+
+    const directMatches = rallyBestAssignment(direct, yolo);
+    const transposedMatches = transposed.length ? rallyBestAssignment(transposed, yolo) : [];
+    const totalIou = matches => matches.reduce((sum, match) => sum + match.iou, 0);
+    const matches = totalIou(transposedMatches) > totalIou(directMatches) ? transposedMatches : directMatches;
+
+    const usedYolo = new Set(matches.map(match => match.yoloIndex));
+    return {
+        matches,
+        unmatchedYoloIndices: yoloList.map((_, index) => index).filter(index => !usedYolo.has(index)),
+    };
+}
+
+function rallyBestAssignment(page, yolo) {
     const candidates = [];
     for (const pageItem of page) {
         for (const yoloItem of yolo) {
@@ -64,9 +90,5 @@ export function rallyPageBubblesToYolo(pageBubbles, yoloBoxes, imageWidth, image
         matches.push({ yoloIndex, pageIndex: pageItem.index, iou, text: pageItem.text });
     }
     matches.sort((a, b) => a.yoloIndex - b.yoloIndex);
-
-    return {
-        matches,
-        unmatchedYoloIndices: yoloList.map((_, index) => index).filter(index => !usedYolo.has(index)),
-    };
+    return matches;
 }

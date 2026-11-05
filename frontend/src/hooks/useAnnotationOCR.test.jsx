@@ -67,7 +67,7 @@ describe('sandbox OCR selection', () => {
     it('falls back to browser OCR when only a model missing from the sandbox was saved', () => {
         localStorage.setItem('sandboxSelectedOcrModelKeys', JSON.stringify(['geminiPage']));
         const { result } = renderHook(() => useAnnotationOCR({ isSandbox: true }));
-        expect(result.current.selectedOcrModelKeys).toEqual(['ppocrv6Line']);
+        expect(result.current.selectedOcrModelKeys).toEqual(['indraBubble']);
     });
 
     it('keeps Gemini page selection available outside the sandbox', () => {

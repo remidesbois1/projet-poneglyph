@@ -7,7 +7,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const mime = require('mime-types');
-const inputLimits = require('@poneglyph/shared/input-limits.json');
+const { createPageUploadMiddleware } = require('./pageUploadMiddleware');
 
 const { supabaseAdmin } = require('../config/supabaseClient');
 const { logBubbleHistory } = require('../utils/auditLogger');
@@ -80,30 +80,7 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage: storage });
-const pageUpload = multer({
-  storage: storage,
-  limits: {
-    fileSize: inputLimits.pageImageBytes,
-    files: 1,
-    fields: 1,
-    parts: 2,
-    fieldNameSize: 100,
-    fieldSize: 2048,
-  },
-});
-
-function uploadSinglePage(req, res, next) {
-  pageUpload.single('file')(req, res, (error) => {
-    if (!error) return next();
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ error: 'L’image de page dépasse la taille maximale autorisée.' });
-    }
-    if (String(error.code || '').startsWith('LIMIT_')) {
-      return res.status(400).json({ error: 'Le formulaire d’upload de page est invalide.' });
-    }
-    return next(error);
-  });
-}
+const uploadSinglePage = createPageUploadMiddleware(storage);
 const chapterImportHandlers = createChapterImportHandlers();
 
 function isMissingModelRegistrySchemaError(error) {
